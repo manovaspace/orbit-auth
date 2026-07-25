@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/manovaspace/orbit-auth/api/auth/v1;authv1";
+
+service AuthService {
+  rpc RequestOTP(RequestOTPRequest) returns (RequestOTPResponse);
+  rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse);
+  rpc LoginWithPassword(LoginWithPasswordRequest) returns (TokenResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (TokenResponse);
+  rpc CreateApiToken(CreateApiTokenRequest) returns (CreateApiTokenResponse);
+  rpc ListApiTokens(ListApiTokensRequest) returns (ListApiTokensResponse);
+  rpc RevokeApiToken(RevokeApiTokenRequest) returns (RevokeApiTokenResponse);
+  rpc ValidateApiToken(ValidateApiTokenRequest) returns (ValidateApiTokenResponse);
+}
+
+message RequestOTPRequest {
+  string email = 1 [deprecated = true];
+  string correlation_id = 2;
+  string identifier = 3;
+  string channel = 4;
+}
+
+message RequestOTPResponse {
+  string expires_at = 1;
+}
+
+message VerifyOTPRequest {
+  string email = 1 [deprecated = true];
+  string code = 2;
+  string identifier = 3;
+  string channel = 4;
+}
+
+message VerifyOTPResponse {
+  TokenResponse tokens = 1;
+}
+
+message LoginWithPasswordRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message TokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  string expires_at = 3;
+}
+
+message CreateApiTokenRequest {
+  string user_id = 1;
+  string name = 2;
+  repeated string scopes = 3;
+  string expires_at = 4;
+}
+
+message CreateApiTokenResponse {
+  string token_id = 1;
+  string prefix = 2;
+  string secret = 3;
+}
+
+message ListApiTokensRequest {
+  string user_id = 1;
+}
+
+message ApiTokenInfo {
+  string token_id = 1;
+  string name = 2;
+  string prefix = 3;
+  repeated string scopes = 4;
+  string expires_at = 5;
+  string created_at = 6;
+}
+
+message ListApiTokensResponse {
+  repeated ApiTokenInfo tokens = 1;
+}
+
+message RevokeApiTokenRequest {
+  string user_id = 1;
+  string token_id = 2;
+}
+
+message RevokeApiTokenResponse {}
+
+message ValidateApiTokenRequest {
+  string secret = 1;
+}
+
+message ValidateApiTokenResponse {
+  string user_id = 1;
+  repeated string scopes = 2;
+}
