@@ -23,6 +23,7 @@ func New(svc *application.Service) *Server {
 }
 
 func (s *Server) RequestOTP(ctx context.Context, req *authv1.RequestOTPRequest) (*authv1.RequestOTPResponse, error) {
+	//nolint:staticcheck // SA1019: email kept for proto wire compatibility
 	identifier, channel := resolveIdentifierChannel(req.GetIdentifier(), req.GetChannel(), req.GetEmail())
 	expires, err := s.svc.RequestOTP(ctx, identifier, channel, req.GetCorrelationId())
 	if err != nil {
@@ -35,6 +36,7 @@ func (s *Server) RequestOTP(ctx context.Context, req *authv1.RequestOTPRequest) 
 }
 
 func (s *Server) VerifyOTP(ctx context.Context, req *authv1.VerifyOTPRequest) (*authv1.VerifyOTPResponse, error) {
+	//nolint:staticcheck // SA1019: email kept for proto wire compatibility
 	identifier, channel := resolveIdentifierChannel(req.GetIdentifier(), req.GetChannel(), req.GetEmail())
 	access, refresh, exp, err := s.svc.VerifyOTP(ctx, identifier, channel, req.GetCode())
 	if err != nil {

@@ -1,18 +1,26 @@
+# Standalone image build (GitHub/GHCR). Local monorepo replace dirs are stripped;
+# public manovaspace modules are fetched from the module proxy (@main until semver tags).
 FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache git ca-certificates
-ENV GOPROXY=direct
-WORKDIR /src/orbit/orbit-auth
-COPY orbit/orbit-notifications /src/orbit/orbit-notifications
-COPY orbit/orbit-observability /src/orbit/orbit-observability
-COPY orbit/orbit-auth/go.mod orbit/orbit-auth/go.sum ./
-RUN go mod download
-COPY orbit/orbit-auth/ .
-RUN CGO_ENABLED=0 go build -o /auth ./cmd/auth
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GONOSUMDB=github.com/manovaspace/*
+WORKDIR /src
+COPY . .
+RUN set -euo pipefail \
+	&& sed -i '/^replace (/,/^)/d' go.mod \
+	&& sed -i '/^replace /d' go.mod \
+	&& go mod edit -droprequire=github.com/manovaspace/orbit-notifications \
+	&& go mod edit -droprequire=github.com/manovaspace/orbit-observability \
+	&& go get github.com/manovaspace/orbit-notifications@main \
+	&& go get github.com/manovaspace/orbit-observability@main \
+	&& go mod tidy \
+	&& CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /auth ./cmd/auth
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /auth /app/auth
-COPY orbit/orbit-auth/migrations /app/migrations
+COPY --from=builder /src/migrations /app/migrations
 EXPOSE 10100
+USER nobody
 CMD ["/app/auth"]
