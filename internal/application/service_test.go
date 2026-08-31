@@ -217,7 +217,7 @@ func TestRequestOTP_MobileHappyPath(t *testing.T) {
 func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 	t.Run("email channel", func(t *testing.T) {
 		code := "123456"
-		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.MinCost)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,7 +263,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 
 	t.Run("mobile channel", func(t *testing.T) {
 		code := "654321"
-		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.MinCost)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -300,7 +300,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 
 func TestVerifyOTP_InvalidCode(t *testing.T) {
 	code := "123456"
-	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestVerifyOTP_InvalidCode(t *testing.T) {
 
 func TestVerifyOTP_ExpiredChallenge(t *testing.T) {
 	code := "123456"
-	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
