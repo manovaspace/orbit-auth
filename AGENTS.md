@@ -1,6 +1,6 @@
 # orbit-auth
 
-Tier 2 product user authentication — OTP login, password login, JWT sessions, API tokens. Staff SSO is separate from this product auth service.
+Tier 2 product user authentication — OTP login, password login, JWT sessions, API tokens. Staff SSO remains Authelia.
 
 ## Commands
 
@@ -8,12 +8,22 @@ Tier 2 product user authentication — OTP login, password login, JWT sessions, 
 export DEPLOYMENT_ENVIRONMENT=dev
 export DATABASE_URL=postgres://orbit:orbit@localhost:10332/auth?sslmode=disable
 export NOTIFICATIONS_GRPC_ADDR=localhost:10110
+export GRPC_PORT=10100
+export HEALTH_PORT=10101
 go run ./cmd/auth
 go test ./...
 ./scripts/generate-proto.sh   # after proto changes
 ```
 
-gRPC: **10100**. Requires `orbit-notifications` on **10110** and dev Postgres.
+Ports: gRPC on **10100** (`GRPC_PORT`), HTTP health on **10101** (`HEALTH_PORT`, `/healthz`, `/readyz`).
+Requires `orbit-notifications` on **10110** and dev Postgres.
+
+Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
+
+## Feature Flags & Demo Mode
+
+- **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
+- **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup.
 
 ## Stack
 
@@ -25,6 +35,10 @@ gRPC: **10100**. Requires `orbit-notifications` on **10110** and dev Postgres.
 
 | Topic | Path |
 | --- | --- |
+| Platform auth ADR | `handbook/docs/orbit/decisions/011-platform-auth-notifications.md` |
+| Password + API tokens | `handbook/docs/orbit/decisions/016-orbit-auth-password-and-api-tokens.md` |
+| Dev quickstart | `handbook/docs/orbit/guides/platform-dev-quickstart.md` |
+| Go toolchain | `handbook/docs/orbit/architecture/go-toolchain.md` |
 
 ## Structure
 
