@@ -7,14 +7,14 @@ import (
 	"os"
 	"time"
 
-	observability "github.com/manovaspace/orbit-observability"
+	"github.com/jackc/pgx/v5/pgxpool"
 	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
 	"github.com/manovaspace/orbit-auth/internal/application"
-	grpchandlers "github.com/manovaspace/orbit-auth/internal/infrastructure/grpc"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/featureflags"
+	grpchandlers "github.com/manovaspace/orbit-auth/internal/infrastructure/grpc"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/notifications"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres"
-	"github.com/jackc/pgx/v5/pgxpool"
+	observability "github.com/manovaspace/orbit-observability"
 	googlegrpc "google.golang.org/grpc"
 )
 
@@ -36,8 +36,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if os.Getenv("JWT_SECRET") == "" && os.Getenv("DEPLOYMENT_ENVIRONMENT") != "dev" {
-		log.Error("JWT_SECRET is required outside DEPLOYMENT_ENVIRONMENT=dev")
+	if os.Getenv("JWT_PRIVATE_KEY_FILE") == "" || os.Getenv("JWT_ACTIVE_KEY_ID") == "" || os.Getenv("JWT_PUBLIC_KEYS_DIR") == "" {
+		log.Error("JWT_PRIVATE_KEY_FILE, JWT_ACTIVE_KEY_ID, and JWT_PUBLIC_KEYS_DIR are required")
 		os.Exit(1)
 	}
 

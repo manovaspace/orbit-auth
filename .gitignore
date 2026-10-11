@@ -1,13 +1,2 @@
-/bin/
-*.exe
-*.test
-*.out
 .env
-.env.*
-!.env.example
-coverage.out
-coverage/
-*.coverprofile
-.DS_Store
-.idea/
-.vscode/
+secrets/

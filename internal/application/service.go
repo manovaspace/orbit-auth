@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -12,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
+	orbittoken "github.com/manovaspace/orbit-auth/token"
 )
 
 const otpTTL = 10 * time.Minute
@@ -29,14 +30,15 @@ type FlagEvaluator interface {
 }
 
 type Service struct {
-	otp       domain.OTPRepository
-	users     domain.UserRepository
-	refresh   domain.RefreshTokenRepository
-	tokens    domain.ApiTokenRepository
-	notifier  domain.Notifier
-	flags     FlagEvaluator
-	jwtSecret []byte
-	logger    func(msg string, args ...any)
+	otp           domain.OTPRepository
+	users         domain.UserRepository
+	refresh       domain.RefreshTokenRepository
+	tokens        domain.ApiTokenRepository
+	notifier      domain.Notifier
+	flags         FlagEvaluator
+	jwtPrivateKey *rsa.PrivateKey
+	jwtKeyID      string
+	logger        func(msg string, args ...any)
 }
 
 func NewService(
@@ -48,22 +50,40 @@ func NewService(
 	flags FlagEvaluator,
 	logger func(string, ...any),
 ) (*Service, error) {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		if os.Getenv("DEPLOYMENT_ENVIRONMENT") != "dev" {
-			return nil, fmt.Errorf("JWT_SECRET is required outside DEPLOYMENT_ENVIRONMENT=dev")
-		}
-		secret = "dev-insecure-change-me"
+	privateKeyPath := strings.TrimSpace(os.Getenv("JWT_PRIVATE_KEY_FILE"))
+	if privateKeyPath == "" {
+		return nil, fmt.Errorf("JWT_PRIVATE_KEY_FILE is required")
+	}
+	privateKey, err := orbittoken.LoadRSAPrivateKey(privateKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	keyID := strings.TrimSpace(os.Getenv("JWT_ACTIVE_KEY_ID"))
+	if keyID == "" {
+		return nil, fmt.Errorf("JWT_ACTIVE_KEY_ID is required")
+	}
+	publicKeysDirectory := strings.TrimSpace(os.Getenv("JWT_PUBLIC_KEYS_DIR"))
+	if publicKeysDirectory == "" {
+		return nil, fmt.Errorf("JWT_PUBLIC_KEYS_DIR is required")
+	}
+	publicKeys, err := orbittoken.LoadKeySet(publicKeysDirectory)
+	if err != nil {
+		return nil, err
+	}
+	activePublicKey := publicKeys[keyID]
+	if activePublicKey == nil || activePublicKey.E != privateKey.E || activePublicKey.N.Cmp(privateKey.N) != 0 {
+		return nil, fmt.Errorf("active JWT key ID %q must match a public key in JWT_PUBLIC_KEYS_DIR", keyID)
 	}
 	return &Service{
-		otp:       otp,
-		users:     users,
-		refresh:   refresh,
-		tokens:    tokens,
-		notifier:  notifier,
-		flags:     flags,
-		jwtSecret: []byte(secret),
-		logger:    logger,
+		otp:           otp,
+		users:         users,
+		refresh:       refresh,
+		tokens:        tokens,
+		notifier:      notifier,
+		flags:         flags,
+		jwtPrivateKey: privateKey,
+		jwtKeyID:      keyID,
+		logger:        logger,
 	}, nil
 }
 
@@ -179,11 +199,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (access, ref
 
 func (s *Service) issueTokens(ctx context.Context, userID string) (access, refresh string, expires time.Time, err error) {
 	expires = time.Now().UTC().Add(15 * time.Minute)
-	access, err = jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID,
-		"exp": expires.Unix(),
-		"iat": time.Now().Unix(),
-	}).SignedString(s.jwtSecret)
+	access, err = orbittoken.SignAccessToken(s.jwtPrivateKey, s.jwtKeyID, userID, expires)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
