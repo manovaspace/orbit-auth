@@ -236,15 +236,15 @@ type RemoteVerifier struct {
 func NewRemoteVerifier(jwksURL string, cacheLifetime time.Duration) (*RemoteVerifier, error) {
 	jwksURL = strings.TrimSpace(jwksURL)
 	if jwksURL == "" {
-		return nil, fmt.Errorf("Orbit JWKS URL is required")
+		return nil, fmt.Errorf("orbit JWKS URL is required")
 	}
 	parsedURL, err := url.ParseRequestURI(jwksURL)
 	if err != nil || parsedURL.Host == "" || parsedURL.Fragment != "" || parsedURL.User != nil {
-		return nil, fmt.Errorf("Orbit JWKS URL must be an absolute HTTP(S) URL without a fragment")
+		return nil, fmt.Errorf("orbit JWKS URL must be an absolute HTTP(S) URL without a fragment")
 	}
 	localHTTP := parsedURL.Scheme == "http" && (parsedURL.Hostname() == "localhost" || parsedURL.Hostname() == "127.0.0.1" || parsedURL.Hostname() == "host.docker.internal")
 	if parsedURL.Scheme != "https" && !localHTTP {
-		return nil, fmt.Errorf("Orbit JWKS URL must use HTTPS outside local development")
+		return nil, fmt.Errorf("orbit JWKS URL must use HTTPS outside local development")
 	}
 	if cacheLifetime <= 0 {
 		cacheLifetime = 5 * time.Minute
@@ -326,7 +326,7 @@ func (v *RemoteVerifier) refreshLocked() error {
 	if err != nil {
 		return fmt.Errorf("fetch Orbit JWKS: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("fetch Orbit JWKS: unexpected status %d", response.StatusCode)
 	}

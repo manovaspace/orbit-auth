@@ -71,7 +71,7 @@ func NewService(
 		return nil, err
 	}
 	activePublicKey := publicKeys[keyID]
-	if activePublicKey == nil || activePublicKey.E != privateKey.PublicKey.E || activePublicKey.N.Cmp(privateKey.PublicKey.N) != 0 {
+	if activePublicKey == nil || activePublicKey.E != privateKey.E || activePublicKey.N.Cmp(privateKey.N) != 0 {
 		return nil, fmt.Errorf("active JWT key ID %q must match a public key in JWT_PUBLIC_KEYS_DIR", keyID)
 	}
 	return &Service{
