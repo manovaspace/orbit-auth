@@ -2,7 +2,13 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +24,10 @@ type fakeOTP struct {
 	consumed bool
 	attempts int
 }
+
+var testJWTKeyOnce sync.Once
+var testJWTPrivateKey *rsa.PrivateKey
+var testJWTKeyErr error
 
 func (f *fakeOTP) UpsertChallenge(_ context.Context, ch domain.OTPChallenge) error {
 	f.mu.Lock()
@@ -182,7 +192,35 @@ func mustService(t *testing.T, otp domain.OTPRepository, users domain.UserReposi
 func mustServiceWithRefresh(t *testing.T, otp domain.OTPRepository, users domain.UserRepository, refresh domain.RefreshTokenRepository, n domain.Notifier, flags FlagEvaluator) *Service {
 	t.Helper()
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "dev")
-	t.Setenv("JWT_SECRET", "test-secret")
+	testJWTKeyOnce.Do(func() {
+		testJWTPrivateKey, testJWTKeyErr = rsa.GenerateKey(rand.Reader, 2048)
+	})
+	if testJWTKeyErr != nil {
+		t.Fatal(testJWTKeyErr)
+	}
+	tempDir := t.TempDir()
+	privateDER, err := x509.MarshalPKCS8PrivateKey(testJWTPrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privatePath := filepath.Join(tempDir, "private.pem")
+	if err := os.WriteFile(privatePath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	publicDER, err := x509.MarshalPKIXPublicKey(&testJWTPrivateKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicDir := filepath.Join(tempDir, "public")
+	if err := os.Mkdir(publicDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(publicDir, "test-key.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("JWT_PRIVATE_KEY_FILE", privatePath)
+	t.Setenv("JWT_ACTIVE_KEY_ID", "test-key")
+	t.Setenv("JWT_PUBLIC_KEYS_DIR", publicDir)
 	svc, err := NewService(otp, users, refresh, fakeApiTokens{}, n, flags, func(string, ...any) {})
 	if err != nil {
 		t.Fatal(err)
