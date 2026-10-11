@@ -347,20 +347,20 @@ func (v *RemoteVerifier) refreshLocked() error {
 // KeySet validates and converts a JWKS document to RSA public keys.
 func (document JWKSet) KeySet() (KeySet, error) {
 	if len(document.Keys) == 0 || len(document.Keys) > 100 {
-		return nil, fmt.Errorf("Orbit JWKS must contain between 1 and 100 keys")
+		return nil, fmt.Errorf("orbit JWKS must contain between 1 and 100 keys")
 	}
 	keys := make(KeySet, len(document.Keys))
 	for _, jwk := range document.Keys {
 		if jwk.KeyType != "RSA" || jwk.Alg != Algorithm || jwk.Use != "sig" || strings.TrimSpace(jwk.KeyID) == "" {
-			return nil, fmt.Errorf("Orbit JWKS contains an unsupported key")
+			return nil, fmt.Errorf("orbit JWKS contains an unsupported key")
 		}
 		modulus, err := base64.RawURLEncoding.DecodeString(jwk.Modulus)
 		if err != nil {
-			return nil, fmt.Errorf("Orbit JWKS key %q has an invalid modulus", jwk.KeyID)
+			return nil, fmt.Errorf("orbit JWKS key %q has an invalid modulus", jwk.KeyID)
 		}
 		exponent, err := base64.RawURLEncoding.DecodeString(jwk.Exponent)
 		if err != nil || len(exponent) == 0 || len(exponent) > 4 {
-			return nil, fmt.Errorf("Orbit JWKS key %q has an invalid exponent", jwk.KeyID)
+			return nil, fmt.Errorf("orbit JWKS key %q has an invalid exponent", jwk.KeyID)
 		}
 		exponentValue := 0
 		for _, b := range exponent {
@@ -368,10 +368,10 @@ func (document JWKSet) KeySet() (KeySet, error) {
 		}
 		key := &rsa.PublicKey{N: new(big.Int).SetBytes(modulus), E: exponentValue}
 		if key.N.BitLen() < 2048 || key.E < 3 || key.E%2 == 0 {
-			return nil, fmt.Errorf("Orbit JWKS key %q is not a valid 2048-bit RSA signing key", jwk.KeyID)
+			return nil, fmt.Errorf("orbit JWKS key %q is not a valid 2048-bit RSA signing key", jwk.KeyID)
 		}
 		if _, exists := keys[jwk.KeyID]; exists {
-			return nil, fmt.Errorf("Orbit JWKS contains duplicate key ID %q", jwk.KeyID)
+			return nil, fmt.Errorf("orbit JWKS contains duplicate key ID %q", jwk.KeyID)
 		}
 		keys[jwk.KeyID] = key
 	}
