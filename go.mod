@@ -9,10 +9,10 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/manovaspace/orbit-notifications v0.0.0-20261012152124-9ae50b313aea
 	github.com/manovaspace/orbit-observability v0.0.0-20260918121116-350cbc7e6806
-	github.com/open-feature/go-sdk v1.18.0
+	github.com/open-feature/go-sdk v1.19.0
 	github.com/open-feature/go-sdk-contrib/providers/unleash v0.1.1-alpha
 	golang.org/x/crypto v0.57.0
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )
 
