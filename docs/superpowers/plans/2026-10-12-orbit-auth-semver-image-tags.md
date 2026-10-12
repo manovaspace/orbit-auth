@@ -29,6 +29,7 @@
 **Files:**
 - Create: `scripts/resolve-image-tag.sh`
 - Modify: `.github/workflows/publish-image.yml`
+- Modify: `.github/workflows/ci.yml`
 - Test: `scripts/test-resolve-image-tag.sh`
 - Create: `docs/superpowers/plans/2026-10-12-orbit-auth-semver-image-tags.md`
 
@@ -39,5 +40,5 @@
 - [ ] Write shell regression tests for tag event, explicit dispatch tag, branch dispatch, and malformed tag.
 - [ ] Run the tests and verify they fail because the resolver does not exist.
 - [ ] Implement the resolver and wire its output as an explicit semver `value` to metadata-action.
-- [ ] Run the focused regression test and the repository’s applicable CI checks.
+- [ ] Run the focused regression test and validate both workflow files.
 - [ ] Review the workflow diff, commit, push a branch, and open a PR.
