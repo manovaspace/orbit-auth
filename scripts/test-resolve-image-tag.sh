@@ -25,12 +25,13 @@ if "$resolver" v0.1.1-rc.1 branch main >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "$(rg -Fc 'value=${{ steps.release.outputs.version }}' "$workflow")" -ne 2 ]]; then
+semver_value_count="$(grep -Fc 'value=${{ steps.release.outputs.version }}' "$workflow" || true)"
+if [[ "$semver_value_count" -ne 2 ]]; then
   echo 'both semver metadata tags must use the resolved release version' >&2
   exit 1
 fi
 
-if rg -q '^\s*context: git\s*$' "$workflow"; then
+if grep -Eq '^[[:space:]]*context: git[[:space:]]*$' "$workflow"; then
   echo 'semver metadata must not infer versions from ambiguous Git refs' >&2
   exit 1
 fi
