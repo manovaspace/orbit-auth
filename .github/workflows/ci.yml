@@ -23,23 +23,6 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.26.9"
-      - name: Checkout sibling replace modules
-        run: |
-          set -euo pipefail
-          mapfile -t dests < <(grep -E '=>[[:space:]]+\.\./' go.mod | sed -E 's/.*=>[[:space:]]*([^[:space:]]+).*/\1/' | sort -u || true)
-          for dest in "${dests[@]:-}"; do
-            [ -z "$dest" ] && continue
-            name="$(basename "$dest")"
-            case "$name" in
-              orbit-*) ;;
-              *) continue ;;
-            esac
-            mkdir -p "$(dirname "$dest")"
-            if [ ! -d "$dest/.git" ] && [ ! -f "$dest/go.mod" ]; then
-              echo "Cloning ${name} -> ${dest}"
-              git clone --depth 1 "https://github.com/manovaspace/${name}.git" "$dest"
-            fi
-          done
       - name: Test
         run: go test -race ./...
       - name: Vet
