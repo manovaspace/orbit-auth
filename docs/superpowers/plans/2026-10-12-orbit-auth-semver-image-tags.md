@@ -41,4 +41,5 @@
 - [ ] Run the tests and verify they fail because the resolver does not exist.
 - [ ] Implement the resolver and wire its output as an explicit semver `value` to metadata-action.
 - [ ] Run the focused regression test and validate both workflow files.
+- [ ] After merge, run `workflow_dispatch` from `main` with `source_tag=v0.1.1`; verify the successful run publishes GHCR tags `0.1.1` and `0.1` without changing the Git tag.
 - [ ] Review the workflow diff, commit, push a branch, and open a PR.

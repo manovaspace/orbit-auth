@@ -36,4 +36,16 @@ if grep -Eq '^[[:space:]]*context: git[[:space:]]*$' "$workflow"; then
   exit 1
 fi
 
+if ! grep -Fq 'version="$(./scripts/resolve-image-tag.sh' "$workflow"; then
+  echo 'release resolution must run from the workflow checkout' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'ref: ${{ inputs.source_tag || github.ref }}' "$workflow" || \
+  ! grep -Fq 'path: source' "$workflow" || \
+  ! grep -Fq 'context: source' "$workflow"; then
+  echo 'image rebuilds must checkout their source separately from the workflow' >&2
+  exit 1
+fi
+
 echo 'image tag resolution checks passed'
