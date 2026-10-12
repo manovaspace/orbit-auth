@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - Unreleased
+
+### Fixed
+
+- Pin Orbit Notifications and Observability to immutable source revisions so standalone module and image builds resolve the same dependencies.
+- Download Go modules before copying application sources in the container build.
+
 ## [0.1.0] - 2026-10-11
 
 ### Added

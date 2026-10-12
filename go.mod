@@ -7,8 +7,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/manovaspace/orbit-notifications v0.0.0
-	github.com/manovaspace/orbit-observability v0.0.0
+	github.com/manovaspace/orbit-notifications v0.0.0-20261012152124-9ae50b313aea
+	github.com/manovaspace/orbit-observability v0.0.0-20260918121116-350cbc7e6806
 	github.com/open-feature/go-sdk v1.18.0
 	github.com/open-feature/go-sdk-contrib/providers/unleash v0.1.1-alpha
 	golang.org/x/crypto v0.57.0
@@ -50,9 +50,4 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
-)
-
-replace (
-	github.com/manovaspace/orbit-notifications => ../orbit-notifications
-	github.com/manovaspace/orbit-observability => ../orbit-observability
 )
