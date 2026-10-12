@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-resolver="$repo_root/scripts/resolve-image-tag.sh"
-workflow="$repo_root/.github/workflows/publish-image.yml"
+script_dir="$(dirname -- "${BASH_SOURCE[0]}")"
+resolver="$script_dir/resolve-image-tag.sh"
+workflow="$script_dir/../.github/workflows/publish-image.yml"
 
 assert_output() {
   local expected="$1"
