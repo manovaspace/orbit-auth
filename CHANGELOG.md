@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-11
+
 ### Added
 
 - Initial public MIT release.
+- Reusable RS256 access-token signing and verification with public JWKS support.
+- Framework-neutral role and permission policy evaluation for product APIs.
