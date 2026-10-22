@@ -1,6 +1,6 @@
 # orbit-auth
 
-Tier 2 product user authentication — OTP login, password login, JWT sessions, API tokens. Staff SSO remains Authelia.
+Tier 2 product user authentication — OTP login, password login, JWT sessions, API tokens. Staff SSO is Keycloak workforce identity (ADR-027).
 
 ## Commands
 
