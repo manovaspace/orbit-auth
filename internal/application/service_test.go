@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -97,12 +98,24 @@ func (f *fakeUsers) FindOrCreateByMobile(_ context.Context, mobile string) (doma
 func (f *fakeUsers) FindByEmail(_ context.Context, email string) (domain.User, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	if f.user.Email != email {
+		return domain.User{}, errors.New("not found")
+	}
+	return f.user, nil
+}
+
+func (f *fakeUsers) FindByMobile(_ context.Context, mobile string) (domain.User, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.user.Mobile != mobile {
+		return domain.User{}, errors.New("not found")
+	}
 	return f.user, nil
 }
 
 func (f *fakeUsers) UpdateLastLogin(context.Context, string) error { return nil }
 
-func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string) error { return nil }
+func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string, string) error { return nil }
 
 type fakeApiTokens struct{}
 

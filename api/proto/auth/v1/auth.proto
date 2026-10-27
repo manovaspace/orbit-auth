@@ -38,8 +38,10 @@ message VerifyOTPResponse {
 }
 
 message LoginWithPasswordRequest {
-  string email = 1;
+  string email = 1 [deprecated = true];
   string password = 2;
+  // Email address or E.164 mobile number. Takes precedence over email.
+  string identifier = 3;
 }
 
 message RefreshTokenRequest {
