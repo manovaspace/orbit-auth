@@ -63,8 +63,9 @@ type UserRepository interface {
 	FindOrCreateByEmail(ctx context.Context, email string) (User, error)
 	FindOrCreateByMobile(ctx context.Context, mobile string) (User, error)
 	FindByEmail(ctx context.Context, email string) (User, error)
+	FindByMobile(ctx context.Context, mobile string) (User, error)
 	UpdateLastLogin(ctx context.Context, userID string) error
-	UpsertDemoUser(ctx context.Context, email, passwordHash, displayName string) error
+	UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error
 }
 
 type RefreshTokenRepository interface {

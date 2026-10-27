@@ -86,21 +86,36 @@ func (s *Store) FindByEmail(ctx context.Context, email string) (domain.User, err
 	return u, err
 }
 
+func (s *Store) FindByMobile(ctx context.Context, mobile string) (domain.User, error) {
+	var u domain.User
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, COALESCE(email, ''), COALESCE(mobile, ''), COALESCE(password_hash, ''),
+		       COALESCE(display_name, ''), COALESCE(status, 'active')
+		FROM users WHERE mobile = $1`, mobile).Scan(&u.ID, &u.Email, &u.Mobile, &u.PasswordHash, &u.DisplayName, &u.Status)
+	return u, err
+}
+
 func (s *Store) UpdateLastLogin(ctx context.Context, userID string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`, userID)
 	return err
 }
 
-func (s *Store) UpsertDemoUser(ctx context.Context, email, passwordHash, displayName string) error {
+func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error {
+	conflictKey := "email"
+	if email == "" {
+		conflictKey = "mobile"
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO users (id, email, password_hash, display_name, status)
-		VALUES ($1, $2, $3, $4, 'active')
-		ON CONFLICT (email) DO UPDATE SET
+		INSERT INTO users (id, email, mobile, password_hash, display_name, status)
+		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, 'active')
+		ON CONFLICT (`+conflictKey+`) DO UPDATE SET
+			email = COALESCE(EXCLUDED.email, users.email),
+			mobile = COALESCE(EXCLUDED.mobile, users.mobile),
 			password_hash = EXCLUDED.password_hash,
 			display_name = EXCLUDED.display_name,
 			status = 'active',
 			updated_at = NOW()
-	`, uuid.NewString(), email, passwordHash, displayName)
+	`, uuid.NewString(), email, mobile, passwordHash, displayName)
 	return err
 }
 

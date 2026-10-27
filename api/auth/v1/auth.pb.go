@@ -250,9 +250,12 @@ func (x *VerifyOTPResponse) GetTokens() *TokenResponse {
 }
 
 type LoginWithPasswordRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
-	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Deprecated: Marked as deprecated in auth/v1/auth.proto.
+	Email    string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
+	// Email address or E.164 mobile number. Takes precedence over email.
+	Identifier    string `protobuf:"bytes,3,opt,name=identifier,proto3" json:"identifier,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -287,6 +290,7 @@ func (*LoginWithPasswordRequest) Descriptor() ([]byte, []int) {
 	return file_auth_v1_auth_proto_rawDescGZIP(), []int{4}
 }
 
+// Deprecated: Marked as deprecated in auth/v1/auth.proto.
 func (x *LoginWithPasswordRequest) GetEmail() string {
 	if x != nil {
 		return x.Email
@@ -297,6 +301,13 @@ func (x *LoginWithPasswordRequest) GetEmail() string {
 func (x *LoginWithPasswordRequest) GetPassword() string {
 	if x != nil {
 		return x.Password
+	}
+	return ""
+}
+
+func (x *LoginWithPasswordRequest) GetIdentifier() string {
+	if x != nil {
+		return x.Identifier
 	}
 	return ""
 }
@@ -912,10 +923,13 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"identifier\x12\x18\n" +
 	"\achannel\x18\x04 \x01(\tR\achannel\"C\n" +
 	"\x11VerifyOTPResponse\x12.\n" +
-	"\x06tokens\x18\x01 \x01(\v2\x16.auth.v1.TokenResponseR\x06tokens\"L\n" +
-	"\x18LoginWithPasswordRequest\x12\x14\n" +
-	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\":\n" +
+	"\x06tokens\x18\x01 \x01(\v2\x16.auth.v1.TokenResponseR\x06tokens\"p\n" +
+	"\x18LoginWithPasswordRequest\x12\x18\n" +
+	"\x05email\x18\x01 \x01(\tB\x02\x18\x01R\x05email\x12\x1a\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x1e\n" +
+	"\n" +
+	"identifier\x18\x03 \x01(\tR\n" +
+	"identifier\":\n" +
 	"\x13RefreshTokenRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"v\n" +
 	"\rTokenResponse\x12!\n" +

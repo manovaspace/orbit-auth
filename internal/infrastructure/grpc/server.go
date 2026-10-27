@@ -46,7 +46,12 @@ func (s *Server) VerifyOTP(ctx context.Context, req *authv1.VerifyOTPRequest) (*
 }
 
 func (s *Server) LoginWithPassword(ctx context.Context, req *authv1.LoginWithPasswordRequest) (*authv1.TokenResponse, error) {
-	access, refresh, exp, err := s.svc.LoginWithPassword(ctx, req.GetEmail(), req.GetPassword())
+	identifier := req.GetIdentifier()
+	if identifier == "" {
+		//nolint:staticcheck // SA1019: email kept for proto wire compatibility
+		identifier = req.GetEmail()
+	}
+	access, refresh, exp, err := s.svc.LoginWithPassword(ctx, identifier, req.GetPassword())
 	if err != nil {
 		if errors.Is(err, application.ErrInvalidCredentials) {
 			return nil, status.Error(codes.Unauthenticated, "invalid credentials")
@@ -91,10 +96,10 @@ func (s *Server) ListApiTokens(ctx context.Context, req *authv1.ListApiTokensReq
 	out := make([]*authv1.ApiTokenInfo, 0, len(list))
 	for _, t := range list {
 		info := &authv1.ApiTokenInfo{
-			TokenId: t.ID,
-			Name:    t.Name,
-			Prefix:  t.Prefix,
-			Scopes:  t.Scopes,
+			TokenId:   t.ID,
+			Name:      t.Name,
+			Prefix:    t.Prefix,
+			Scopes:    t.Scopes,
 			CreatedAt: t.CreatedAt.Format(time.RFC3339),
 		}
 		if t.ExpiresAt != nil {

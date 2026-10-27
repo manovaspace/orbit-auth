@@ -24,16 +24,23 @@ var (
 
 type demoUser struct {
 	Email       string `json:"email"`
+	Mobile      string `json:"mobile"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
 }
 
-func (s *Service) LoginWithPassword(ctx context.Context, email, password string) (access, refresh string, expires time.Time, err error) {
-	email = strings.TrimSpace(strings.ToLower(email))
-	if email == "" || password == "" {
+// LoginWithPassword authenticates by email or E.164 mobile number plus password.
+func (s *Service) LoginWithPassword(ctx context.Context, identifier, password string) (access, refresh string, expires time.Time, err error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" || password == "" {
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
-	user, err := s.users.FindByEmail(ctx, email)
+	var user domain.User
+	if e164Pattern.MatchString(identifier) {
+		user, err = s.users.FindByMobile(ctx, identifier)
+	} else {
+		user, err = s.users.FindByEmail(ctx, strings.ToLower(identifier))
+	}
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
@@ -135,7 +142,15 @@ func (s *Service) SeedDemoUsers(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := s.users.UpsertDemoUser(ctx, strings.ToLower(strings.TrimSpace(u.Email)), string(hash), u.DisplayName); err != nil {
+		email := strings.ToLower(strings.TrimSpace(u.Email))
+		mobile := strings.TrimSpace(u.Mobile)
+		if email == "" && mobile == "" {
+			return fmt.Errorf("demo user requires email or mobile")
+		}
+		if mobile != "" && !e164Pattern.MatchString(mobile) {
+			return fmt.Errorf("demo user mobile must be E.164")
+		}
+		if err := s.users.UpsertDemoUser(ctx, email, mobile, string(hash), u.DisplayName); err != nil {
 			return err
 		}
 	}
