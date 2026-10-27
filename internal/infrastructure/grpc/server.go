@@ -48,6 +48,7 @@ func (s *Server) VerifyOTP(ctx context.Context, req *authv1.VerifyOTPRequest) (*
 func (s *Server) LoginWithPassword(ctx context.Context, req *authv1.LoginWithPasswordRequest) (*authv1.TokenResponse, error) {
 	identifier := req.GetIdentifier()
 	if identifier == "" {
+		//nolint:staticcheck // SA1019: email kept for proto wire compatibility
 		identifier = req.GetEmail()
 	}
 	access, refresh, exp, err := s.svc.LoginWithPassword(ctx, identifier, req.GetPassword())
