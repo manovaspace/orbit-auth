@@ -13,7 +13,7 @@ Requires Postgres and the [orbit-notifications](https://github.com/manovaspace/o
 
 ```bash
 export DEPLOYMENT_ENVIRONMENT=dev
-export DATABASE_URL=postgres://orbit:orbit@localhost:10332/auth?sslmode=disable
+export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10333/auth?sslmode=disable
 export NOTIFICATIONS_GRPC_ADDR=localhost:10110
 export GRPC_PORT=10100
 export HEALTH_PORT=10101
