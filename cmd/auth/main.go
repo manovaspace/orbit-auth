@@ -25,7 +25,11 @@ func main() {
 	}
 	log := observability.Logger()
 
-	dsn := envOr("DATABASE_URL", "postgres://orbit:orbit@localhost:10332/auth?sslmode=disable")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
 	if err := postgres.Migrate(ctx, dsn, "migrations"); err != nil {
 		log.Error("migrate failed", "error", err)
 		os.Exit(1)
