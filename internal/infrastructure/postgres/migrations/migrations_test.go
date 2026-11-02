@@ -72,6 +72,10 @@ func insertLegacyData(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		 VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'refresh-hash', NOW() + INTERVAL '30 days')`,
 		`INSERT INTO api_tokens (id, user_id, name, prefix, token_hash, scopes)
 		 VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'deploy', 'abcdefgh', 'token-hash', ARRAY['read'])`,
+		`INSERT INTO organizations (id, name)
+		 VALUES ('55555555-5555-5555-5555-555555555555', 'Legacy Org')`,
+		`INSERT INTO organization_memberships (org_id, user_id, status)
+		 VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', 'active')`,
 	}
 	for _, statement := range statements {
 		if _, err := pool.Exec(ctx, statement); err != nil {
@@ -95,16 +99,16 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 3 {
-		t.Fatalf("applied %d migrations, want 3", len(results))
+	if len(results) != 4 {
+		t.Fatalf("applied %d migrations, want 4", len(results))
 	}
-	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "goose_db_version"} {
+	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
 			t.Fatalf("%s was not created", table)
 		}
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 3 || target != 3 {
-		t.Fatalf("version = %d/%d, err=%v, want 3/3", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 4 || target != 4 {
+		t.Fatalf("version = %d/%d, err=%v, want 4/4", current, target, err)
 	}
 }
 
@@ -146,10 +150,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 3 || target != 3 {
-		t.Fatalf("version = %d/%d, err=%v, want 3/3", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 4 || target != 4 {
+		t.Fatalf("version = %d/%d, err=%v, want 4/4", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -202,7 +206,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4)
 }
 
 func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
@@ -223,17 +227,26 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("down: %v", err)
 	}
-	if result.Source.Version != 3 {
-		t.Fatalf("rolled back version %d, want 3", result.Source.Version)
+	if result.Source.Version != 4 {
+		t.Fatalf("rolled back version %d, want 4", result.Source.Version)
 	}
-	if tableExists(t, ctx, db.Pool, db.Schema, "api_tokens") {
-		t.Fatal("down left api_tokens in place")
+	if tableExists(t, ctx, db.Pool, db.Schema, "organizations") {
+		t.Fatal("down left organizations in place")
+	}
+	if tableExists(t, ctx, db.Pool, db.Schema, "organization_memberships") {
+		t.Fatal("down left organization_memberships in place")
+	}
+	if !tableExists(t, ctx, db.Pool, db.Schema, "api_tokens") {
+		t.Fatal("down removed api_tokens from migration 003")
 	}
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("reapply after down: %v", err)
 	}
-	if !tableExists(t, ctx, db.Pool, db.Schema, "api_tokens") {
-		t.Fatal("up after down did not recreate api_tokens")
+	if !tableExists(t, ctx, db.Pool, db.Schema, "organizations") {
+		t.Fatal("up after down did not recreate organizations")
+	}
+	if !tableExists(t, ctx, db.Pool, db.Schema, "organization_memberships") {
+		t.Fatal("up after down did not recreate organization_memberships")
 	}
 }
 
@@ -250,7 +263,9 @@ func schemaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schem
 			'users', 'users_email_key', 'users_mobile_key', 'users_mobile_idx', 'users_pkey',
 			'otp_challenges', 'otp_challenges_pkey', 'otp_challenges_identifier_idx',
 			'refresh_tokens', 'refresh_tokens_pkey',
-			'api_tokens', 'api_tokens_pkey', 'api_tokens_prefix_idx', 'api_tokens_user_idx'
+			'api_tokens', 'api_tokens_pkey', 'api_tokens_prefix_idx', 'api_tokens_user_idx',
+			'organizations', 'organizations_pkey',
+			'organization_memberships', 'organization_memberships_pkey', 'organization_memberships_user_idx'
 		  )
 		ORDER BY c.relname`
 	rows, err := pool.Query(ctx, query, schema)
@@ -279,6 +294,8 @@ func dataSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool) string 
 		`SELECT id::text || '|' || identifier || '|' || channel || '|' || code_hash || '|' || attempts::text FROM otp_challenges ORDER BY id`,
 		`SELECT id::text || '|' || user_id::text || '|' || token_hash || '|' || (revoked_at IS NULL)::text FROM refresh_tokens ORDER BY id`,
 		`SELECT id::text || '|' || user_id::text || '|' || name || '|' || prefix || '|' || token_hash || '|' || array_to_string(scopes, ',') FROM api_tokens ORDER BY id`,
+		`SELECT id::text || '|' || name FROM organizations ORDER BY id`,
+		`SELECT org_id::text || '|' || user_id::text || '|' || status FROM organization_memberships ORDER BY org_id, user_id`,
 	}
 	var lines []string
 	for _, query := range queries {
