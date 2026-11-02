@@ -1,8 +1,14 @@
-// Package authorization provides framework-neutral role and permission policy
-// evaluation for services that use Orbit Auth identities.
+// Package authorization provides framework-neutral, organization-scoped Role
+// Based Access Control for services that use Orbit Auth identities.
 //
-// The package evaluates roles already assigned by a product. It does not own
-// users, role assignments, persistence, transport, or authentication. Product
-// services define and store their own policies, then use Evaluator at the
-// authorization boundary.
+// Products own their role definitions, assignments, persistence and resource
+// boundaries. A product implements Store over its own tables and calls
+// NewRBAC to obtain an Authorizer. Check answers one permission question for
+// one principal and resource and denies by default; AllowedScopes lists the
+// scopes where a permission is held for list endpoints. The package does not
+// own users, storage, transport, authentication or entitlements.
+//
+// The older Policy and Evaluator types evaluate a static, organization-free
+// role map. They remain available for compatibility but are deprecated in
+// favour of Authorizer.
 package authorization

@@ -14,17 +14,23 @@ type Role string
 type Permission string
 
 // Policy maps product-defined roles to the permissions they grant.
+//
+// Deprecated: use Authorizer.
 type Policy map[Role][]Permission
 
 var identifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]*$`)
 
 // Evaluator is an immutable, validated permission policy.
+//
+// Deprecated: use Authorizer.
 type Evaluator struct {
 	permissions map[Role]map[Permission]struct{}
 }
 
 // NewEvaluator validates and copies policy so later caller mutations cannot
 // change authorization decisions.
+//
+// Deprecated: use Authorizer.
 func NewEvaluator(policy Policy) (*Evaluator, error) {
 	if len(policy) == 0 {
 		return nil, fmt.Errorf("authorization policy must define at least one role")
@@ -53,6 +59,8 @@ func NewEvaluator(policy Policy) (*Evaluator, error) {
 }
 
 // Allows reports whether any assigned role grants permission.
+//
+// Deprecated: use Authorizer.
 func (e *Evaluator) Allows(roles []Role, permission Permission) bool {
 	if e == nil || permission == "" {
 		return false
@@ -66,6 +74,8 @@ func (e *Evaluator) Allows(roles []Role, permission Permission) bool {
 }
 
 // Permissions returns the sorted, deduplicated permissions granted by roles.
+//
+// Deprecated: use Authorizer.
 func (e *Evaluator) Permissions(roles []Role) []Permission {
 	if e == nil {
 		return []Permission{}
