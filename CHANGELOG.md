@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/manovaspace/orbit-auth/compare/v0.3.0...v0.4.0) (2026-11-02)
+
+
+### Features
+
+* **auth:** self-serve sign-up with email verification behind AUTH_SIGNUP ([#57](https://github.com/manovaspace/orbit-auth/issues/57)) ([673b32c](https://github.com/manovaspace/orbit-auth/commit/673b32c2fd36f1ababbfd40501cb71d800aa3824))
+* **events:** publish auth lifecycle events through the Postgres outbox ([#58](https://github.com/manovaspace/orbit-auth/issues/58)) ([c2154e6](https://github.com/manovaspace/orbit-auth/commit/c2154e613214498189e0c7e8362f2ace14e72387))
+* **orgs:** invite members by email ([#52](https://github.com/manovaspace/orbit-auth/issues/52)) ([cbed92d](https://github.com/manovaspace/orbit-auth/commit/cbed92d8c13c5ea1c7c53c23f1c7662611ec4b21))
+
+
+### Bug Fixes
+
+* **events:** read the release tier's TEST_NATS_URL in the NATS test ([#59](https://github.com/manovaspace/orbit-auth/issues/59)) ([9a7be75](https://github.com/manovaspace/orbit-auth/commit/9a7be753119a93fd7cff98299514b94ab3a0ce20))
+
 ## [0.3.0](https://github.com/manovaspace/orbit-auth/compare/v0.2.1...v0.3.0) (2026-11-02)
 
 
