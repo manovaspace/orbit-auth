@@ -2,11 +2,12 @@ package featureflags
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/open-feature/go-sdk/openfeature"
 )
 
 // recorder collects log messages emitted by NewFromEnv. NewFromEnv logs from the
@@ -34,52 +35,30 @@ func (r *recorder) contains(want string) bool {
 	return false
 }
 
-func TestNewFromEnvUnreachableFallsBackToDefaults(t *testing.T) {
-	t.Setenv("UNLEASH_URL", "http://127.0.0.1:1/api/")
-	t.Setenv("FEATURE_FLAGS_INIT_TIMEOUT", "200ms")
+// TestNewFromEnvNonBlockingWithUnreachableUnleash pins the startup contract:
+// registering the provider must not wait for Unleash, and evaluations return the
+// caller's default until the provider is ready.
+func TestNewFromEnvNonBlockingWithUnreachableUnleash(t *testing.T) {
+	t.Setenv("UNLEASH_URL", "http://10.255.255.1:1/api/")
+	t.Setenv("UNLEASH_API_TOKEN", "test-token")
+	t.Cleanup(openfeature.Shutdown)
 
 	rec := &recorder{}
 	start := time.Now()
 	evaluator := NewFromEnv("orbit-auth-test", rec.log)
 	elapsed := time.Since(start)
 
-	if elapsed >= 2*time.Second {
-		t.Fatalf("NewFromEnv took %s, want under 2s", elapsed)
+	if elapsed >= time.Second {
+		t.Fatalf("NewFromEnv took %s, want under 1s", elapsed)
 	}
 	if got := evaluator.Bool(context.Background(), "x", true); got != true {
 		t.Fatalf("Bool(x, true) = %v, want true", got)
 	}
 }
 
-// TestInitWithTimeoutBoundsBlockingInit covers the timeout branch directly: the
-// pinned unleash provider's Init returns immediately, so an unreachable URL
-// cannot exercise it end to end.
-func TestInitWithTimeoutBoundsBlockingInit(t *testing.T) {
-	release := make(chan struct{})
-	defer close(release)
-
-	start := time.Now()
-	err := initWithTimeout(func() error {
-		<-release
-		return nil
-	}, 50*time.Millisecond)
-
-	if elapsed := time.Since(start); elapsed >= 2*time.Second {
-		t.Fatalf("initWithTimeout took %s, want under 2s", elapsed)
-	}
-	if err == nil || !strings.Contains(err.Error(), "init timed out after 50ms") {
-		t.Fatalf("initWithTimeout error = %v, want init timed out after 50ms", err)
-	}
-}
-
-func TestInitWithTimeoutReturnsInitError(t *testing.T) {
-	wantErr := errors.New("boom")
-	if err := initWithTimeout(func() error { return wantErr }, time.Second); !errors.Is(err, wantErr) {
-		t.Fatalf("initWithTimeout error = %v, want %v", err, wantErr)
-	}
-}
-
 func TestNewFromEnvDisabledURLReturnsDefaultsImmediately(t *testing.T) {
+	t.Cleanup(openfeature.Shutdown)
+
 	for _, url := range []string{"off", "OFF", "disabled", "Disabled"} {
 		t.Run(url, func(t *testing.T) {
 			t.Setenv("UNLEASH_URL", url)
@@ -97,27 +76,6 @@ func TestNewFromEnvDisabledURLReturnsDefaultsImmediately(t *testing.T) {
 			}
 			if !rec.contains("feature_flags_disabled") {
 				t.Fatalf("expected feature_flags_disabled log, got %v", rec.msgs)
-			}
-		})
-	}
-}
-
-func TestInitTimeoutFromEnv(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		want time.Duration
-	}{
-		{name: "unset", raw: "", want: defaultInitTimeout},
-		{name: "invalid", raw: "soon", want: defaultInitTimeout},
-		{name: "non-positive", raw: "-1s", want: defaultInitTimeout},
-		{name: "set", raw: "250ms", want: 250 * time.Millisecond},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("FEATURE_FLAGS_INIT_TIMEOUT", tc.raw)
-			if got := initTimeout(); got != tc.want {
-				t.Fatalf("initTimeout() = %s, want %s", got, tc.want)
 			}
 		})
 	}
