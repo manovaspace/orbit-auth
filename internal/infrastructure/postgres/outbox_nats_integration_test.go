@@ -17,14 +17,18 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )
 
-// TestOutboxRelayNATSDurableConsumer runs only when BUS_NATS_URL is set. It
-// publishes through outbox.Relay to NATS, consumes the event with a durable
-// JetStream consumer, acknowledges it, and proves a second consumer bound to
-// the same durable name is not handed the acknowledged event again.
+// TestOutboxRelayNATSDurableConsumer runs only when TEST_NATS_URL or
+// BUS_NATS_URL is set. It publishes through outbox.Relay to NATS, consumes the
+// event with a durable JetStream consumer, acknowledges it, and proves a second
+// consumer bound to the same durable name is not handed the acknowledged event
+// again.
 func TestOutboxRelayNATSDurableConsumer(t *testing.T) {
-	url := os.Getenv("BUS_NATS_URL")
+	url := os.Getenv("TEST_NATS_URL")
 	if url == "" {
-		t.Skip("set BUS_NATS_URL to run the NATS durable-consumer test")
+		url = os.Getenv("BUS_NATS_URL")
+	}
+	if url == "" {
+		t.Skip("set TEST_NATS_URL (or BUS_NATS_URL) to run the NATS durable-consumer test")
 	}
 	_, db := migrationPool(t)
 	ctx := context.Background()

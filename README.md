@@ -97,6 +97,19 @@ with `test`; each test creates and drops its own schema. The migration tests
 also prove adoption of a database created by the old runner: schema, data and
 `schema_migrations` stay unchanged.
 
+The NATS JetStream durable-consumer test runs when `TEST_NATS_URL` is set (or
+`BUS_NATS_URL` as a fallback) and skips when neither is set:
+
+```bash
+docker run -d --rm --name auth-nats -p 4222:4222 nats:2.14-alpine -js
+
+TEST_DATABASE_URL='postgres://postgres:postgres@localhost:55440/test?sslmode=disable' \
+TEST_NATS_URL='nats://localhost:4222' \
+  go test ./... -race -count=1
+
+docker stop auth-nats
+```
+
 Regenerate the sqlc package after changing SQL:
 
 ```bash
