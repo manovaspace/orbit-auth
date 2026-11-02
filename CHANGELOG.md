@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/manovaspace/orbit-auth/compare/v0.2.1...v0.3.0) (2026-11-02)
+
+
+### Features
+
+* **auth:** carry the active organization in access tokens ([#50](https://github.com/manovaspace/orbit-auth/issues/50)) ([bf77079](https://github.com/manovaspace/orbit-auth/commit/bf770794061d30806425d33252d9abd56a8669f7))
+* **authorization:** scoped RBAC v2 behind an Authorizer port ([#48](https://github.com/manovaspace/orbit-auth/issues/48)) ([1143b94](https://github.com/manovaspace/orbit-auth/commit/1143b94c145d7f14c92f9a59be6c61a29229ea44))
+* **orgs:** add organizations and memberships ([#46](https://github.com/manovaspace/orbit-auth/issues/46)) ([2dec468](https://github.com/manovaspace/orbit-auth/commit/2dec4683911ec92439de25cfd5d8122c2c33fde8))
+* **orgs:** expose OrgService over gRPC ([#49](https://github.com/manovaspace/orbit-auth/issues/49)) ([e4859be](https://github.com/manovaspace/orbit-auth/commit/e4859bee63c96cdf85c60e0cddab2a26b75ec0c2))
+* **tenancy:** carry the active organization through requests and transactions ([#51](https://github.com/manovaspace/orbit-auth/issues/51)) ([5e42901](https://github.com/manovaspace/orbit-auth/commit/5e42901794d18e6b159a52dae71d37b1e046a8c4))
+
 ## [0.2.1](https://github.com/manovaspace/orbit-auth/compare/v0.2.0...v0.2.1) (2026-11-02)
 
 
