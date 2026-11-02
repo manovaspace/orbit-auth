@@ -21,6 +21,19 @@ service OrgService {
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  // InviteMember creates a pending invitation and sends the org_invite email
+  // through orbit-notifications. Orbit Auth gates the call on the caller being
+  // an active member only; products and the gateway add their own admin check.
+  // Re-inviting an address with a pending invite rotates that invite.
+  rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
+  // AcceptInvite consumes one invitation token. It works for any authenticated
+  // user, not only an existing member: the account email must match the invite
+  // and the invite must still be pending and unexpired. Every failure is the
+  // same generic invalid-invite error.
+  rpc AcceptInvite(AcceptInviteRequest) returns (AcceptInviteResponse);
+  rpc RevokeInvite(RevokeInviteRequest) returns (RevokeInviteResponse);
+  // ListInvites lists an organization's invitations. Tokens are never returned.
+  rpc ListInvites(ListInvitesRequest) returns (ListInvitesResponse);
   // SelectOrg switches the caller's active organization. It rotates the
   // presented refresh token and returns a new access/refresh pair that carries
   // the org claim. The refresh token is required because the access token is
@@ -42,6 +55,19 @@ message Membership {
   string status = 3;
   string created_at = 4;
   string updated_at = 5;
+}
+
+// Invite is an organization invitation without its secret token.
+message Invite {
+  string id = 1;
+  string org_id = 2;
+  string email = 3;
+  string inviter_id = 4;
+  // pending, accepted or revoked.
+  string status = 5;
+  string expires_at = 6;
+  string accepted_at = 7;
+  string created_at = 8;
 }
 
 message CreateOrgRequest {
@@ -86,6 +112,38 @@ message SuspendMemberRequest {
 }
 
 message SuspendMemberResponse {}
+
+message InviteMemberRequest {
+  string org_id = 1;
+  string email = 2;
+}
+
+message InviteMemberResponse {
+  Invite invite = 1;
+}
+
+message AcceptInviteRequest {
+  string token = 1;
+}
+
+message AcceptInviteResponse {
+  Invite invite = 1;
+}
+
+message RevokeInviteRequest {
+  string org_id = 1;
+  string invite_id = 2;
+}
+
+message RevokeInviteResponse {}
+
+message ListInvitesRequest {
+  string org_id = 1;
+}
+
+message ListInvitesResponse {
+  repeated Invite invites = 1;
+}
 
 message SelectOrgRequest {
   string org_id = 1;

@@ -58,10 +58,29 @@ type OrgStore interface {
 	GetMembership(ctx context.Context, orgID, userID string) (Membership, error)
 }
 
-// Notifier sends an OTP through orbit-notifications. The service never talks
-// to a mail or SMS provider directly.
+// InviteStore persists organization invitations. Every operation is scoped by
+// organization, and listings never select the token hash.
+type InviteStore interface {
+	// CreateInvite revokes any pending invite for the same organization and
+	// email address, then writes the new pending invite in the same
+	// transaction.
+	CreateInvite(ctx context.Context, invite Invite) error
+	FindInviteByTokenHash(ctx context.Context, tokenHash string) (Invite, error)
+	ListInvites(ctx context.Context, orgID string) ([]Invite, error)
+	// RevokeInvite revokes one pending invite or returns ErrInviteNotFound.
+	RevokeInvite(ctx context.Context, orgID, inviteID string) error
+	// AcceptInvite marks one pending invite accepted and makes the user an
+	// active member in the same transaction. It returns ErrInviteNotFound when
+	// the invite is no longer pending.
+	AcceptInvite(ctx context.Context, inviteID, orgID, userID string, acceptedAt time.Time) error
+}
+
+// Notifier sends an OTP or an organization invitation through
+// orbit-notifications. The service never talks to a mail or SMS provider
+// directly.
 type Notifier interface {
 	SendOTP(ctx context.Context, channel, recipient, code, correlationID string) error
+	SendOrgInvite(ctx context.Context, invite InviteNotification) error
 }
 
 // Flags evaluates boolean feature flags.

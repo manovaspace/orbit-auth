@@ -25,6 +25,10 @@ type OrgService interface {
 	SuspendMember(ctx context.Context, orgID, userID string) error
 	RemoveMember(ctx context.Context, orgID, userID string) error
 	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
+	InviteMember(ctx context.Context, orgID, inviterID, email string) (domain.Invite, error)
+	AcceptInvite(ctx context.Context, userID, token string) (domain.Invite, error)
+	RevokeInvite(ctx context.Context, orgID, inviteID, callerID string) error
+	ListInvites(ctx context.Context, orgID string) ([]domain.Invite, error)
 	SelectOrg(ctx context.Context, userID, refreshToken, orgID string) (access, refresh string, expires time.Time, err error)
 }
 
@@ -116,6 +120,75 @@ func (s *OrgServer) SuspendMember(ctx context.Context, req *authv1.SuspendMember
 	return &authv1.SuspendMemberResponse{}, nil
 }
 
+// InviteMember is membership-gated only. Products and the gateway add their
+// own admin check; orbit-auth does not decide who administers an organization
+// inside a product.
+func (s *OrgServer) InviteMember(ctx context.Context, req *authv1.InviteMemberRequest) (*authv1.InviteMemberResponse, error) {
+	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := s.svc.InviteMember(ctx, orgID, callerID, req.GetEmail())
+	if err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.InviteMemberResponse{Invite: inviteProto(invite)}, nil
+}
+
+// AcceptInvite works for any authenticated user, including one who is not yet a
+// member of the organization. The token is the only invitation selector; a
+// wrong token, wrong account, expiry or reuse all return the same error.
+func (s *OrgServer) AcceptInvite(ctx context.Context, req *authv1.AcceptInviteRequest) (*authv1.AcceptInviteResponse, error) {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := s.svc.AcceptInvite(ctx, callerID, req.GetToken())
+	if err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.AcceptInviteResponse{Invite: inviteProto(invite)}, nil
+}
+
+func (s *OrgServer) RevokeInvite(ctx context.Context, req *authv1.RevokeInviteRequest) (*authv1.RevokeInviteResponse, error) {
+	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	inviteID := strings.TrimSpace(req.GetInviteId())
+	if !isUUID(inviteID) {
+		return nil, status.Error(codes.InvalidArgument, "invalid invite_id")
+	}
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.RevokeInvite(ctx, orgID, inviteID, callerID); err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.RevokeInviteResponse{}, nil
+}
+
+func (s *OrgServer) ListInvites(ctx context.Context, req *authv1.ListInvitesRequest) (*authv1.ListInvitesResponse, error) {
+	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	invites, err := s.svc.ListInvites(ctx, orgID)
+	if err != nil {
+		return nil, orgError(err)
+	}
+	out := make([]*authv1.Invite, 0, len(invites))
+	for _, invite := range invites {
+		out = append(out, inviteProto(invite))
+	}
+	return &authv1.ListInvitesResponse{Invites: out}, nil
+}
+
 // SelectOrg switches the caller's active organization. Membership is gated the
 // same way as every other organization-scoped call; the presented refresh token
 // is rotated so an old pair cannot keep selecting organizations.
@@ -192,6 +265,12 @@ func orgError(err error) error {
 		return status.Error(codes.NotFound, "organization not found")
 	case errors.Is(err, domain.ErrInvalidOrgName):
 		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, domain.ErrInvalidInvite):
+		return status.Error(codes.InvalidArgument, domain.ErrInvalidInvite.Error())
+	case errors.Is(err, domain.ErrInvalidEmail):
+		return status.Error(codes.InvalidArgument, domain.ErrInvalidEmail.Error())
+	case errors.Is(err, domain.ErrInviteNotFound):
+		return status.Error(codes.NotFound, "invite not found")
 	default:
 		slog.Error("organization operation failed", "error", err)
 		return status.Error(codes.Internal, "internal error")
@@ -215,4 +294,22 @@ func membershipProto(membership domain.Membership) *authv1.Membership {
 		CreatedAt: membership.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: membership.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+// inviteProto renders an invitation for the wire. The token hash is not part of
+// the message, so no handler can return it.
+func inviteProto(invite domain.Invite) *authv1.Invite {
+	out := &authv1.Invite{
+		Id:        invite.ID,
+		OrgId:     invite.OrgID,
+		Email:     invite.Email,
+		InviterId: invite.InviterID,
+		Status:    string(invite.Status),
+		ExpiresAt: invite.ExpiresAt.Format(time.RFC3339),
+		CreatedAt: invite.CreatedAt.Format(time.RFC3339),
+	}
+	if invite.AcceptedAt != nil {
+		out.AcceptedAt = invite.AcceptedAt.Format(time.RFC3339)
+	}
+	return out
 }

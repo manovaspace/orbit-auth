@@ -94,6 +94,7 @@ func main() {
 		Refresh:   store,
 		Tokens:    store,
 		Orgs:      store,
+		Invites:   store,
 		Notifier:  notif,
 		Flags:     flags,
 		Clock:     clock.New(),

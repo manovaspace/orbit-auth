@@ -179,6 +179,9 @@ type fakeNotifier struct {
 	mu            sync.RWMutex
 	lastChannel   string
 	lastRecipient string
+	invite        domain.InviteNotification
+	inviteCalls   int
+	inviteErr     error
 }
 
 func (f *fakeNotifier) SendOTP(_ context.Context, channel, recipient, _, _ string) error {
@@ -187,6 +190,14 @@ func (f *fakeNotifier) SendOTP(_ context.Context, channel, recipient, _, _ strin
 	f.lastChannel = channel
 	f.lastRecipient = recipient
 	return nil
+}
+
+func (f *fakeNotifier) SendOrgInvite(_ context.Context, invite domain.InviteNotification) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.invite = invite
+	f.inviteCalls++
+	return f.inviteErr
 }
 
 type fakeFlags struct{ mobile, email bool }

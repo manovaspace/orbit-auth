@@ -25,6 +25,10 @@ const (
 	OrgService_AddMember_FullMethodName     = "/auth.v1.OrgService/AddMember"
 	OrgService_RemoveMember_FullMethodName  = "/auth.v1.OrgService/RemoveMember"
 	OrgService_SuspendMember_FullMethodName = "/auth.v1.OrgService/SuspendMember"
+	OrgService_InviteMember_FullMethodName  = "/auth.v1.OrgService/InviteMember"
+	OrgService_AcceptInvite_FullMethodName  = "/auth.v1.OrgService/AcceptInvite"
+	OrgService_RevokeInvite_FullMethodName  = "/auth.v1.OrgService/RevokeInvite"
+	OrgService_ListInvites_FullMethodName   = "/auth.v1.OrgService/ListInvites"
 	OrgService_SelectOrg_FullMethodName     = "/auth.v1.OrgService/SelectOrg"
 )
 
@@ -47,6 +51,19 @@ type OrgServiceClient interface {
 	AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*AddMemberResponse, error)
 	RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error)
 	SuspendMember(ctx context.Context, in *SuspendMemberRequest, opts ...grpc.CallOption) (*SuspendMemberResponse, error)
+	// InviteMember creates a pending invitation and sends the org_invite email
+	// through orbit-notifications. Orbit Auth gates the call on the caller being
+	// an active member only; products and the gateway add their own admin check.
+	// Re-inviting an address with a pending invite rotates that invite.
+	InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*InviteMemberResponse, error)
+	// AcceptInvite consumes one invitation token. It works for any authenticated
+	// user, not only an existing member: the account email must match the invite
+	// and the invite must still be pending and unexpired. Every failure is the
+	// same generic invalid-invite error.
+	AcceptInvite(ctx context.Context, in *AcceptInviteRequest, opts ...grpc.CallOption) (*AcceptInviteResponse, error)
+	RevokeInvite(ctx context.Context, in *RevokeInviteRequest, opts ...grpc.CallOption) (*RevokeInviteResponse, error)
+	// ListInvites lists an organization's invitations. Tokens are never returned.
+	ListInvites(ctx context.Context, in *ListInvitesRequest, opts ...grpc.CallOption) (*ListInvitesResponse, error)
 	// SelectOrg switches the caller's active organization. It rotates the
 	// presented refresh token and returns a new access/refresh pair that carries
 	// the org claim. The refresh token is required because the access token is
@@ -123,6 +140,46 @@ func (c *orgServiceClient) SuspendMember(ctx context.Context, in *SuspendMemberR
 	return out, nil
 }
 
+func (c *orgServiceClient) InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*InviteMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InviteMemberResponse)
+	err := c.cc.Invoke(ctx, OrgService_InviteMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orgServiceClient) AcceptInvite(ctx context.Context, in *AcceptInviteRequest, opts ...grpc.CallOption) (*AcceptInviteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AcceptInviteResponse)
+	err := c.cc.Invoke(ctx, OrgService_AcceptInvite_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orgServiceClient) RevokeInvite(ctx context.Context, in *RevokeInviteRequest, opts ...grpc.CallOption) (*RevokeInviteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeInviteResponse)
+	err := c.cc.Invoke(ctx, OrgService_RevokeInvite_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orgServiceClient) ListInvites(ctx context.Context, in *ListInvitesRequest, opts ...grpc.CallOption) (*ListInvitesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListInvitesResponse)
+	err := c.cc.Invoke(ctx, OrgService_ListInvites_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orgServiceClient) SelectOrg(ctx context.Context, in *SelectOrgRequest, opts ...grpc.CallOption) (*SelectOrgResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SelectOrgResponse)
@@ -152,6 +209,19 @@ type OrgServiceServer interface {
 	AddMember(context.Context, *AddMemberRequest) (*AddMemberResponse, error)
 	RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error)
 	SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error)
+	// InviteMember creates a pending invitation and sends the org_invite email
+	// through orbit-notifications. Orbit Auth gates the call on the caller being
+	// an active member only; products and the gateway add their own admin check.
+	// Re-inviting an address with a pending invite rotates that invite.
+	InviteMember(context.Context, *InviteMemberRequest) (*InviteMemberResponse, error)
+	// AcceptInvite consumes one invitation token. It works for any authenticated
+	// user, not only an existing member: the account email must match the invite
+	// and the invite must still be pending and unexpired. Every failure is the
+	// same generic invalid-invite error.
+	AcceptInvite(context.Context, *AcceptInviteRequest) (*AcceptInviteResponse, error)
+	RevokeInvite(context.Context, *RevokeInviteRequest) (*RevokeInviteResponse, error)
+	// ListInvites lists an organization's invitations. Tokens are never returned.
+	ListInvites(context.Context, *ListInvitesRequest) (*ListInvitesResponse, error)
 	// SelectOrg switches the caller's active organization. It rotates the
 	// presented refresh token and returns a new access/refresh pair that carries
 	// the org claim. The refresh token is required because the access token is
@@ -185,6 +255,18 @@ func (UnimplementedOrgServiceServer) RemoveMember(context.Context, *RemoveMember
 }
 func (UnimplementedOrgServiceServer) SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuspendMember not implemented")
+}
+func (UnimplementedOrgServiceServer) InviteMember(context.Context, *InviteMemberRequest) (*InviteMemberResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InviteMember not implemented")
+}
+func (UnimplementedOrgServiceServer) AcceptInvite(context.Context, *AcceptInviteRequest) (*AcceptInviteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AcceptInvite not implemented")
+}
+func (UnimplementedOrgServiceServer) RevokeInvite(context.Context, *RevokeInviteRequest) (*RevokeInviteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeInvite not implemented")
+}
+func (UnimplementedOrgServiceServer) ListInvites(context.Context, *ListInvitesRequest) (*ListInvitesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListInvites not implemented")
 }
 func (UnimplementedOrgServiceServer) SelectOrg(context.Context, *SelectOrgRequest) (*SelectOrgResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SelectOrg not implemented")
@@ -318,6 +400,78 @@ func _OrgService_SuspendMember_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrgService_InviteMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InviteMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).InviteMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_InviteMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).InviteMember(ctx, req.(*InviteMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrgService_AcceptInvite_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcceptInviteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).AcceptInvite(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_AcceptInvite_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).AcceptInvite(ctx, req.(*AcceptInviteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrgService_RevokeInvite_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeInviteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).RevokeInvite(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_RevokeInvite_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).RevokeInvite(ctx, req.(*RevokeInviteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrgService_ListInvites_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListInvitesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).ListInvites(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_ListInvites_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).ListInvites(ctx, req.(*ListInvitesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrgService_SelectOrg_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SelectOrgRequest)
 	if err := dec(in); err != nil {
@@ -366,6 +520,22 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SuspendMember",
 			Handler:    _OrgService_SuspendMember_Handler,
+		},
+		{
+			MethodName: "InviteMember",
+			Handler:    _OrgService_InviteMember_Handler,
+		},
+		{
+			MethodName: "AcceptInvite",
+			Handler:    _OrgService_AcceptInvite_Handler,
+		},
+		{
+			MethodName: "RevokeInvite",
+			Handler:    _OrgService_RevokeInvite_Handler,
+		},
+		{
+			MethodName: "ListInvites",
+			Handler:    _OrgService_ListInvites_Handler,
 		},
 		{
 			MethodName: "SelectOrg",
