@@ -18,6 +18,7 @@ type Deps struct {
 	Refresh  domain.RefreshTokenStore
 	Tokens   domain.APITokenStore
 	Orgs     domain.OrgStore
+	Invites  domain.InviteStore
 	Notifier domain.Notifier
 	Flags    domain.Flags
 	Clock    domain.Clock
@@ -46,6 +47,7 @@ type Service struct {
 	refresh             domain.RefreshTokenStore
 	tokens              domain.APITokenStore
 	orgs                domain.OrgStore
+	invites             domain.InviteStore
 	notifier            domain.Notifier
 	flags               domain.Flags
 	clock               domain.Clock
@@ -72,6 +74,7 @@ func NewService(deps Deps) *Service {
 		refresh:             deps.Refresh,
 		tokens:              deps.Tokens,
 		orgs:                deps.Orgs,
+		invites:             deps.Invites,
 		notifier:            deps.Notifier,
 		flags:               deps.Flags,
 		clock:               deps.Clock,

@@ -56,6 +56,26 @@ type fakeOrgService struct {
 	selectRefresh string
 	selectExpires time.Time
 	selectErr     error
+
+	inviteOrgID   string
+	inviteInviter string
+	inviteEmail   string
+	inviteResult  domain.Invite
+	inviteErr     error
+
+	acceptUserID string
+	acceptToken  string
+	acceptResult domain.Invite
+	acceptErr    error
+
+	revokeInviteOrgID  string
+	revokeInviteID     string
+	revokeInviteCaller string
+	revokeInviteErr    error
+
+	listInvitesOrgID string
+	invites          []domain.Invite
+	listInvitesErr   error
 }
 
 type selectCall struct {
@@ -107,6 +127,26 @@ func (f *fakeOrgService) IsActiveMember(_ context.Context, orgID, userID string)
 func (f *fakeOrgService) SelectOrg(_ context.Context, userID, refreshToken, orgID string) (string, string, time.Time, error) {
 	f.selectCalls = append(f.selectCalls, selectCall{userID: userID, refreshToken: refreshToken, orgID: orgID})
 	return f.selectAccess, f.selectRefresh, f.selectExpires, f.selectErr
+}
+
+func (f *fakeOrgService) InviteMember(_ context.Context, orgID, inviterID, email string) (domain.Invite, error) {
+	f.inviteOrgID, f.inviteInviter, f.inviteEmail = orgID, inviterID, email
+	return f.inviteResult, f.inviteErr
+}
+
+func (f *fakeOrgService) AcceptInvite(_ context.Context, userID, token string) (domain.Invite, error) {
+	f.acceptUserID, f.acceptToken = userID, token
+	return f.acceptResult, f.acceptErr
+}
+
+func (f *fakeOrgService) RevokeInvite(_ context.Context, orgID, inviteID, callerID string) error {
+	f.revokeInviteOrgID, f.revokeInviteID, f.revokeInviteCaller = orgID, inviteID, callerID
+	return f.revokeInviteErr
+}
+
+func (f *fakeOrgService) ListInvites(_ context.Context, orgID string) ([]domain.Invite, error) {
+	f.listInvitesOrgID = orgID
+	return f.invites, f.listInvitesErr
 }
 
 func authenticatedOrgContext(callerID string) context.Context {
@@ -246,6 +286,22 @@ func TestOrgServiceUnauthenticated(t *testing.T) {
 			return err
 		},
 		func() error {
+			_, err := srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: orgID, Email: "member@example.com"})
+			return err
+		},
+		func() error {
+			_, err := srv.AcceptInvite(ctx, &authv1.AcceptInviteRequest{Token: "invite-token"})
+			return err
+		},
+		func() error {
+			_, err := srv.RevokeInvite(ctx, &authv1.RevokeInviteRequest{OrgId: orgID, InviteId: userID})
+			return err
+		},
+		func() error {
+			_, err := srv.ListInvites(ctx, &authv1.ListInvitesRequest{OrgId: orgID})
+			return err
+		},
+		func() error {
 			_, err := srv.SelectOrg(ctx, &authv1.SelectOrgRequest{OrgId: orgID, RefreshToken: "r1"})
 			return err
 		},
@@ -273,7 +329,14 @@ func TestOrgServiceNonMemberGetsNotFound(t *testing.T) {
 	assertCode(t, err, codes.NotFound, "organization not found")
 	_, err = srv.SuspendMember(ctx, &authv1.SuspendMemberRequest{OrgId: orgID, UserId: userID})
 	assertCode(t, err, codes.NotFound, "organization not found")
-	if app.listMembersOrgID != "" || app.addOrgID != "" || app.removeOrgID != "" || app.suspendOrgID != "" {
+	_, err = srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: orgID, Email: "member@example.com"})
+	assertCode(t, err, codes.NotFound, "organization not found")
+	_, err = srv.RevokeInvite(ctx, &authv1.RevokeInviteRequest{OrgId: orgID, InviteId: userID})
+	assertCode(t, err, codes.NotFound, "organization not found")
+	_, err = srv.ListInvites(ctx, &authv1.ListInvitesRequest{OrgId: orgID})
+	assertCode(t, err, codes.NotFound, "organization not found")
+	if app.listMembersOrgID != "" || app.addOrgID != "" || app.removeOrgID != "" || app.suspendOrgID != "" ||
+		app.inviteOrgID != "" || app.revokeInviteID != "" || app.listInvitesOrgID != "" {
 		t.Fatal("a non-member reached the organization use case")
 	}
 }
@@ -482,5 +545,140 @@ func TestRequireActiveMemberValidatesBeforeGate(t *testing.T) {
 	}
 	if len(app.activeCalls) != 0 {
 		t.Fatal("invalid organization reached the membership gate")
+	}
+}
+
+func TestOrgServiceInviteMemberGatesOnMembershipAndUsesTokenCaller(t *testing.T) {
+	orgID := uuid.NewString()
+	expires := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	created := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	app := &fakeOrgService{
+		active: true,
+		inviteResult: domain.Invite{
+			ID: uuid.NewString(), OrgID: orgID, Email: "member@example.com",
+			InviterID: "caller-1", Status: domain.InvitePending,
+			ExpiresAt: expires, CreatedAt: created,
+		},
+	}
+	srv := NewOrg(app)
+
+	resp, err := srv.InviteMember(authenticatedOrgContext("caller-1"), &authv1.InviteMemberRequest{
+		OrgId: orgID, Email: "member@example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.activeCalls) != 1 || app.activeCalls[0] != (activeCall{orgID: orgID, userID: "caller-1"}) {
+		t.Fatalf("active calls = %+v", app.activeCalls)
+	}
+	if app.inviteOrgID != orgID || app.inviteInviter != "caller-1" || app.inviteEmail != "member@example.com" {
+		t.Fatalf("invite = %q %q %q", app.inviteOrgID, app.inviteInviter, app.inviteEmail)
+	}
+	got := resp.GetInvite()
+	if got.GetId() != app.inviteResult.ID || got.GetEmail() != "member@example.com" ||
+		got.GetStatus() != string(domain.InvitePending) || got.GetExpiresAt() != "2026-11-09T12:00:00Z" ||
+		got.GetAcceptedAt() != "" {
+		t.Fatalf("response = %+v", got)
+	}
+}
+
+func TestOrgServiceAcceptInviteWorksForNonMembers(t *testing.T) {
+	accepted := time.Date(2026, 11, 2, 12, 5, 0, 0, time.UTC)
+	app := &fakeOrgService{
+		active: false,
+		acceptResult: domain.Invite{
+			ID: uuid.NewString(), OrgID: uuid.NewString(), Email: "member@example.com",
+			Status: domain.InviteAccepted, AcceptedAt: &accepted,
+			ExpiresAt: accepted.Add(7 * 24 * time.Hour), CreatedAt: accepted,
+		},
+	}
+	srv := NewOrg(app)
+
+	resp, err := srv.AcceptInvite(authenticatedOrgContext("new-user"), &authv1.AcceptInviteRequest{Token: "invite-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.activeCalls) != 0 {
+		t.Fatalf("AcceptInvite gated on membership: %+v", app.activeCalls)
+	}
+	if app.acceptUserID != "new-user" || app.acceptToken != "invite-token" {
+		t.Fatalf("accept = %q %q", app.acceptUserID, app.acceptToken)
+	}
+	if got := resp.GetInvite(); got.GetStatus() != string(domain.InviteAccepted) || got.GetAcceptedAt() != "2026-11-02T12:05:00Z" {
+		t.Fatalf("response = %+v", got)
+	}
+}
+
+func TestOrgServiceRevokeAndListInvites(t *testing.T) {
+	orgID := uuid.NewString()
+	inviteID := uuid.NewString()
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	app := &fakeOrgService{
+		active: true,
+		invites: []domain.Invite{
+			{ID: inviteID, OrgID: orgID, Email: "one@example.com", Status: domain.InvitePending, ExpiresAt: now.Add(time.Hour), CreatedAt: now},
+			{ID: uuid.NewString(), OrgID: orgID, Email: "two@example.com", Status: domain.InviteRevoked, ExpiresAt: now, CreatedAt: now},
+		},
+	}
+	srv := NewOrg(app)
+	ctx := authenticatedOrgContext("caller-1")
+
+	if _, err := srv.RevokeInvite(ctx, &authv1.RevokeInviteRequest{OrgId: orgID, InviteId: inviteID}); err != nil {
+		t.Fatal(err)
+	}
+	if app.revokeInviteOrgID != orgID || app.revokeInviteID != inviteID || app.revokeInviteCaller != "caller-1" {
+		t.Fatalf("revoke = %q %q %q", app.revokeInviteOrgID, app.revokeInviteID, app.revokeInviteCaller)
+	}
+
+	resp, err := srv.ListInvites(ctx, &authv1.ListInvitesRequest{OrgId: orgID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.listInvitesOrgID != orgID || len(resp.GetInvites()) != 2 ||
+		resp.GetInvites()[0].GetEmail() != "one@example.com" ||
+		resp.GetInvites()[1].GetStatus() != string(domain.InviteRevoked) {
+		t.Fatalf("list = %+v", resp.GetInvites())
+	}
+}
+
+func TestOrgServiceInviteErrors(t *testing.T) {
+	orgID := uuid.NewString()
+	inviteID := uuid.NewString()
+	app := &fakeOrgService{active: true, inviteErr: domain.ErrInvalidEmail}
+	srv := NewOrg(app)
+	ctx := authenticatedOrgContext("caller-1")
+
+	_, err := srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: orgID, Email: "bad"})
+	assertCode(t, err, codes.InvalidArgument, "invalid email")
+
+	app.inviteErr = errors.New("notifications unavailable")
+	_, err = srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: orgID, Email: "member@example.com"})
+	assertCode(t, err, codes.Internal, "internal error")
+
+	app.acceptErr = domain.ErrInvalidInvite
+	_, err = srv.AcceptInvite(ctx, &authv1.AcceptInviteRequest{Token: "bad"})
+	assertCode(t, err, codes.InvalidArgument, "invalid invite")
+
+	app.revokeInviteErr = domain.ErrInviteNotFound
+	_, err = srv.RevokeInvite(ctx, &authv1.RevokeInviteRequest{OrgId: orgID, InviteId: inviteID})
+	assertCode(t, err, codes.NotFound, "invite not found")
+
+	app.listInvitesErr = domain.ErrOrgNotFound
+	_, err = srv.ListInvites(ctx, &authv1.ListInvitesRequest{OrgId: orgID})
+	assertCode(t, err, codes.NotFound, "organization not found")
+}
+
+func TestOrgServiceInviteInvalidInput(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{active: true}
+	srv := NewOrg(app)
+	ctx := authenticatedOrgContext("caller-1")
+
+	_, err := srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: "bad"})
+	assertCode(t, err, codes.InvalidArgument, "invalid org_id")
+	_, err = srv.RevokeInvite(ctx, &authv1.RevokeInviteRequest{OrgId: orgID, InviteId: "bad"})
+	assertCode(t, err, codes.InvalidArgument, "invalid invite_id")
+	if app.inviteOrgID != "" || app.revokeInviteID != "" {
+		t.Fatal("invalid input reached the use case")
 	}
 }

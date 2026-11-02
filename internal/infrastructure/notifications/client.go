@@ -2,10 +2,13 @@ package notifications
 
 import (
 	"context"
+	"time"
 
 	notificationsv1 "github.com/manovaspace/orbit-notifications/api/notifications/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/manovaspace/orbit-auth/internal/domain"
 )
 
 // Client sends OTP via orbit-notifications gRPC.
@@ -34,6 +37,30 @@ func (c *Client) SendOTP(ctx context.Context, channel, recipient, code, correlat
 		Recipient:     recipient,
 		CorrelationId: correlationID,
 		Vars:          map[string]string{"code": code},
+	})
+	return err
+}
+
+// SendOrgInvite asks orbit-notifications to render and deliver the org_invite
+// email template. The template itself lives in orbit-notifications; this
+// adapter only supplies its documented variables.
+func (c *Client) SendOrgInvite(ctx context.Context, invite domain.InviteNotification) error {
+	locale := invite.Locale
+	if locale != "fa" && locale != "en" {
+		locale = "fa"
+	}
+	_, err := c.api.Send(ctx, &notificationsv1.SendRequest{
+		Template:      "org_invite",
+		Channel:       "email",
+		Recipient:     invite.Recipient,
+		CorrelationId: invite.CorrelationID,
+		Vars: map[string]string{
+			"org_name":     invite.OrgName,
+			"inviter_name": invite.InviterName,
+			"accept_token": invite.AcceptToken,
+			"expires_at":   invite.ExpiresAt.UTC().Format(time.RFC3339),
+			"locale":       locale,
+		},
 	})
 	return err
 }

@@ -28,6 +28,18 @@ type Organization struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type OrganizationInvite struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	Email      string
+	TokenHash  string
+	InviterID  uuid.UUID
+	Status     string
+	ExpiresAt  pgtype.Timestamptz
+	AcceptedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
 type OrganizationMembership struct {
 	OrgID     uuid.UUID
 	UserID    uuid.UUID
