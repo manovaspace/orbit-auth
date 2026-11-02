@@ -81,7 +81,7 @@ func TestSignerProducesTheAccessTokenContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expires := time.Date(2026, 11, 2, 12, 15, 0, 0, time.UTC)
+	expires := time.Now().Add(time.Hour).Truncate(time.Second)
 	raw, err := signer.SignAccessToken("u1", expires)
 	if err != nil {
 		t.Fatal(err)
