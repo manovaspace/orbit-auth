@@ -1,3 +1,12 @@
+---
+read_with:
+  - handbook/docs/orbit/architecture/go-toolchain.md
+  - handbook/docs/orbit/architecture/library-design.md
+  - handbook/docs/orbit/decisions/011-platform-auth-notifications.md
+  - handbook/docs/orbit/decisions/016-orbit-auth-password-and-api-tokens.md
+  - handbook/docs/orbit/guides/platform-dev-quickstart.md
+---
+
 # orbit-auth
 
 Tier 2 product user authentication — OTP login, password login, JWT sessions, API tokens. Staff SSO is Keycloak workforce identity (ADR-027).
