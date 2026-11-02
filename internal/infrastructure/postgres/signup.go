@@ -54,6 +54,17 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 		return false, nil
 	}
 
+	occurredAt := acceptedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	sink := newOutboxSink(tx)
+	if err := emitEvents(ctx, sink,
+		domain.NewUserCreatedEvent(user.ID, occurredAt),
+	); err != nil {
+		return false, err
+	}
+
 	if invite != nil {
 		orgID, err := uuid.Parse(invite.OrgID)
 		if err != nil {
@@ -83,6 +94,11 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 		}); err != nil {
 			return false, fmt.Errorf("postgres: add signup invite member: %w", err)
 		}
+		if err := emitEvents(ctx, sink,
+			domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, occurredAt),
+		); err != nil {
+			return false, err
+		}
 	}
 
 	if org != nil {
@@ -104,6 +120,12 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 			Status: string(domain.MembershipActive),
 		}); err != nil {
 			return false, fmt.Errorf("postgres: add signup organization owner: %w", err)
+		}
+		if err := emitEvents(ctx, sink,
+			domain.NewOrgCreatedEvent(org.ID, org.Name, occurredAt),
+			domain.NewMembershipAddedEvent(org.ID, user.ID, domain.MembershipActive, occurredAt),
+		); err != nil {
+			return false, err
 		}
 	}
 
@@ -207,6 +229,11 @@ func (s *Store) ReissuePendingSignup(ctx context.Context, user domain.User, chal
 			UserID: userUUID,
 		}); err != nil {
 			return "", false, fmt.Errorf("postgres: add signup invite member: %w", err)
+		}
+		if err := emitEvents(ctx, newOutboxSink(tx),
+			domain.NewMembershipAddedEvent(invite.OrgID, userID, domain.MembershipActive, acceptedAt),
+		); err != nil {
+			return "", false, err
 		}
 	}
 

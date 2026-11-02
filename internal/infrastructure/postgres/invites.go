@@ -186,6 +186,11 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 	}); err != nil {
 		return fmt.Errorf("postgres: add invited member: %w", err)
 	}
+	if err := emitEvents(ctx, newOutboxSink(tx),
+		domain.NewMembershipAddedEvent(orgID, userID, domain.MembershipActive, acceptedAt),
+	); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("postgres: commit accept invite: %w", err)
 	}

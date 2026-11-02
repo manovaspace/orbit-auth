@@ -58,6 +58,16 @@ type OtpChallenge struct {
 	Channel    string
 }
 
+type OutboxEvent struct {
+	ID          int64
+	Subject     string
+	Envelope    []byte
+	CreatedAt   pgtype.Timestamptz
+	PublishedAt pgtype.Timestamptz
+	Attempts    int32
+	LastError   *string
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID

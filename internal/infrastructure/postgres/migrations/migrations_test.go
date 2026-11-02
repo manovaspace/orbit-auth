@@ -101,10 +101,10 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 7 {
-		t.Fatalf("applied %d migrations, want 7", len(results))
+	if len(results) != 8 {
+		t.Fatalf("applied %d migrations, want 8", len(results))
 	}
-	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "goose_db_version"} {
+	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "outbox_events", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
 			t.Fatalf("%s was not created", table)
 		}
@@ -112,8 +112,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
 		t.Fatal("users.email_verified_at was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 7 || target != 7 {
-		t.Fatalf("version = %d/%d, err=%v, want 7/7", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 8 || target != 8 {
+		t.Fatalf("version = %d/%d, err=%v, want 8/8", current, target, err)
 	}
 }
 
@@ -155,10 +155,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 7 || target != 7 {
-		t.Fatalf("version = %d/%d, err=%v, want 7/7", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 8 || target != 8 {
+		t.Fatalf("version = %d/%d, err=%v, want 8/8", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -211,7 +211,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -228,8 +228,11 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// Roll 007 back so the next insert represents an account created before
-	// self-serve sign-up existed.
+	// Roll 008 and 007 back so the next insert represents an account created
+	// before self-serve sign-up existed and before the outbox table.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 008: %v", err)
+	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 007: %v", err)
 	}
@@ -240,7 +243,7 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	}
 
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 007: %v", err)
+		t.Fatalf("reapply 007 and 008: %v", err)
 	}
 	var verified, created *time.Time
 	if err := db.Pool.QueryRow(ctx,
@@ -282,6 +285,27 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("down: %v", err)
 	}
+	if result.Source.Version != 8 {
+		t.Fatalf("rolled back version %d, want 8", result.Source.Version)
+	}
+	if tableExists(t, ctx, db.Pool, db.Schema, "outbox_events") {
+		t.Fatal("down left outbox_events in place")
+	}
+	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
+		t.Fatal("down of 008 removed users.email_verified_at from 007")
+	}
+	if !tableExists(t, ctx, db.Pool, db.Schema, "organization_invites") {
+		t.Fatal("down of 008 removed organization_invites from 006")
+	}
+	if !columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
+		t.Fatal("down of 008 removed refresh_tokens.org_id from 005")
+	}
+
+	// A second rollback removes migration 007 as well.
+	result, err = m.Down(ctx)
+	if err != nil {
+		t.Fatalf("second down: %v", err)
+	}
 	if result.Source.Version != 7 {
 		t.Fatalf("rolled back version %d, want 7", result.Source.Version)
 	}
@@ -295,10 +319,10 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 		t.Fatal("down of 007 removed refresh_tokens.org_id from 005")
 	}
 
-	// A second rollback removes migration 006 as well.
+	// A third rollback removes migration 006 as well.
 	result, err = m.Down(ctx)
 	if err != nil {
-		t.Fatalf("second down: %v", err)
+		t.Fatalf("third down: %v", err)
 	}
 	if result.Source.Version != 6 {
 		t.Fatalf("rolled back version %d, want 6", result.Source.Version)
@@ -327,6 +351,9 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	}
 	if !tableExists(t, ctx, db.Pool, db.Schema, "organization_invites") {
 		t.Fatal("up after down did not recreate organization_invites")
+	}
+	if !tableExists(t, ctx, db.Pool, db.Schema, "outbox_events") {
+		t.Fatal("up after down did not recreate outbox_events")
 	}
 }
 

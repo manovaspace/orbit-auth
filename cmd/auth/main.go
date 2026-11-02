@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
@@ -22,6 +23,9 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/notifications"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/migrations"
+	messagebus "github.com/manovaspace/orbit-message-bus"
+	"github.com/manovaspace/orbit-message-bus/outbox"
+	"github.com/manovaspace/orbit-message-bus/transport"
 	observability "github.com/manovaspace/orbit-observability"
 	googlegrpc "google.golang.org/grpc"
 )
@@ -84,6 +88,28 @@ func main() {
 	}
 
 	store := postgres.New(pool)
+
+	// Lifecycle events go through the Postgres outbox. The transport is
+	// selected from BUS_TRANSPORT (default inproc); only cmd reads it.
+	bus, err := transport.FromEnv(ctx, messagebus.Config{
+		Source:  domain.EventSource,
+		Version: domain.EventVersion,
+	})
+	if err != nil {
+		log.Error("message bus config failed", "error", err)
+		os.Exit(1)
+	}
+	relay := &outbox.Relay{Pool: pool, Bus: bus}
+	relayCtx, stopRelay := context.WithCancel(ctx)
+	relayDone := make(chan struct{})
+	go func() {
+		defer close(relayDone)
+		runEventRelay(relayCtx, relay,
+			func(msg string, args ...any) { log.Info(msg, args...) },
+			func(msg string, args ...any) { log.Error(msg, args...) },
+		)
+	}()
+
 	flags := featureflags.NewFromEnv("orbit-auth", func(msg string, args ...any) {
 		log.Info(msg, args...)
 	})
@@ -151,6 +177,15 @@ func main() {
 	observability.WaitForSignal(observability.ShutdownConfig{
 		GRPCServer: gs,
 		OnShutdown: []func(context.Context) error{
+			func(ctx context.Context) error {
+				stopRelay()
+				select {
+				case <-relayDone:
+				case <-ctx.Done():
+				}
+				return nil
+			},
+			func(context.Context) error { return bus.Close() },
 			func(ctx context.Context) error { return health.Shutdown(ctx) },
 			func(context.Context) error {
 				pool.Close()
@@ -158,6 +193,49 @@ func main() {
 			},
 		},
 	})
+}
+
+// runEventRelay polls the outbox until ctx is cancelled. Publish and database
+// failures are logged and retried with exponential backoff; they never stop the
+// gRPC server.
+func runEventRelay(ctx context.Context, relay *outbox.Relay, logInfo, logError func(msg string, args ...any)) {
+	const (
+		idleInterval = 500 * time.Millisecond
+		minBackoff   = time.Second
+		maxBackoff   = 30 * time.Second
+	)
+	backoff := minBackoff
+	for {
+		published, err := relay.RunOnce(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		wait := idleInterval
+		switch {
+		case err != nil:
+			logError("outbox relay failed", "error", err)
+			wait = backoff
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		default:
+			backoff = minBackoff
+			if published > 0 {
+				logInfo("outbox events relayed", "count", published)
+				continue
+			}
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
 }
 
 // serverOptions keeps the observability chain and adds access-token validation
