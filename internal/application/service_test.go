@@ -103,6 +103,15 @@ func (f *fakeUsers) FindByMobile(_ context.Context, mobile string) (domain.User,
 	return f.user, nil
 }
 
+func (f *fakeUsers) FindByID(_ context.Context, userID string) (domain.User, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.user.ID != userID {
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	return f.user, nil
+}
+
 func (f *fakeUsers) UpdateLastLogin(context.Context, string) error { return nil }
 
 func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string, string) error { return nil }

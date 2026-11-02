@@ -134,6 +134,29 @@ func (s *Store) FindByMobile(ctx context.Context, mobile string) (domain.User, e
 	return s.findByMobile(ctx, mobile)
 }
 
+// FindByID returns the user with id or domain.ErrUserNotFound.
+func (s *Store) FindByID(ctx context.Context, userID string) (domain.User, error) {
+	parsed, err := uuid.Parse(userID)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("postgres: user id %q: %w", userID, err)
+	}
+	row, err := s.queries.FindUserByID(ctx, parsed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	if err != nil {
+		return domain.User{}, err
+	}
+	return domain.User{
+		ID:           row.ID,
+		Email:        row.Email,
+		Mobile:       row.Mobile,
+		PasswordHash: row.PasswordHash,
+		DisplayName:  row.DisplayName,
+		Status:       row.Status,
+	}, nil
+}
+
 func (s *Store) findByMobile(ctx context.Context, mobile string) (domain.User, error) {
 	row, err := s.queries.FindUserByMobile(ctx, mobile)
 	if err != nil {

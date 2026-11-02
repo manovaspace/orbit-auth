@@ -156,6 +156,63 @@ func TestOrganizationMembershipLifecycleAndListing(t *testing.T) {
 	}
 }
 
+func TestOrganizationListMembersReturnsStatuses(t *testing.T) {
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+
+	owner, err := store.FindOrCreateByEmail(ctx, "owner@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := store.FindOrCreateByEmail(ctx, "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invited, err := store.FindOrCreateByEmail(ctx, "invited@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddMember(ctx, org.ID, invited.ID, domain.MembershipInvited); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+		t.Fatal(err)
+	}
+
+	members, err := store.ListMembers(ctx, org.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 3 {
+		t.Fatalf("members = %d, want 3", len(members))
+	}
+	statuses := make(map[string]domain.MembershipStatus, len(members))
+	for _, membership := range members {
+		if membership.OrgID != org.ID {
+			t.Fatalf("membership org = %q, want %q", membership.OrgID, org.ID)
+		}
+		statuses[membership.UserID] = membership.Status
+	}
+	want := map[string]domain.MembershipStatus{
+		owner.ID:   domain.MembershipActive,
+		member.ID:  domain.MembershipSuspended,
+		invited.ID: domain.MembershipInvited,
+	}
+	for userID, status := range want {
+		if statuses[userID] != status {
+			t.Fatalf("status[%q] = %q, want %q", userID, statuses[userID], status)
+		}
+	}
+}
+
 func TestAddMemberDoesNotReactivateSuspendedMember(t *testing.T) {
 	store, _ := migrationPool(t)
 	ctx := context.Background()

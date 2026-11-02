@@ -20,6 +20,7 @@ type UserStore interface {
 	FindOrCreateByMobile(ctx context.Context, mobile string) (User, error)
 	FindByEmail(ctx context.Context, email string) (User, error)
 	FindByMobile(ctx context.Context, mobile string) (User, error)
+	FindByID(ctx context.Context, userID string) (User, error)
 	UpdateLastLogin(ctx context.Context, userID string) error
 	UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error
 }
@@ -47,6 +48,8 @@ type OrgStore interface {
 	CreateOrg(ctx context.Context, org Organization, creatorID string) error
 	GetOrg(ctx context.Context, orgID string) (Organization, error)
 	ListOrgsForUser(ctx context.Context, userID string) ([]Organization, error)
+	// ListMembers returns every membership of orgID with its lifecycle status.
+	ListMembers(ctx context.Context, orgID string) ([]Membership, error)
 	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus) error
 	UpdateMemberStatus(ctx context.Context, orgID, userID string, status MembershipStatus) error
 	RemoveMember(ctx context.Context, orgID, userID string) error

@@ -1,0 +1,194 @@
+package grpc
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
+	"github.com/manovaspace/orbit-auth/internal/domain"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// OrgService is the port the gRPC adapter needs from the application layer.
+type OrgService interface {
+	CreateOrg(ctx context.Context, creatorID, name string) (domain.Organization, error)
+	ListOrgsForUser(ctx context.Context, userID string) ([]domain.Organization, error)
+	ListMembers(ctx context.Context, orgID string) ([]domain.Membership, error)
+	AddMember(ctx context.Context, orgID, userID string) error
+	SuspendMember(ctx context.Context, orgID, userID string) error
+	RemoveMember(ctx context.Context, orgID, userID string) error
+	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
+}
+
+// OrgServer implements the OrgService gRPC API. The caller is always the
+// verified access-token subject, never a request field.
+type OrgServer struct {
+	authv1.UnimplementedOrgServiceServer
+	svc OrgService
+}
+
+func NewOrg(svc OrgService) *OrgServer {
+	return &OrgServer{svc: svc}
+}
+
+func (s *OrgServer) CreateOrg(ctx context.Context, req *authv1.CreateOrgRequest) (*authv1.CreateOrgResponse, error) {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := s.svc.CreateOrg(ctx, callerID, req.GetName())
+	if err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.CreateOrgResponse{Organization: organizationProto(org)}, nil
+}
+
+func (s *OrgServer) ListMyOrgs(ctx context.Context, _ *authv1.ListMyOrgsRequest) (*authv1.ListMyOrgsResponse, error) {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	orgs, err := s.svc.ListOrgsForUser(ctx, callerID)
+	if err != nil {
+		return nil, orgError(err)
+	}
+	out := make([]*authv1.Organization, 0, len(orgs))
+	for _, org := range orgs {
+		out = append(out, organizationProto(org))
+	}
+	return &authv1.ListMyOrgsResponse{Organizations: out}, nil
+}
+
+func (s *OrgServer) ListMembers(ctx context.Context, req *authv1.ListMembersRequest) (*authv1.ListMembersResponse, error) {
+	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.svc.ListMembers(ctx, orgID)
+	if err != nil {
+		return nil, orgError(err)
+	}
+	out := make([]*authv1.Membership, 0, len(members))
+	for _, membership := range members {
+		out = append(out, membershipProto(membership))
+	}
+	return &authv1.ListMembersResponse{Members: out}, nil
+}
+
+func (s *OrgServer) AddMember(ctx context.Context, req *authv1.AddMemberRequest) (*authv1.AddMemberResponse, error) {
+	orgID, userID, err := s.requireActiveMember(ctx, req.GetOrgId(), req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.AddMember(ctx, orgID, userID); err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.AddMemberResponse{}, nil
+}
+
+func (s *OrgServer) RemoveMember(ctx context.Context, req *authv1.RemoveMemberRequest) (*authv1.RemoveMemberResponse, error) {
+	orgID, userID, err := s.requireActiveMember(ctx, req.GetOrgId(), req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.RemoveMember(ctx, orgID, userID); err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.RemoveMemberResponse{}, nil
+}
+
+func (s *OrgServer) SuspendMember(ctx context.Context, req *authv1.SuspendMemberRequest) (*authv1.SuspendMemberResponse, error) {
+	orgID, userID, err := s.requireActiveMember(ctx, req.GetOrgId(), req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.SuspendMember(ctx, orgID, userID); err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.SuspendMemberResponse{}, nil
+}
+
+// caller returns the verified access-token subject. Handlers never accept the
+// acting user from the request.
+func caller(ctx context.Context) (string, error) {
+	callerID, ok := callerIDFromContext(ctx)
+	if !ok {
+		return "", status.Error(codes.Unauthenticated, "authentication required")
+	}
+	return callerID, nil
+}
+
+// requireActiveMember validates the ids, then gates the call on the caller
+// being an active member. A non-member and an unknown organization both return
+// NotFound so the organization's existence is not revealed.
+func (s *OrgServer) requireActiveMember(ctx context.Context, rawOrgID string, rawUserIDs ...string) (string, string, error) {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	orgID := strings.TrimSpace(rawOrgID)
+	if !isUUID(orgID) {
+		return "", "", status.Error(codes.InvalidArgument, "invalid org_id")
+	}
+	var userID string
+	if len(rawUserIDs) > 0 {
+		userID = strings.TrimSpace(rawUserIDs[0])
+		if !isUUID(userID) {
+			return "", "", status.Error(codes.InvalidArgument, "invalid user_id")
+		}
+	}
+	active, err := s.svc.IsActiveMember(ctx, orgID, callerID)
+	if err != nil {
+		return "", "", orgError(err)
+	}
+	if !active {
+		return "", "", status.Error(codes.NotFound, "organization not found")
+	}
+	return orgID, userID, nil
+}
+
+func isUUID(value string) bool {
+	_, err := uuid.Parse(value)
+	return err == nil
+}
+
+func orgError(err error) error {
+	switch {
+	case errors.Is(err, domain.ErrLastActiveMember):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, domain.ErrUserNotFound):
+		return status.Error(codes.NotFound, "user not found")
+	case errors.Is(err, domain.ErrOrgNotFound), errors.Is(err, domain.ErrNotMember):
+		return status.Error(codes.NotFound, "organization not found")
+	case errors.Is(err, domain.ErrInvalidOrgName):
+		return status.Error(codes.InvalidArgument, err.Error())
+	default:
+		slog.Error("organization operation failed", "error", err)
+		return status.Error(codes.Internal, "internal error")
+	}
+}
+
+func organizationProto(org domain.Organization) *authv1.Organization {
+	return &authv1.Organization{
+		Id:        org.ID,
+		Name:      org.Name,
+		CreatedAt: org.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: org.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func membershipProto(membership domain.Membership) *authv1.Membership {
+	return &authv1.Membership{
+		OrgId:     membership.OrgID,
+		UserId:    membership.UserID,
+		Status:    string(membership.Status),
+		CreatedAt: membership.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: membership.UpdatedAt.Format(time.RFC3339),
+	}
+}

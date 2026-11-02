@@ -20,6 +20,16 @@ WHERE m.user_id = sqlc.arg('user_id')::uuid
   AND m.status = 'active'
 ORDER BY o.created_at, o.id;
 
+-- name: ListOrganizationMembers :many
+SELECT org_id::text AS org_id,
+       user_id::text AS user_id,
+       status,
+       created_at,
+       updated_at
+FROM organization_memberships
+WHERE org_id = sqlc.arg('org_id')::uuid
+ORDER BY created_at, user_id;
+
 -- name: AddOrganizationMembership :exec
 INSERT INTO organization_memberships (org_id, user_id, status)
 VALUES (

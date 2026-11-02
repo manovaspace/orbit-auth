@@ -18,6 +18,16 @@ SELECT id::text AS id,
 FROM users
 WHERE mobile = sqlc.arg('mobile')::text;
 
+-- name: FindUserByID :one
+SELECT id::text AS id,
+       COALESCE(email, '') AS email,
+       COALESCE(mobile, '') AS mobile,
+       COALESCE(password_hash, '') AS password_hash,
+       COALESCE(display_name, '') AS display_name,
+       COALESCE(status, 'active') AS status
+FROM users
+WHERE id = sqlc.arg('id')::uuid;
+
 -- name: CreateUserWithEmail :exec
 INSERT INTO users (id, email, status)
 VALUES (sqlc.arg('id')::uuid, sqlc.arg('email')::text, sqlc.arg('status')::text);
