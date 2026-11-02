@@ -91,6 +91,7 @@ func (s *Store) DeleteExpiredChallenges(ctx context.Context) error {
 }
 
 // FindOrCreateByEmail returns the user or creates an active user with email.
+// A created user writes auth.user.created in the same transaction.
 func (s *Store) FindOrCreateByEmail(ctx context.Context, email string) (domain.User, error) {
 	user, err := s.findByEmail(ctx, email)
 	if err == nil {
@@ -105,12 +106,26 @@ func (s *Store) FindOrCreateByEmail(ctx context.Context, email string) (domain.U
 	if err != nil {
 		return domain.User{}, err
 	}
-	if err := s.queries.CreateUserWithEmail(ctx, sqlcgen.CreateUserWithEmailParams{
+	occurredAt := time.Now().UTC()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("postgres: begin create user: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := s.queries.WithTx(tx).CreateUserWithEmail(ctx, sqlcgen.CreateUserWithEmailParams{
 		ID:     parsed,
 		Email:  email,
 		Status: user.Status,
 	}); err != nil {
 		return domain.User{}, err
+	}
+	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(user.ID, occurredAt)); err != nil {
+		return domain.User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, fmt.Errorf("postgres: commit create user: %w", err)
 	}
 	return user, nil
 }
@@ -181,7 +196,8 @@ func (s *Store) findByMobile(ctx context.Context, mobile string) (domain.User, e
 	}, nil
 }
 
-// FindOrCreateByMobile returns the user or creates a user with mobile.
+// FindOrCreateByMobile returns the user or creates a user with mobile. A
+// created user writes auth.user.created in the same transaction.
 func (s *Store) FindOrCreateByMobile(ctx context.Context, mobile string) (domain.User, error) {
 	user, err := s.findByMobile(ctx, mobile)
 	if err == nil {
@@ -195,13 +211,28 @@ func (s *Store) FindOrCreateByMobile(ctx context.Context, mobile string) (domain
 	if err != nil {
 		return domain.User{}, err
 	}
-	if err := s.queries.CreateUserWithMobile(ctx, sqlcgen.CreateUserWithMobileParams{
+	occurredAt := time.Now().UTC()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("postgres: begin create user: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := s.queries.WithTx(tx).CreateUserWithMobile(ctx, sqlcgen.CreateUserWithMobileParams{
 		ID:     parsed,
 		Mobile: mobile,
 	}); err != nil {
 		return domain.User{}, err
 	}
-	return domain.User{ID: id, Mobile: mobile}, nil
+	user = domain.User{ID: id, Mobile: mobile}
+	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(user.ID, occurredAt)); err != nil {
+		return domain.User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, fmt.Errorf("postgres: commit create user: %w", err)
+	}
+	return user, nil
 }
 
 // UpdateLastLogin records a successful password login.
@@ -213,7 +244,8 @@ func (s *Store) UpdateLastLogin(ctx context.Context, userID string) error {
 	return s.queries.UpdateLastLogin(ctx, parsed)
 }
 
-// UpsertDemoUser seeds or updates one demo account.
+// UpsertDemoUser seeds or updates one demo account. A newly created account
+// writes auth.user.created in the same transaction; an update does not.
 func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error {
 	var emailPtr, mobilePtr *string
 	if email != "" {
@@ -222,22 +254,66 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash,
 	if mobile != "" {
 		mobilePtr = &mobile
 	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin upsert demo user: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	created := false
+	if email != "" {
+		_, err := queries.FindUserByEmail(ctx, email)
+		switch {
+		case err == nil:
+		case errors.Is(err, pgx.ErrNoRows):
+			created = true
+		default:
+			return err
+		}
+	} else {
+		_, err := queries.FindUserByMobile(ctx, mobile)
+		switch {
+		case err == nil:
+		case errors.Is(err, pgx.ErrNoRows):
+			created = true
+		default:
+			return err
+		}
+	}
+
+	id := uuid.New()
 	if email == "" {
-		return s.queries.UpsertDemoUserByMobile(ctx, sqlcgen.UpsertDemoUserByMobileParams{
-			ID:           uuid.New(),
+		if err := queries.UpsertDemoUserByMobile(ctx, sqlcgen.UpsertDemoUserByMobileParams{
+			ID:           id,
 			Email:        emailPtr,
 			Mobile:       mobilePtr,
 			PasswordHash: passwordHash,
 			DisplayName:  displayName,
-		})
+		}); err != nil {
+			return err
+		}
+	} else {
+		if err := queries.UpsertDemoUserByEmail(ctx, sqlcgen.UpsertDemoUserByEmailParams{
+			ID:           id,
+			Email:        emailPtr,
+			Mobile:       mobilePtr,
+			PasswordHash: passwordHash,
+			DisplayName:  displayName,
+		}); err != nil {
+			return err
+		}
 	}
-	return s.queries.UpsertDemoUserByEmail(ctx, sqlcgen.UpsertDemoUserByEmailParams{
-		ID:           uuid.New(),
-		Email:        emailPtr,
-		Mobile:       mobilePtr,
-		PasswordHash: passwordHash,
-		DisplayName:  displayName,
-	})
+	if created {
+		if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(id.String(), time.Now().UTC())); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit upsert demo user: %w", err)
+	}
+	return nil
 }
 
 // Store writes one refresh token by hash, remembering the selected

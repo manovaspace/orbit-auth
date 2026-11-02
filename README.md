@@ -22,6 +22,8 @@ export JWT_ACTIVE_KEY_ID=orbit-dev-1
 export JWT_PUBLIC_KEYS_DIR=./secrets/jwt-public-keys
 export AUTH_AUTO_SELECT_SINGLE_ORG=true
 export AUTH_SIGNUP=off
+export BUS_TRANSPORT=inproc
+# export BUS_NATS_URL=nats://localhost:10422
 go run ./cmd/auth
 ```
 
@@ -106,17 +108,41 @@ must never be edited by hand.
 
 ## Features & Configuration
 
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | required | Postgres DSN owned by this service |
+| `NOTIFICATIONS_GRPC_ADDR` | `localhost:10110` | `orbit-notifications` gRPC endpoint |
+| `GRPC_PORT` | `10100` | gRPC listen port |
+| `HEALTH_PORT` | `10101` | Fiber health port (`/healthz`, `/readyz`) |
+| `MIGRATE_ON_START` | `true` | Apply embedded goose migrations on start |
+| `AUTH_AUTO_SELECT_SINGLE_ORG` | `true` | Add the `org` claim when the user has one active membership |
+| `AUTH_SIGNUP` | `off` | `open` enables self-serve sign-up |
+| `DEMO_MODE` | `false` | Dev-only demo account seeding |
+| `BUS_TRANSPORT` | `inproc` | Lifecycle event transport: `inproc`, `nats` or `redis` |
+| `BUS_NATS_URL` | unset | NATS endpoint when `BUS_TRANSPORT=nats` |
+| `BUS_REDIS_URL` | unset | Redis endpoint when `BUS_TRANSPORT=redis` |
+
 - **Feature Flags:** Uses Unleash (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`) to evaluate `manova.auth.email_otp` and `manova.auth.mobile_otp`.
 - **Demo Mode:** When `DEMO_MODE=true` in dev, pre-seeds accounts from `AUTH_DEMO_USERS` JSON array. Enabling it outside dev fails closed.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
 - **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. `SelectOrg` switches organization and rotates the refresh token.
 - **Self-serve sign-up:** `AUTH_SIGNUP=open` enables `SignupService.RegisterWithEmail` and `SignupService.VerifySignup`; the default `off` rejects both with `FailedPrecondition` before anything is written. A new email account stays `signup_pending` until `VerifySignup` receives both the `signup_verify` OTP and the pending account password. A retry for a still-pending address replaces its credentials and reissues the code (at most once per 60 seconds); an active account is left untouched. Admin and demo accounts are verified from the start, and a valid `invite_token` verifies the address without an OTP.
+- **Lifecycle events:** `BUS_TRANSPORT` selects the message bus (`inproc` default, `nats` with `BUS_NATS_URL`, `redis` with `BUS_REDIS_URL`). See [Events](#events).
 
 ## Events
 
-This service publishes and consumes no events. It calls `orbit-notifications`
-over gRPC, so `messagebus.Bus` is not wired here.
+Lifecycle events are written to the Postgres outbox (`outbox_events`) in the same transaction as the change, then relayed to `orbit-message-bus` by a relay in `cmd/auth`:
+
+| Subject | Metadata version | Trigger |
+| --- | --- | --- |
+| `auth.user.created` | `1` | OTP first login, sign-up, invite-sign-up, demo seed |
+| `auth.org.created` | `1` | `CreateOrg`, sign-up with `org_name` |
+| `auth.membership.added` | `1` | `AddMember`, invite acceptance, creator membership |
+| `auth.membership.removed` | `1` | `RemoveMember` |
+| `auth.membership.suspended` | `1` | `SuspendMember` |
+
+Subjects use the bus's three-segment `{domain}.{entity}.{action}` form; the event version is the envelope `metadata.version` value (`"1"`), not a subject suffix. Payloads carry ids, the organization name for `org.created`, the role-free membership status and `occurred_at`, and never carry emails, tokens or secrets. Delivery is at-least-once; consumers are idempotent on the envelope `id`.
 
 ## Reusable authorization policy
 

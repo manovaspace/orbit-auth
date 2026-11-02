@@ -2,6 +2,10 @@ github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAw
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Unleash/unleash-client-go/v4 v4.5.0 h1:gYmLnhmOIakjU7lNFXmOuerp3pQOIwNvb7vChj3apZY=
 github.com/Unleash/unleash-client-go/v4 v4.5.0/go.mod h1:ns1xYiC76XXUt+06NjzuJcpnXEoLeP2xHnzOgvXS8W0=
+github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
+github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
+github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
+github.com/bsm/gomega v1.27.10/go.mod h1:JyEr/xRbxbtgWNi8tIEVPUYZ5Dzef52k01W3YH0H+O0=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
@@ -52,6 +56,10 @@ github.com/jackc/puddle/v2 v2.2.3 h1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao
 github.com/jackc/puddle/v2 v2.2.3/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
 github.com/klauspost/compress v1.20.3 h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=
 github.com/klauspost/compress v1.20.3/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
+github.com/klauspost/cpuid/v2 v2.4.0 h1:S6Hrbc7+ywsr0r+RLapfGBHfyefhCTwEh3A0tV913Dw=
+github.com/klauspost/cpuid/v2 v2.4.0/go.mod h1:19jmZ9mjzoF//ddRSUsv0zfBTJWh3QJh9FNxZTMrGxU=
+github.com/manovaspace/orbit-message-bus v0.1.0 h1:fvmzAkUqb2UYJ/FG8n42gFOYo237fgFRYgOY0g3CHAg=
+github.com/manovaspace/orbit-message-bus v0.1.0/go.mod h1:9aNLa+5qOP+UUCvv/T5CAXPuaNaAPNjD4DjZlcchgmo=
 github.com/manovaspace/orbit-notifications v0.0.0-20261029235826-3ccd242c100c h1:jQlFjyFO1lPr8hZRMi1R2IG60eb78nlGc3xZblbe8CI=
 github.com/manovaspace/orbit-notifications v0.0.0-20261029235826-3ccd242c100c/go.mod h1:H83gV+XeEjb7b23DAubj6l1vb1pwCKn/FRa+RJQNKTU=
 github.com/manovaspace/orbit-observability v0.0.0-20261030132041-1f2432c107ee h1:OZc3/Sv1HJ3TPUCqLROYss/JImZT0R2fruVBXaWYU8s=
@@ -64,6 +72,12 @@ github.com/mfridman/interpolate v0.0.2 h1:pnuTK7MQIxxFz1Gr+rjSIx9u7qVjf5VOoM/u6B
 github.com/mfridman/interpolate v0.0.2/go.mod h1:p+7uk6oE07mpE/Ik1b8EckO0O4ZXiGAfshKBWLUM9Xg=
 github.com/molecule-man/go-brrr v1.3.0 h1:KEGPkUk9PYFw5+Sv/evCOSU5OmMDXCGFqQ9YjRB7GeU=
 github.com/molecule-man/go-brrr v1.3.0/go.mod h1:7ybW6/7gA3oKY45jOfVNjSJDtrr6ea4tzbsTkjmQDC4=
+github.com/nats-io/nats.go v1.55.0 h1:Ng8QKHdvdHIWoaiq0+d/aH1BWkxvcJxWJ0Y/9BPKx3M=
+github.com/nats-io/nats.go v1.55.0/go.mod h1:y+DZoD1oBOYfZTU681eTUiUjI0vbqYGixNVFHcjHJ0k=
+github.com/nats-io/nkeys v0.4.16 h1:rd5oAuLOb8mnAycB0xleuEBNS1pVVnN0fv/FF34Eypg=
+github.com/nats-io/nkeys v0.4.16/go.mod h1:llLgWoI0o4z/Q57q2R1kHfmocyhGV6VG/U18Glg1Afs=
+github.com/nats-io/nuid v1.0.1 h1:5iA8DT8V7q8WK2EScv2padNa/rTESc1KdnPw4TC2paw=
+github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OSON2c=
 github.com/nbio/st v0.0.0-20140626010706-e9e8d9816f32 h1:W6apQkHrMkS0Muv8G/TipAy/FJl/rCYT0+EuS8+Z0z4=
 github.com/nbio/st v0.0.0-20140626010706-e9e8d9816f32/go.mod h1:9wM+0iRr9ahx58uYLpLIr5fm8diHn0JbqRycJi6w0Ms=
 github.com/ncruces/go-strftime v1.1.0 h1:vtPmPWMkb539RGV9WpWT9EwJGvrOCKvMNI4obWL47Hk=
@@ -81,6 +95,8 @@ github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.29.0 h1:dtEnBCT7CqkHIUCdgrXsrmeisaN8gFkRU4Y5OEwif4o=
 github.com/pressly/goose/v3 v3.29.0/go.mod h1:plA4aP4+u+Q3FMTgbFbhF8TuAWpAdfWpoFGkJsIFWh0=
+github.com/redis/go-redis/v9 v9.23.0 h1:/TTVdJa8BRNsybwwGGnmiYktHNlUXtbOQxlWpHBPL3s=
+github.com/redis/go-redis/v9 v9.23.0/go.mod h1:EWP2UUk+XDaI1s5nQB5mablZN6vccXlmBQTyfnF87D0=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/sethvargo/go-retry v0.5.0 h1:JYfFKmVJ8ER06GReN1efzc5cm52BrVsFVzmcHiKJwfY=
@@ -104,6 +120,8 @@ github.com/valyala/fasthttp v1.75.0 h1:W3xrvNJHG60j2ZCjxpP8kkB+oPG8kh9/g1n4+3xUw
 github.com/valyala/fasthttp v1.75.0/go.mod h1:JiVkPRZU124PuPsreV/s9dZRgG2lRK7wNEikdQ0Rk4s=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
+github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=
+github.com/zeebo/xxh3 v1.1.0/go.mod h1:IisAie1LELR4xhVinxWS5+zf1lA4p0MW4T+w+W07F5s=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.72.0 h1:Tq+E65HaNbZTeqcLw6QUhsV+/EIWdkfUH2CQzcrlE5M=
@@ -130,6 +148,8 @@ go.opentelemetry.io/otel/trace v1.47.0 h1:JOjX/Oci8K94QHddo+bbfya/Ai/nf6/dt9ZfrF
 go.opentelemetry.io/otel/trace v1.47.0/go.mod h1:jNaSLa2PZEYFG6fRjJABAu+bw4FS08uDmPg28lTghu0=
 go.opentelemetry.io/proto/otlp v1.11.1 h1:SCrPqH9NE5CmBrOqpjNCiT0X5mGwMyGERXdogfR7Yjw=
 go.opentelemetry.io/proto/otlp v1.11.1/go.mod h1:wq8W4aSf6bOy8RZyESOeQFr9Pu7wydWX/TY4sgvrTPg=
+go.uber.org/atomic v1.12.0 h1:BvcXdFKuviU4fTL/f+SxdQ5qJX/Jix8pAkgdUcb3XOE=
+go.uber.org/atomic v1.12.0/go.mod h1:I6c4cg+6HCxRjfjSsYtApoFILnpc0CGUdGkXVqbYVNk=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=

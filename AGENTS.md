@@ -35,7 +35,7 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 
 ## Architecture
 
-- `internal/domain` — user, OTP and API-token types, pinned token rules and the ports: `OTPStore`, `UserStore`, `RefreshTokenStore`, `APITokenStore`, `Notifier`, `Flags`, `Clock`, `IDGenerator`, `TokenSigner`, `Hasher`, `CodeGenerator`, `SecretGenerator`. It imports no infrastructure, driver, HTTP framework or process package.
+- `internal/domain` — user, OTP and API-token types, lifecycle event payloads, pinned token rules and the ports: `OTPStore`, `UserStore`, `RefreshTokenStore`, `APITokenStore`, `Notifier`, `Flags`, `Clock`, `IDGenerator`, `TokenSigner`, `Hasher`, `CodeGenerator`, `SecretGenerator`, `EventSink`. It imports no infrastructure, driver, HTTP framework or process package.
 - `internal/application` — OTP, password, refresh-token, API-token and demo-seed use cases. It receives `application.Deps` and reads no environment variable.
 - `internal/infrastructure` — adapters: `postgres` (sqlc-generated queries), `postgres/migrations` (embedded goose), `grpc`, `httpapi` (Fiber v3 probes), `notifications` (gRPC client), `featureflags`, `credentials` (bcrypt, OTP codes, API secrets), `jwt` (RS256 signer), `clock`, `ids`.
 - `cmd/auth` — wiring only, including `migrate` and demo-mode parsing.
@@ -68,7 +68,17 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 
 ## Events
 
-None. The service publishes and consumes no events; it calls `orbit-notifications` over gRPC. Do not wire `messagebus.Bus` without an ADR change.
+Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 008) in the same transaction as the change and relayed by `outbox.Relay` to `orbit-message-bus`:
+
+- `auth.user.created` — a user is created by OTP login, sign-up, invite-sign-up or demo seeding
+- `auth.org.created` — `CreateOrg` or sign-up with `org_name`
+- `auth.membership.added` — `AddMember`, invite acceptance, or the creator membership
+- `auth.membership.removed` — `RemoveMember`
+- `auth.membership.suspended` — `SuspendMember`
+
+Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version is envelope metadata `version="1"`, not a subject suffix. Payloads carry ids, the organization name for `org.created`, the role-free membership status and `occurred_at`; they never carry emails, tokens or secrets.
+
+`BUS_TRANSPORT` selects the transport: `inproc` (default; relayed and logged, no subscribers), `nats` with `BUS_NATS_URL`, or `redis` with `BUS_REDIS_URL`. The relay runs in `cmd/auth` for the life of the process and stops on graceful shutdown; publish failures are logged with `slog` and retried, never crashing the gRPC server.
 
 ## Stack
 

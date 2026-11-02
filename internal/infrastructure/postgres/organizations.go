@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +46,16 @@ func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorI
 		Status: string(domain.MembershipActive),
 	}); err != nil {
 		return fmt.Errorf("postgres: add organization creator: %w", err)
+	}
+	occurredAt := org.CreatedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	if err := emitEvents(ctx, newOutboxSink(tx),
+		domain.NewOrgCreatedEvent(org.ID, org.Name, occurredAt),
+		domain.NewMembershipAddedEvent(org.ID, creatorID, domain.MembershipActive, occurredAt),
+	); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("postgres: commit create organization: %w", err)
@@ -118,18 +129,52 @@ func (s *Store) ListMembers(ctx context.Context, orgID string) ([]domain.Members
 	return out, nil
 }
 
-// AddMember inserts a membership. An existing membership is left untouched, so
-// its status can only change through UpdateMemberStatus.
+// AddMember inserts a membership and writes auth.membership.added in the same
+// transaction. An existing membership is left untouched, so its status can only
+// change through UpdateMemberStatus and no event is written for a no-op.
 func (s *Store) AddMember(ctx context.Context, orgID, userID string, status domain.MembershipStatus) error {
 	org, user, err := membershipIDs(orgID, userID)
 	if err != nil {
 		return err
 	}
-	return s.queries.AddOrganizationMembership(ctx, sqlcgen.AddOrganizationMembershipParams{
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin add membership: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	if err := lockOrganization(ctx, queries, org); err != nil {
+		return err
+	}
+	_, err = getMembership(ctx, queries, org, user)
+	switch {
+	case err == nil:
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("postgres: commit existing membership: %w", err)
+		}
+		return nil
+	case !errors.Is(err, domain.ErrNotMember):
+		return err
+	}
+
+	if err := queries.AddOrganizationMembership(ctx, sqlcgen.AddOrganizationMembershipParams{
 		OrgID:  org,
 		UserID: user,
 		Status: string(status),
-	})
+	}); err != nil {
+		return err
+	}
+	if err := emitEvents(ctx, newOutboxSink(tx),
+		domain.NewMembershipAddedEvent(orgID, userID, status, time.Now().UTC()),
+	); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit add membership: %w", err)
+	}
+	return nil
 }
 
 // UpdateMemberStatus changes one existing membership. The organization row is
@@ -169,6 +214,13 @@ func (s *Store) UpdateMemberStatus(ctx context.Context, orgID, userID string, st
 		UserID: user,
 	}); err != nil {
 		return err
+	}
+	if status == domain.MembershipSuspended && current.Status != domain.MembershipSuspended {
+		if err := emitEvents(ctx, newOutboxSink(tx),
+			domain.NewMembershipSuspendedEvent(orgID, userID, status, time.Now().UTC()),
+		); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("postgres: commit update membership: %w", err)
@@ -210,6 +262,11 @@ func (s *Store) RemoveMember(ctx context.Context, orgID, userID string) error {
 		OrgID:  org,
 		UserID: user,
 	}); err != nil {
+		return err
+	}
+	if err := emitEvents(ctx, newOutboxSink(tx),
+		domain.NewMembershipRemovedEvent(orgID, userID, current.Status, time.Now().UTC()),
+	); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
