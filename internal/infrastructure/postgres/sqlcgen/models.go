@@ -21,6 +21,21 @@ type ApiToken struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type Organization struct {
+	ID        uuid.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type OrganizationMembership struct {
+	OrgID     uuid.UUID
+	UserID    uuid.UUID
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
 type OtpChallenge struct {
 	ID         uuid.UUID
 	Identifier string

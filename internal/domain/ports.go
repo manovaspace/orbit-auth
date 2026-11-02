@@ -39,6 +39,20 @@ type APITokenStore interface {
 	FindByPrefix(ctx context.Context, prefix string) (APIToken, error)
 }
 
+// OrgStore persists organizations and their memberships. Every membership
+// operation is scoped by both organization and user.
+type OrgStore interface {
+	// CreateOrg writes the organization and the creator's active membership in
+	// the same transaction.
+	CreateOrg(ctx context.Context, org Organization, creatorID string) error
+	GetOrg(ctx context.Context, orgID string) (Organization, error)
+	ListOrgsForUser(ctx context.Context, userID string) ([]Organization, error)
+	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus) error
+	UpdateMemberStatus(ctx context.Context, orgID, userID string, status MembershipStatus) error
+	RemoveMember(ctx context.Context, orgID, userID string) error
+	GetMembership(ctx context.Context, orgID, userID string) (Membership, error)
+}
+
 // Notifier sends an OTP through orbit-notifications. The service never talks
 // to a mail or SMS provider directly.
 type Notifier interface {

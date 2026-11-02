@@ -93,6 +93,7 @@ func main() {
 		Users:     store,
 		Refresh:   store,
 		Tokens:    store,
+		Orgs:      store,
 		Notifier:  notif,
 		Flags:     flags,
 		Clock:     clock.New(),
