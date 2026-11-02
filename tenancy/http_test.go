@@ -138,9 +138,11 @@ func TestRequireOrgNilClaimsFunc(t *testing.T) {
 	}
 }
 
+type testContextKey struct{}
+
 func TestRequireOrgPassesRequestContext(t *testing.T) {
 	orgID := uuid.New()
-	key := struct{}{}
+	key := testContextKey{}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request = request.WithContext(context.WithValue(request.Context(), key, "kept"))
 
