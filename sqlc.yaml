@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "internal/infrastructure/postgres/migrations"
+    queries: "internal/infrastructure/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/infrastructure/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"

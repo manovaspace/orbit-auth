@@ -1,0 +1,17 @@
+name: release-check
+
+# Release-tier gate: integration tests that need real dependencies run on the
+# release pull request, where a skipped test fails unless it is listed in
+# .github/allowed-skips.txt.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-check:
+    if: github.head_ref == 'changeset-release/main' || startsWith(github.head_ref, 'release-please--')
+    uses: manovaspace/ci/.github/workflows/release-check.yml@v1
+    secrets: inherit

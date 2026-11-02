@@ -1,0 +1,6 @@
+# Tests allowed to skip on the release tier (one Go test name per line).
+#
+# The database-backed tests in this repository skip only when
+# TEST_DATABASE_URL is unset. The release tier always sets it, so every such
+# test runs there. Do not add a test here just because it skips without a
+# database: that is the pull-request tier.

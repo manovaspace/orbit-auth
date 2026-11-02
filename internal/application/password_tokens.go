@@ -2,16 +2,9 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )
@@ -22,13 +15,6 @@ var (
 	ErrInvalidToken       = fmt.Errorf("invalid api token")
 )
 
-type demoUser struct {
-	Email       string `json:"email"`
-	Mobile      string `json:"mobile"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
-}
-
 // LoginWithPassword authenticates by email or E.164 mobile number plus password.
 func (s *Service) LoginWithPassword(ctx context.Context, identifier, password string) (access, refresh string, expires time.Time, err error) {
 	identifier = strings.TrimSpace(identifier)
@@ -36,7 +22,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, identifier, password st
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
 	var user domain.User
-	if e164Pattern.MatchString(identifier) {
+	if domain.IsE164(identifier) {
 		user, err = s.users.FindByMobile(ctx, identifier)
 	} else {
 		user, err = s.users.FindByEmail(ctx, strings.ToLower(identifier))
@@ -47,7 +33,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, identifier, password st
 	if user.Status == domain.UserDisabled {
 		return "", "", time.Time{}, ErrUserDisabled
 	}
-	if user.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+	if user.PasswordHash == "" || !s.hasher.Compare(user.PasswordHash, password) {
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
 	_ = s.users.UpdateLastLogin(ctx, user.ID)
@@ -55,42 +41,45 @@ func (s *Service) LoginWithPassword(ctx context.Context, identifier, password st
 	return s.issueTokens(ctx, user.ID)
 }
 
+// CreateApiToken returns the plaintext token exactly once.
 func (s *Service) CreateApiToken(ctx context.Context, userID, name string, scopes []string, expiresAt *time.Time) (tokenID, prefix, secret string, err error) {
 	if userID == "" || strings.TrimSpace(name) == "" {
 		return "", "", "", fmt.Errorf("user_id and name required")
 	}
-	secret, err = generateAPISecret()
+	raw, err := s.secrets.NewSecret()
 	if err != nil {
 		return "", "", "", err
 	}
-	prefix = secret[:8]
-	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	prefix = raw[:domain.APITokenPrefixLength]
+	hash, err := s.hasher.Hash(raw)
 	if err != nil {
 		return "", "", "", err
 	}
-	tokenID = uuid.NewString()
-	t := domain.ApiToken{
+	tokenID = s.ids.NewID()
+	t := domain.APIToken{
 		ID:        tokenID,
 		UserID:    userID,
 		Name:      name,
 		Prefix:    prefix,
-		TokenHash: string(hash),
+		TokenHash: hash,
 		Scopes:    scopes,
 		ExpiresAt: expiresAt,
 	}
 	if err := s.tokens.Create(ctx, t); err != nil {
 		return "", "", "", err
 	}
-	return tokenID, prefix, "oat_" + prefix + "." + secret[8:], nil
+	return tokenID, prefix, domain.APITokenScheme + prefix + "." + raw[domain.APITokenPrefixLength:], nil
 }
 
-func (s *Service) ListApiTokens(ctx context.Context, userID string) ([]domain.ApiTokenInfo, error) {
+// ListApiTokens lists a user's active tokens.
+func (s *Service) ListApiTokens(ctx context.Context, userID string) ([]domain.APITokenInfo, error) {
 	if userID == "" {
 		return nil, fmt.Errorf("user_id required")
 	}
 	return s.tokens.ListByUser(ctx, userID)
 }
 
+// RevokeApiToken revokes one token owned by userID.
 func (s *Service) RevokeApiToken(ctx context.Context, userID, tokenID string) error {
 	if userID == "" || tokenID == "" {
 		return fmt.Errorf("user_id and token_id required")
@@ -98,10 +87,12 @@ func (s *Service) RevokeApiToken(ctx context.Context, userID, tokenID string) er
 	return s.tokens.RevokeToken(ctx, userID, tokenID)
 }
 
+// ValidateApiToken verifies the documented oat_<prefix>.<secret> format and
+// returns the owning user and scopes.
 func (s *Service) ValidateApiToken(ctx context.Context, secret string) (userID string, scopes []string, err error) {
-	secret = strings.TrimPrefix(strings.TrimSpace(secret), "oat_")
+	secret = strings.TrimPrefix(strings.TrimSpace(secret), domain.APITokenScheme)
 	parts := strings.SplitN(secret, ".", 2)
-	if len(parts) != 2 || len(parts[0]) != 8 || parts[1] == "" {
+	if len(parts) != 2 || len(parts[0]) != domain.APITokenPrefixLength || parts[1] == "" {
 		return "", nil, ErrInvalidToken
 	}
 	prefix := parts[0]
@@ -113,32 +104,23 @@ func (s *Service) ValidateApiToken(ctx context.Context, secret string) (userID s
 	if t.RevokedAt != nil {
 		return "", nil, ErrInvalidToken
 	}
-	if t.ExpiresAt != nil && time.Now().UTC().After(*t.ExpiresAt) {
+	if t.ExpiresAt != nil && s.clock.Now().After(*t.ExpiresAt) {
 		return "", nil, ErrInvalidToken
 	}
-	if bcrypt.CompareHashAndPassword([]byte(t.TokenHash), []byte(full)) != nil {
+	if !s.hasher.Compare(t.TokenHash, full) {
 		return "", nil, ErrInvalidToken
 	}
 	return t.UserID, t.Scopes, nil
 }
 
+// SeedDemoUsers seeds AUTH_DEMO_USERS. cmd passes the parsed array only when
+// DEMO_MODE=true and DEPLOYMENT_ENVIRONMENT=dev.
 func (s *Service) SeedDemoUsers(ctx context.Context) error {
-	if os.Getenv("DEMO_MODE") != "true" {
+	if !s.demoMode {
 		return nil
 	}
-	if os.Getenv("DEPLOYMENT_ENVIRONMENT") != "dev" {
-		return fmt.Errorf("DEMO_MODE is only allowed when DEPLOYMENT_ENVIRONMENT=dev")
-	}
-	raw := os.Getenv("AUTH_DEMO_USERS")
-	if raw == "" {
-		return fmt.Errorf("AUTH_DEMO_USERS is required when DEMO_MODE=true")
-	}
-	var users []demoUser
-	if err := json.Unmarshal([]byte(raw), &users); err != nil {
-		return err
-	}
-	for _, u := range users {
-		hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+	for _, u := range s.demoUsers {
+		hash, err := s.hasher.Hash(u.Password)
 		if err != nil {
 			return err
 		}
@@ -147,21 +129,13 @@ func (s *Service) SeedDemoUsers(ctx context.Context) error {
 		if email == "" && mobile == "" {
 			return fmt.Errorf("demo user requires email or mobile")
 		}
-		if mobile != "" && !e164Pattern.MatchString(mobile) {
+		if mobile != "" && !domain.IsE164(mobile) {
 			return fmt.Errorf("demo user mobile must be E.164")
 		}
-		if err := s.users.UpsertDemoUser(ctx, email, mobile, string(hash), u.DisplayName); err != nil {
+		if err := s.users.UpsertDemoUser(ctx, email, mobile, hash, u.DisplayName); err != nil {
 			return err
 		}
 	}
-	s.logger("demo_users_seeded", "count", len(users))
+	s.logger("demo_users_seeded", "count", len(s.demoUsers))
 	return nil
-}
-
-func generateAPISecret() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }
