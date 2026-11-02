@@ -108,6 +108,13 @@ func TestUsersFindOrCreateAndLastLogin(t *testing.T) {
 	if err != nil || found.ID != created.ID || found.Status != domain.UserActive {
 		t.Fatalf("find = %+v, err = %v", found, err)
 	}
+	foundByID, err := store.FindByID(ctx, created.ID)
+	if err != nil || foundByID.ID != created.ID || foundByID.Email != "person@example.com" {
+		t.Fatalf("find by id = %+v, err = %v", foundByID, err)
+	}
+	if _, err := store.FindByID(ctx, uuid.NewString()); !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("missing user id err = %v, want ErrUserNotFound", err)
+	}
 	if _, err := store.FindByEmail(ctx, "missing@example.com"); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("missing email err = %v", err)
 	}

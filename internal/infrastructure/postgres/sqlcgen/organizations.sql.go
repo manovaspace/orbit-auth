@@ -152,6 +152,51 @@ func (q *Queries) GetOrganizationMembership(ctx context.Context, arg GetOrganiza
 	return i, err
 }
 
+const listOrganizationMembers = `-- name: ListOrganizationMembers :many
+SELECT org_id::text AS org_id,
+       user_id::text AS user_id,
+       status,
+       created_at,
+       updated_at
+FROM organization_memberships
+WHERE org_id = $1::uuid
+ORDER BY created_at, user_id
+`
+
+type ListOrganizationMembersRow struct {
+	OrgID     string
+	UserID    string
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListOrganizationMembers(ctx context.Context, orgID uuid.UUID) ([]ListOrganizationMembersRow, error) {
+	rows, err := q.db.Query(ctx, listOrganizationMembers, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrganizationMembersRow
+	for rows.Next() {
+		var i ListOrganizationMembersRow
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.UserID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
 SELECT o.id::text AS id, o.name, o.created_at, o.updated_at
 FROM organizations o

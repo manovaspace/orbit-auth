@@ -6,4 +6,5 @@ protoc \
   -I "${ROOT}/api/proto" \
   --go_out="${ROOT}/api" --go_opt=paths=source_relative \
   --go-grpc_out="${ROOT}/api" --go-grpc_opt=paths=source_relative \
-  "${ROOT}/api/proto/auth/v1/auth.proto"
+  "${ROOT}/api/proto/auth/v1/auth.proto" \
+  "${ROOT}/api/proto/auth/v1/orgs.proto"

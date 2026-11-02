@@ -95,6 +95,29 @@ func (s *Store) ListOrgsForUser(ctx context.Context, userID string) ([]domain.Or
 	return out, nil
 }
 
+// ListMembers returns every membership of orgID with its lifecycle status.
+func (s *Store) ListMembers(ctx context.Context, orgID string) ([]domain.Membership, error) {
+	parsed, err := uuid.Parse(orgID)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: organization id %q: %w", orgID, err)
+	}
+	rows, err := s.queries.ListOrganizationMembers(ctx, parsed)
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.Membership
+	for _, row := range rows {
+		out = append(out, domain.Membership{
+			OrgID:     row.OrgID,
+			UserID:    row.UserID,
+			Status:    domain.MembershipStatus(row.Status),
+			CreatedAt: row.CreatedAt.Time,
+			UpdatedAt: row.UpdatedAt.Time,
+		})
+	}
+	return out, nil
+}
+
 // AddMember inserts a membership. An existing membership is left untouched, so
 // its status can only change through UpdateMemberStatus.
 func (s *Store) AddMember(ctx context.Context, orgID, userID string, status domain.MembershipStatus) error {

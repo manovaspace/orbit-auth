@@ -118,8 +118,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	gs := googlegrpc.NewServer(observability.GRPCServerOptions()...)
+	gs := googlegrpc.NewServer(serverOptions(signer)...)
 	authv1.RegisterAuthServiceServer(gs, grpchandlers.New(svc))
+	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
 
 	health := httpapi.New()
 	healthPort := envOr("HEALTH_PORT", "10101")
@@ -148,6 +149,17 @@ func main() {
 			},
 		},
 	})
+}
+
+// serverOptions keeps the observability chain and adds access-token validation
+// for OrgService. The access interceptor runs after internal auth and before
+// every OrgService handler. AuthService keeps its existing unauthenticated
+// contract.
+func serverOptions(signer *jwt.Signer) []googlegrpc.ServerOption {
+	opts := observability.GRPCServerOptions()
+	return append(opts, googlegrpc.ChainUnaryInterceptor(
+		grpchandlers.AccessTokenUnaryServerInterceptor(signer.KeySet()),
+	))
 }
 
 // demoUsersFromEnv parses AUTH_DEMO_USERS. DEMO_MODE=true outside dev fails

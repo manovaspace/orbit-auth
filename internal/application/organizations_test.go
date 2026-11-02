@@ -66,6 +66,17 @@ func (f *fakeOrgStore) ListOrgsForUser(_ context.Context, userID string) ([]doma
 	return out, nil
 }
 
+func (f *fakeOrgStore) ListMembers(_ context.Context, orgID string) ([]domain.Membership, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	var out []domain.Membership
+	for _, membership := range f.memberships[orgID] {
+		out = append(out, membership)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
+	return out, nil
+}
+
 func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status domain.MembershipStatus) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -149,10 +160,25 @@ func (f *fakeOrgStore) seedMembership(m domain.Membership) {
 	f.memberships[m.OrgID][m.UserID] = m
 }
 
+// fakeOrgUsers treats every id as an existing user unless it is listed in
+// missing, so the existing organization tests can keep using readable ids.
+type fakeOrgUsers struct {
+	*fakeUsers
+	missing map[string]bool
+}
+
+func (f fakeOrgUsers) FindByID(_ context.Context, userID string) (domain.User, error) {
+	if f.missing[userID] {
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	return domain.User{ID: userID}, nil
+}
+
 func newOrgService(t *testing.T, orgs domain.OrgStore) *Service {
 	t.Helper()
 	return NewService(Deps{
 		Orgs:   orgs,
+		Users:  fakeOrgUsers{fakeUsers: &fakeUsers{}},
 		Clock:  fixedClock{at: time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)},
 		IDs:    testUUIDs{},
 		Logger: func(string, ...any) {},
@@ -233,6 +259,62 @@ func TestListOrgsForUserReturnsOnlyActiveMemberships(t *testing.T) {
 	}
 }
 
+func TestListMembersReturnsEveryMembershipWithStatus(t *testing.T) {
+	store := newFakeOrgStore()
+	svc := newOrgService(t, store)
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMember(context.Background(), org.ID, "member"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SuspendMember(context.Background(), org.ID, "member"); err != nil {
+		t.Fatal(err)
+	}
+	store.seedMembership(domain.Membership{OrgID: org.ID, UserID: "invited", Status: domain.MembershipInvited})
+
+	members, err := svc.ListMembers(context.Background(), org.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 3 {
+		t.Fatalf("members = %d, want 3", len(members))
+	}
+	statuses := make(map[string]domain.MembershipStatus, len(members))
+	for _, membership := range members {
+		statuses[membership.UserID] = membership.Status
+	}
+	want := map[string]domain.MembershipStatus{
+		"owner":   domain.MembershipActive,
+		"member":  domain.MembershipSuspended,
+		"invited": domain.MembershipInvited,
+	}
+	for userID, status := range want {
+		if statuses[userID] != status {
+			t.Fatalf("status[%q] = %q, want %q", userID, statuses[userID], status)
+		}
+	}
+}
+
+func TestListMembersRejectsUnknownOrganization(t *testing.T) {
+	svc := newOrgService(t, newFakeOrgStore())
+	if _, err := svc.ListMembers(context.Background(), "missing"); !errors.Is(err, domain.ErrOrgNotFound) {
+		t.Fatalf("err = %v, want ErrOrgNotFound", err)
+	}
+}
+
+func TestListMembersRequiresOrganization(t *testing.T) {
+	store := newFakeOrgStore()
+	svc := newOrgService(t, store)
+	if _, err := svc.ListMembers(context.Background(), "   "); err == nil {
+		t.Fatal("expected an error for a missing organization id")
+	}
+	if len(store.memberships) != 0 {
+		t.Fatal("blank organization id reached the store")
+	}
+}
+
 func TestAddMemberMakesUserActive(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
@@ -287,6 +369,34 @@ func TestAddMemberRejectsUnknownOrganization(t *testing.T) {
 	svc := newOrgService(t, newFakeOrgStore())
 	if err := svc.AddMember(context.Background(), "missing", "user-2"); !errors.Is(err, domain.ErrOrgNotFound) {
 		t.Fatalf("err = %v, want ErrOrgNotFound", err)
+	}
+}
+
+func TestMemberManagementRejectsUnknownUser(t *testing.T) {
+	store := newFakeOrgStore()
+	svc := newOrgService(t, store)
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.users = fakeOrgUsers{
+		fakeUsers: &fakeUsers{},
+		missing:   map[string]bool{"missing": true},
+	}
+	ctx := context.Background()
+
+	calls := []func() error{
+		func() error { return svc.AddMember(ctx, org.ID, "missing") },
+		func() error { return svc.SuspendMember(ctx, org.ID, "missing") },
+		func() error { return svc.RemoveMember(ctx, org.ID, "missing") },
+	}
+	for _, call := range calls {
+		if err := call(); !errors.Is(err, domain.ErrUserNotFound) {
+			t.Fatalf("err = %v, want ErrUserNotFound", err)
+		}
+	}
+	if _, err := store.GetMembership(ctx, org.ID, "missing"); !errors.Is(err, domain.ErrNotMember) {
+		t.Fatalf("unknown user left a membership: %v", err)
 	}
 }
 

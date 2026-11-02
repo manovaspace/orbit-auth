@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/manovaspace/orbit-auth/api/auth/v1;authv1";
+
+// OrgService creates organizations and manages their memberships.
+//
+// The caller is always taken from the validated access token, never from the
+// request body. Orbit Auth gates every organization-scoped call on the caller
+// being an active member of that organization. Member management is
+// membership-gated only: any product or gateway that exposes it must add its
+// own admin check.
+// orbit-auth does not decide who administers an organization inside a product.
+service OrgService {
+  rpc CreateOrg(CreateOrgRequest) returns (CreateOrgResponse);
+  rpc ListMyOrgs(ListMyOrgsRequest) returns (ListMyOrgsResponse);
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+}
+
+message Organization {
+  string id = 1;
+  string name = 2;
+  string created_at = 3;
+  string updated_at = 4;
+}
+
+message Membership {
+  string org_id = 1;
+  string user_id = 2;
+  string status = 3;
+  string created_at = 4;
+  string updated_at = 5;
+}
+
+message CreateOrgRequest {
+  string name = 1;
+}
+
+message CreateOrgResponse {
+  Organization organization = 1;
+}
+
+message ListMyOrgsRequest {}
+
+message ListMyOrgsResponse {
+  repeated Organization organizations = 1;
+}
+
+message ListMembersRequest {
+  string org_id = 1;
+}
+
+message ListMembersResponse {
+  repeated Membership members = 1;
+}
+
+message AddMemberRequest {
+  string org_id = 1;
+  string user_id = 2;
+}
+
+message AddMemberResponse {}
+
+message RemoveMemberRequest {
+  string org_id = 1;
+  string user_id = 2;
+}
+
+message RemoveMemberResponse {}
+
+message SuspendMemberRequest {
+  string org_id = 1;
+  string user_id = 2;
+}
+
+message SuspendMemberResponse {}

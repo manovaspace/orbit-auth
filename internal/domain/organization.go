@@ -20,6 +20,8 @@ var (
 	ErrOrgNotFound = errors.New("organization not found")
 	// ErrNotMember reports a user without a membership in the organization.
 	ErrNotMember = errors.New("not a member of the organization")
+	// ErrUserNotFound reports a user id that does not exist.
+	ErrUserNotFound = errors.New("user not found")
 	// ErrLastActiveMember refuses a change that would leave an organization
 	// without any active member.
 	ErrLastActiveMember = errors.New("organization must keep at least one active member")

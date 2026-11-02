@@ -44,12 +44,27 @@ func (s *Service) ListOrgsForUser(ctx context.Context, userID string) ([]domain.
 	return s.orgs.ListOrgsForUser(ctx, userID)
 }
 
+// ListMembers returns every membership of orgID with its lifecycle status.
+func (s *Service) ListMembers(ctx context.Context, orgID string) ([]domain.Membership, error) {
+	orgID = strings.TrimSpace(orgID)
+	if orgID == "" {
+		return nil, fmt.Errorf("org_id required")
+	}
+	if _, err := s.orgs.GetOrg(ctx, orgID); err != nil {
+		return nil, err
+	}
+	return s.orgs.ListMembers(ctx, orgID)
+}
+
 // AddMember makes userID an active member of orgID. Adding an existing member
 // leaves that membership and its status untouched.
 func (s *Service) AddMember(ctx context.Context, orgID, userID string) error {
 	orgID, userID = strings.TrimSpace(orgID), strings.TrimSpace(userID)
 	if orgID == "" || userID == "" {
 		return fmt.Errorf("org_id and user_id required")
+	}
+	if err := s.requireUser(ctx, userID); err != nil {
+		return err
 	}
 	if _, err := s.orgs.GetOrg(ctx, orgID); err != nil {
 		return err
@@ -64,6 +79,9 @@ func (s *Service) SuspendMember(ctx context.Context, orgID, userID string) error
 	orgID, userID = strings.TrimSpace(orgID), strings.TrimSpace(userID)
 	if orgID == "" || userID == "" {
 		return fmt.Errorf("org_id and user_id required")
+	}
+	if err := s.requireUser(ctx, userID); err != nil {
+		return err
 	}
 	membership, err := s.orgs.GetMembership(ctx, orgID, userID)
 	if err != nil {
@@ -82,10 +100,23 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, userID string) error 
 	if orgID == "" || userID == "" {
 		return fmt.Errorf("org_id and user_id required")
 	}
+	if err := s.requireUser(ctx, userID); err != nil {
+		return err
+	}
 	if _, err := s.orgs.GetMembership(ctx, orgID, userID); err != nil {
 		return err
 	}
 	return s.orgs.RemoveMember(ctx, orgID, userID)
+}
+
+// requireUser turns an unknown target user id into domain.ErrUserNotFound
+// before a membership write can reach the foreign key.
+func (s *Service) requireUser(ctx context.Context, userID string) error {
+	if s.users == nil {
+		return fmt.Errorf("user store is not configured")
+	}
+	_, err := s.users.FindByID(ctx, userID)
+	return err
 }
 
 // IsActiveMember reports whether userID is an active member of orgID. A

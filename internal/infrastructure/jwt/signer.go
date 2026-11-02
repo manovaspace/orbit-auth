@@ -18,6 +18,7 @@ import (
 type Signer struct {
 	key   *rsa.PrivateKey
 	keyID string
+	keys  orbittoken.KeySet
 }
 
 // NewFromEnv loads JWT_PRIVATE_KEY_FILE, JWT_ACTIVE_KEY_ID and
@@ -48,7 +49,12 @@ func NewFromEnv() (*Signer, error) {
 	if activePublicKey == nil || activePublicKey.E != privateKey.E || activePublicKey.N.Cmp(privateKey.N) != 0 {
 		return nil, fmt.Errorf("active JWT key ID %q must match a public key in JWT_PUBLIC_KEYS_DIR", keyID)
 	}
-	return &Signer{key: privateKey, keyID: keyID}, nil
+	return &Signer{key: privateKey, keyID: keyID, keys: publicKeys}, nil
+}
+
+// KeySet returns the public keys that verify the service's access tokens.
+func (s *Signer) KeySet() orbittoken.KeySet {
+	return s.keys
 }
 
 // SignAccessToken signs a short-lived access token for subject.
