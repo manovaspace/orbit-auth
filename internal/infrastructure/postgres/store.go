@@ -33,12 +33,17 @@ func (s *Store) UpsertChallenge(ctx context.Context, ch domain.OTPChallenge) err
 	if err != nil {
 		return fmt.Errorf("postgres: challenge id %q: %w", ch.ID, err)
 	}
+	createdAt := ch.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
 	return s.queries.UpsertChallenge(ctx, sqlcgen.UpsertChallengeParams{
 		ID:         id,
 		Identifier: ch.Identifier,
 		Channel:    ch.Channel,
 		CodeHash:   ch.CodeHash,
 		ExpiresAt:  timestamptz(ch.ExpiresAt),
+		CreatedAt:  timestamptz(createdAt),
 	})
 }
 
@@ -57,6 +62,7 @@ func (s *Store) GetLatestChallenge(ctx context.Context, identifier, channel stri
 		Channel:    row.Channel,
 		CodeHash:   row.CodeHash,
 		ExpiresAt:  row.ExpiresAt.Time,
+		CreatedAt:  row.CreatedAt.Time,
 		Attempts:   int(row.Attempts),
 	}, nil
 }
@@ -120,12 +126,13 @@ func (s *Store) findByEmail(ctx context.Context, email string) (domain.User, err
 		return domain.User{}, err
 	}
 	return domain.User{
-		ID:           row.ID,
-		Email:        row.Email,
-		Mobile:       row.Mobile,
-		PasswordHash: row.PasswordHash,
-		DisplayName:  row.DisplayName,
-		Status:       row.Status,
+		ID:            row.ID,
+		Email:         row.Email,
+		Mobile:        row.Mobile,
+		PasswordHash:  row.PasswordHash,
+		DisplayName:   row.DisplayName,
+		Status:        row.Status,
+		EmailVerified: row.EmailVerified,
 	}, nil
 }
 
@@ -148,12 +155,13 @@ func (s *Store) FindByID(ctx context.Context, userID string) (domain.User, error
 		return domain.User{}, err
 	}
 	return domain.User{
-		ID:           row.ID,
-		Email:        row.Email,
-		Mobile:       row.Mobile,
-		PasswordHash: row.PasswordHash,
-		DisplayName:  row.DisplayName,
-		Status:       row.Status,
+		ID:            row.ID,
+		Email:         row.Email,
+		Mobile:        row.Mobile,
+		PasswordHash:  row.PasswordHash,
+		DisplayName:   row.DisplayName,
+		Status:        row.Status,
+		EmailVerified: row.EmailVerified,
 	}, nil
 }
 
@@ -163,12 +171,13 @@ func (s *Store) findByMobile(ctx context.Context, mobile string) (domain.User, e
 		return domain.User{}, err
 	}
 	return domain.User{
-		ID:           row.ID,
-		Email:        row.Email,
-		Mobile:       row.Mobile,
-		PasswordHash: row.PasswordHash,
-		DisplayName:  row.DisplayName,
-		Status:       row.Status,
+		ID:            row.ID,
+		Email:         row.Email,
+		Mobile:        row.Mobile,
+		PasswordHash:  row.PasswordHash,
+		DisplayName:   row.DisplayName,
+		Status:        row.Status,
+		EmailVerified: row.EmailVerified,
 	}, nil
 }
 

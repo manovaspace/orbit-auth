@@ -74,6 +74,21 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 	return err
 }
 
+const deleteEmptyOrganizations = `-- name: DeleteEmptyOrganizations :execrows
+DELETE FROM organizations o
+WHERE NOT EXISTS (
+    SELECT 1 FROM organization_memberships m WHERE m.org_id = o.id
+)
+`
+
+func (q *Queries) DeleteEmptyOrganizations(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEmptyOrganizations)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteOrganizationMembership = `-- name: DeleteOrganizationMembership :exec
 DELETE FROM organization_memberships
 WHERE org_id = $1::uuid

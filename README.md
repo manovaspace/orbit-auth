@@ -21,6 +21,7 @@ export JWT_PRIVATE_KEY_FILE=./secrets/jwt-private.pem
 export JWT_ACTIVE_KEY_ID=orbit-dev-1
 export JWT_PUBLIC_KEYS_DIR=./secrets/jwt-public-keys
 export AUTH_AUTO_SELECT_SINGLE_ORG=true
+export AUTH_SIGNUP=off
 go run ./cmd/auth
 ```
 
@@ -55,7 +56,7 @@ internal/infrastructure/
   clock/                           system clock (UTC)
   credentials/                     bcrypt, OTP code and API-secret adapters
   featureflags/                    Unleash/OpenFeature adapter
-  grpc/                            AuthService adapter
+  grpc/                            AuthService, OrgService and SignupService adapters
   httpapi/                         Fiber v3 health server (/healthz, /readyz)
   ids/                             UUID identifiers
   jwt/                             RS256 access-token signer
@@ -110,6 +111,7 @@ must never be edited by hand.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
 - **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. `SelectOrg` switches organization and rotates the refresh token.
+- **Self-serve sign-up:** `AUTH_SIGNUP=open` enables `SignupService.RegisterWithEmail` and `SignupService.VerifySignup`; the default `off` rejects both with `FailedPrecondition` before anything is written. A new email account stays `signup_pending` until `VerifySignup` receives both the `signup_verify` OTP and the pending account password. A retry for a still-pending address replaces its credentials and reissues the code (at most once per 60 seconds); an active account is left untouched. Admin and demo accounts are verified from the start, and a valid `invite_token` verifies the address without an OTP.
 
 ## Events
 

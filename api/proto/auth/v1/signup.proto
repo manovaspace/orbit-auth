@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/manovaspace/orbit-auth/api/auth/v1;authv1";
+
+import "auth/v1/auth.proto";
+
+// SignupService is the self-serve registration surface. Both RPCs are
+// unauthenticated and both return FailedPrecondition while AUTH_SIGNUP is not
+// open, before anything is written.
+service SignupService {
+  // RegisterWithEmail creates a pending account and sends a signup_verify OTP.
+  // The password is stored on the pending account; VerifySignup must supply it
+  // along with the code. An address that already has an account receives the
+  // same response and no notification, so the call cannot be used to enumerate
+  // accounts. A valid invite_token for the same address proves control instead:
+  // the account is created active and verified, the invite is accepted and no
+  // OTP is sent.
+  rpc RegisterWithEmail(RegisterWithEmailRequest) returns (RegisterWithEmailResponse);
+  // VerifySignup consumes the sign-up OTP and the pending password, then
+  // returns a normal token pair. The code must match the latest challenge and
+  // the password must match the pending account hash; either mismatch is the
+  // same generic invalid-code error.
+  rpc VerifySignup(VerifySignupRequest) returns (VerifySignupResponse);
+}
+
+message RegisterWithEmailRequest {
+  string email = 1;
+  string password = 2;
+  string display_name = 3;
+  // fa or en; orbit-notifications defaults to en for an unknown value.
+  string locale = 4;
+  // When set, the new account owns this organization.
+  string org_name = 5;
+  // When set and valid for the same email, the account joins the inviting
+  // organization and is verified immediately.
+  string invite_token = 6;
+}
+
+message RegisterWithEmailResponse {}
+
+message VerifySignupRequest {
+  string email = 1;
+  string code = 2;
+  // Password supplied to RegisterWithEmail (or the latest retry). Activation
+  // requires both this password and the code to match the pending account.
+  string password = 3;
+}
+
+message VerifySignupResponse {
+  TokenResponse tokens = 1;
+}

@@ -31,6 +31,10 @@ func (s *Service) LoginWithPassword(ctx context.Context, identifier, password st
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
+	// A pending self-serve account is indistinguishable from an unknown one.
+	if user.Status == domain.UserSignupPending {
+		return "", "", time.Time{}, ErrInvalidCredentials
+	}
 	if user.Status == domain.UserDisabled {
 		return "", "", time.Time{}, ErrUserDisabled
 	}

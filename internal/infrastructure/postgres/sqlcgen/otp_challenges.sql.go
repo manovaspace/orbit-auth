@@ -21,6 +21,22 @@ func (q *Queries) ConsumeChallenge(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteChallengesForIdentifier = `-- name: DeleteChallengesForIdentifier :exec
+DELETE FROM otp_challenges
+WHERE identifier = $1
+  AND channel = $2
+`
+
+type DeleteChallengesForIdentifierParams struct {
+	Identifier string
+	Channel    string
+}
+
+func (q *Queries) DeleteChallengesForIdentifier(ctx context.Context, arg DeleteChallengesForIdentifierParams) error {
+	_, err := q.db.Exec(ctx, deleteChallengesForIdentifier, arg.Identifier, arg.Channel)
+	return err
+}
+
 const deleteExpiredChallenges = `-- name: DeleteExpiredChallenges :exec
 DELETE FROM otp_challenges WHERE expires_at < NOW()
 `
@@ -31,7 +47,7 @@ func (q *Queries) DeleteExpiredChallenges(ctx context.Context) error {
 }
 
 const getLatestChallenge = `-- name: GetLatestChallenge :one
-SELECT id::text AS id, identifier, channel, code_hash, expires_at, attempts
+SELECT id::text AS id, identifier, channel, code_hash, expires_at, created_at, attempts
 FROM otp_challenges
 WHERE identifier = $1 AND channel = $2
 ORDER BY created_at DESC
@@ -49,6 +65,7 @@ type GetLatestChallengeRow struct {
 	Channel    string
 	CodeHash   string
 	ExpiresAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
 	Attempts   int32
 }
 
@@ -61,6 +78,7 @@ func (q *Queries) GetLatestChallenge(ctx context.Context, arg GetLatestChallenge
 		&i.Channel,
 		&i.CodeHash,
 		&i.ExpiresAt,
+		&i.CreatedAt,
 		&i.Attempts,
 	)
 	return i, err
@@ -76,8 +94,16 @@ func (q *Queries) IncrementChallengeAttempts(ctx context.Context, id uuid.UUID) 
 }
 
 const upsertChallenge = `-- name: UpsertChallenge :exec
-INSERT INTO otp_challenges (id, identifier, channel, code_hash, expires_at, attempts)
-VALUES ($1::uuid, $2, $3, $4, $5, 0)
+INSERT INTO otp_challenges (id, identifier, channel, code_hash, expires_at, attempts, created_at)
+VALUES (
+    $1::uuid,
+    $2,
+    $3,
+    $4,
+    $5,
+    0,
+    $6::timestamptz
+)
 `
 
 type UpsertChallengeParams struct {
@@ -86,6 +112,7 @@ type UpsertChallengeParams struct {
 	Channel    string
 	CodeHash   string
 	ExpiresAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
 }
 
 func (q *Queries) UpsertChallenge(ctx context.Context, arg UpsertChallengeParams) error {
@@ -95,6 +122,7 @@ func (q *Queries) UpsertChallenge(ctx context.Context, arg UpsertChallengeParams
 		arg.Channel,
 		arg.CodeHash,
 		arg.ExpiresAt,
+		arg.CreatedAt,
 	)
 	return err
 }

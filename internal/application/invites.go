@@ -185,12 +185,13 @@ func (s *Service) ListInvites(ctx context.Context, orgID string) ([]domain.Invit
 }
 
 // inviteRecipientMatches decides whether an authenticated account may accept an
-// invitation. The users table has no separate email_verified flag yet: an
-// account email is only set by email OTP (which proves control of the address)
-// or by a trusted admin or demo seed, so a non-empty email on a non-disabled
-// account is the verified identity. A5 adds explicit sign-up verification.
+// invitation. The account must be active and its email must have been proven:
+// email OTP, an admin/demo seed, a backfilled pre-sign-up account or a
+// completed sign-up all set email_verified_at. A signup_pending account is not
+// active and therefore cannot accept an invitation.
 func inviteRecipientMatches(user domain.User, inviteEmail string) bool {
 	return user.Email != "" &&
-		user.Status != domain.UserDisabled &&
+		user.EmailVerified &&
+		user.Status == domain.UserActive &&
 		strings.EqualFold(user.Email, inviteEmail)
 }

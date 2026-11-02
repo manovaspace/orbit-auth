@@ -95,6 +95,7 @@ func main() {
 		Tokens:    store,
 		Orgs:      store,
 		Invites:   store,
+		Signup:    store,
 		Notifier:  notif,
 		Flags:     flags,
 		Clock:     clock.New(),
@@ -105,6 +106,9 @@ func main() {
 		Secrets:   credentials.NewSecrets(),
 		DemoMode:  os.Getenv("DEMO_MODE") == "true",
 		DemoUsers: demoUsers,
+		// AUTH_SIGNUP defaults to off; only the literal open (case-insensitive)
+		// enables self-serve registration.
+		SignupOpen: strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_SIGNUP")), "open"),
 		// AUTH_AUTO_SELECT_SINGLE_ORG defaults to true; only an explicit
 		// false disables it.
 		AutoSelectSingleOrg: !strings.EqualFold(envOr("AUTH_AUTO_SELECT_SINGLE_ORG", "true"), "false"),
@@ -125,6 +129,7 @@ func main() {
 	gs := googlegrpc.NewServer(serverOptions(signer)...)
 	authv1.RegisterAuthServiceServer(gs, grpchandlers.New(svc))
 	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
+	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
 
 	health := httpapi.New()
 	healthPort := envOr("HEALTH_PORT", "10101")
