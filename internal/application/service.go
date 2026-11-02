@@ -2,105 +2,91 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"math/big"
-	"os"
-	"regexp"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/manovaspace/orbit-auth/internal/domain"
-	orbittoken "github.com/manovaspace/orbit-auth/token"
 )
 
-const otpTTL = 10 * time.Minute
+// Deps are the application service's ports and runtime configuration. Every
+// dependency is injected; the application layer reads no environment variable
+// and imports no infrastructure package.
+type Deps struct {
+	OTP      domain.OTPStore
+	Users    domain.UserStore
+	Refresh  domain.RefreshTokenStore
+	Tokens   domain.APITokenStore
+	Notifier domain.Notifier
+	Flags    domain.Flags
+	Clock    domain.Clock
+	IDs      domain.IDGenerator
+	Signer   domain.TokenSigner
+	Hasher   domain.Hasher
+	Codes    domain.CodeGenerator
+	Secrets  domain.SecretGenerator
 
-var e164Pattern = regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
+	// DemoMode enables seeding on start; DemoUsers is the parsed
+	// AUTH_DEMO_USERS array. Both are resolved by cmd from the environment.
+	DemoMode  bool
+	DemoUsers []domain.DemoUser
 
-// FlagEvaluator checks feature flags; nil-safe via Bool on concrete implementation.
-type FlagEvaluator interface {
-	Bool(ctx context.Context, flag string, defaultVal bool) bool
+	Logger func(msg string, args ...any)
 }
 
+// Service orchestrates OTP, password, refresh-token and API-token flows.
 type Service struct {
-	otp           domain.OTPRepository
-	users         domain.UserRepository
-	refresh       domain.RefreshTokenRepository
-	tokens        domain.ApiTokenRepository
-	notifier      domain.Notifier
-	flags         FlagEvaluator
-	jwtPrivateKey *rsa.PrivateKey
-	jwtKeyID      string
-	logger        func(msg string, args ...any)
+	otp       domain.OTPStore
+	users     domain.UserStore
+	refresh   domain.RefreshTokenStore
+	tokens    domain.APITokenStore
+	notifier  domain.Notifier
+	flags     domain.Flags
+	clock     domain.Clock
+	ids       domain.IDGenerator
+	signer    domain.TokenSigner
+	hasher    domain.Hasher
+	codes     domain.CodeGenerator
+	secrets   domain.SecretGenerator
+	demoMode  bool
+	demoUsers []domain.DemoUser
+	logger    func(msg string, args ...any)
 }
 
-func NewService(
-	otp domain.OTPRepository,
-	users domain.UserRepository,
-	refresh domain.RefreshTokenRepository,
-	tokens domain.ApiTokenRepository,
-	notifier domain.Notifier,
-	flags FlagEvaluator,
-	logger func(string, ...any),
-) (*Service, error) {
-	privateKeyPath := strings.TrimSpace(os.Getenv("JWT_PRIVATE_KEY_FILE"))
-	if privateKeyPath == "" {
-		return nil, fmt.Errorf("JWT_PRIVATE_KEY_FILE is required")
-	}
-	privateKey, err := orbittoken.LoadRSAPrivateKey(privateKeyPath)
-	if err != nil {
-		return nil, err
-	}
-	keyID := strings.TrimSpace(os.Getenv("JWT_ACTIVE_KEY_ID"))
-	if keyID == "" {
-		return nil, fmt.Errorf("JWT_ACTIVE_KEY_ID is required")
-	}
-	publicKeysDirectory := strings.TrimSpace(os.Getenv("JWT_PUBLIC_KEYS_DIR"))
-	if publicKeysDirectory == "" {
-		return nil, fmt.Errorf("JWT_PUBLIC_KEYS_DIR is required")
-	}
-	publicKeys, err := orbittoken.LoadKeySet(publicKeysDirectory)
-	if err != nil {
-		return nil, err
-	}
-	activePublicKey := publicKeys[keyID]
-	if activePublicKey == nil || activePublicKey.E != privateKey.E || activePublicKey.N.Cmp(privateKey.N) != 0 {
-		return nil, fmt.Errorf("active JWT key ID %q must match a public key in JWT_PUBLIC_KEYS_DIR", keyID)
+// NewService builds the service from its ports.
+func NewService(deps Deps) *Service {
+	logger := deps.Logger
+	if logger == nil {
+		logger = func(string, ...any) {}
 	}
 	return &Service{
-		otp:           otp,
-		users:         users,
-		refresh:       refresh,
-		tokens:        tokens,
-		notifier:      notifier,
-		flags:         flags,
-		jwtPrivateKey: privateKey,
-		jwtKeyID:      keyID,
-		logger:        logger,
-	}, nil
+		otp:       deps.OTP,
+		users:     deps.Users,
+		refresh:   deps.Refresh,
+		tokens:    deps.Tokens,
+		notifier:  deps.Notifier,
+		flags:     deps.Flags,
+		clock:     deps.Clock,
+		ids:       deps.IDs,
+		signer:    deps.Signer,
+		hasher:    deps.Hasher,
+		codes:     deps.Codes,
+		secrets:   deps.Secrets,
+		demoMode:  deps.DemoMode,
+		demoUsers: deps.DemoUsers,
+		logger:    logger,
+	}
 }
 
-func (s *Service) emailOTPEnabled(ctx context.Context) bool {
+func (s *Service) flag(ctx context.Context, name string) bool {
 	if s.flags == nil {
 		return false
 	}
-	return s.flags.Bool(ctx, "manova.auth.email_otp", false)
+	return s.flags.Bool(ctx, name, false)
 }
 
-func (s *Service) mobileOTPEnabled(ctx context.Context) bool {
-	if s.flags == nil {
-		return false
-	}
-	return s.flags.Bool(ctx, "manova.auth.mobile_otp", false)
-}
-
+// RequestOTP creates a one-time challenge and asks orbit-notifications to
+// deliver it.
 func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlationID string) (time.Time, error) {
 	identifier = strings.TrimSpace(identifier)
 	channel = strings.TrimSpace(channel)
@@ -109,14 +95,14 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 	}
 	switch channel {
 	case domain.ChannelEmail:
-		if !s.emailOTPEnabled(ctx) {
+		if !s.flag(ctx, "manova.auth.email_otp") {
 			return time.Time{}, ErrEmailOTPDisabled
 		}
 	case domain.ChannelSMS:
-		if !e164Pattern.MatchString(identifier) {
+		if !domain.IsE164(identifier) {
 			return time.Time{}, fmt.Errorf("mobile must be E.164")
 		}
-		if !s.mobileOTPEnabled(ctx) {
+		if !s.flag(ctx, "manova.auth.mobile_otp") {
 			return time.Time{}, ErrMobileOTPDisabled
 		}
 	default:
@@ -124,20 +110,20 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 	}
 
 	_ = s.otp.DeleteExpiredChallenges(ctx)
-	code, err := generateOTPCode()
+	code, err := s.codes.NewCode()
 	if err != nil {
 		return time.Time{}, err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	hash, err := s.hasher.Hash(code)
 	if err != nil {
 		return time.Time{}, err
 	}
-	expires := time.Now().UTC().Add(otpTTL)
+	expires := s.clock.Now().Add(domain.OTPTTL)
 	ch := domain.OTPChallenge{
-		ID:         uuid.NewString(),
+		ID:         s.ids.NewID(),
 		Identifier: identifier,
 		Channel:    channel,
-		CodeHash:   string(hash),
+		CodeHash:   hash,
 		ExpiresAt:  expires,
 	}
 	if err := s.otp.UpsertChallenge(ctx, ch); err != nil {
@@ -146,10 +132,11 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 	if err := s.notifier.SendOTP(ctx, channel, identifier, code, correlationID); err != nil {
 		return time.Time{}, err
 	}
-	s.logger("otp_requested", "channel", channel, "identifier_hash", hashIdentifier(identifier), "correlation_id", correlationID)
+	s.logger("otp_requested", "channel", channel, "identifier_hash", domain.HashIdentifier(identifier), "correlation_id", correlationID)
 	return expires, nil
 }
 
+// VerifyOTP consumes a valid challenge and issues a token pair.
 func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code string) (access, refresh string, expires time.Time, err error) {
 	identifier = strings.TrimSpace(identifier)
 	channel = strings.TrimSpace(channel)
@@ -160,13 +147,13 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
 	}
-	if time.Now().UTC().After(ch.ExpiresAt) {
+	if s.clock.Now().After(ch.ExpiresAt) {
 		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
 	}
-	if ch.Attempts >= 5 {
+	if ch.Attempts >= domain.MaxOTPAttempts {
 		return "", "", time.Time{}, fmt.Errorf("too many attempts")
 	}
-	if bcrypt.CompareHashAndPassword([]byte(ch.CodeHash), []byte(code)) != nil {
+	if !s.hasher.Compare(ch.CodeHash, code) {
 		_ = s.otp.IncrementAttempts(ctx, ch.ID)
 		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
 	}
@@ -188,43 +175,27 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	return s.issueTokens(ctx, user.ID)
 }
 
+// Refresh rotates a valid refresh token.
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (access, refresh string, expires time.Time, err error) {
-	userID, err := s.refresh.FindValid(ctx, hashToken(refreshToken))
+	hash := domain.HashRefreshToken(refreshToken)
+	userID, err := s.refresh.FindValid(ctx, hash)
 	if err != nil {
 		return "", "", time.Time{}, fmt.Errorf("invalid refresh token")
 	}
-	_ = s.refresh.Revoke(ctx, hashToken(refreshToken))
+	_ = s.refresh.Revoke(ctx, hash)
 	return s.issueTokens(ctx, userID)
 }
 
 func (s *Service) issueTokens(ctx context.Context, userID string) (access, refresh string, expires time.Time, err error) {
-	expires = time.Now().UTC().Add(15 * time.Minute)
-	access, err = orbittoken.SignAccessToken(s.jwtPrivateKey, s.jwtKeyID, userID, expires)
+	now := s.clock.Now()
+	expires = now.Add(domain.AccessTokenTTL)
+	access, err = s.signer.SignAccessToken(userID, expires)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-	refresh = uuid.NewString() + uuid.NewString()
-	refreshExp := time.Now().UTC().Add(30 * 24 * time.Hour)
-	if err := s.refresh.Store(ctx, userID, hashToken(refresh), refreshExp); err != nil {
+	refresh = s.ids.NewID() + s.ids.NewID()
+	if err := s.refresh.Store(ctx, userID, domain.HashRefreshToken(refresh), now.Add(domain.RefreshTokenTTL)); err != nil {
 		return "", "", time.Time{}, err
 	}
 	return access, refresh, expires, nil
-}
-
-func generateOTPCode() (string, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%06d", n.Int64()), nil
-}
-
-func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}
-
-func hashIdentifier(id string) string {
-	sum := sha256.Sum256([]byte(id))
-	return hex.EncodeToString(sum[:8])
 }

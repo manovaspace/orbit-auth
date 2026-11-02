@@ -11,7 +11,6 @@ FROM alpine:3.24
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /auth /app/auth
-COPY --from=builder /src/migrations /app/migrations
 EXPOSE 10100
 USER nobody
 CMD ["/app/auth"]

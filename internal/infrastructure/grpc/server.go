@@ -13,12 +13,26 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Server struct {
-	authv1.UnimplementedAuthServiceServer
-	svc *application.Service
+// AuthService is the port the gRPC adapter needs from the application layer.
+type AuthService interface {
+	RequestOTP(ctx context.Context, identifier, channel, correlationID string) (time.Time, error)
+	VerifyOTP(ctx context.Context, identifier, channel, code string) (access, refresh string, expires time.Time, err error)
+	LoginWithPassword(ctx context.Context, identifier, password string) (access, refresh string, expires time.Time, err error)
+	Refresh(ctx context.Context, refreshToken string) (access, refresh string, expires time.Time, err error)
+	CreateApiToken(ctx context.Context, userID, name string, scopes []string, expiresAt *time.Time) (tokenID, prefix, secret string, err error)
+	ListApiTokens(ctx context.Context, userID string) ([]domain.APITokenInfo, error)
+	RevokeApiToken(ctx context.Context, userID, tokenID string) error
+	ValidateApiToken(ctx context.Context, secret string) (userID string, scopes []string, err error)
 }
 
-func New(svc *application.Service) *Server {
+// Server implements the AuthService gRPC API. Status codes and error strings
+// are the external contract and must not change.
+type Server struct {
+	authv1.UnimplementedAuthServiceServer
+	svc AuthService
+}
+
+func New(svc AuthService) *Server {
 	return &Server{svc: svc}
 }
 

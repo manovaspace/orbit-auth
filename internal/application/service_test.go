@@ -2,14 +2,8 @@ package application
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -25,10 +19,6 @@ type fakeOTP struct {
 	consumed bool
 	attempts int
 }
-
-var testJWTKeyOnce sync.Once
-var testJWTPrivateKey *rsa.PrivateKey
-var testJWTKeyErr error
 
 func (f *fakeOTP) UpsertChallenge(_ context.Context, ch domain.OTPChallenge) error {
 	f.mu.Lock()
@@ -119,13 +109,13 @@ func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string, stri
 
 type fakeApiTokens struct{}
 
-func (fakeApiTokens) Create(context.Context, domain.ApiToken) error { return nil }
-func (fakeApiTokens) ListByUser(context.Context, string) ([]domain.ApiTokenInfo, error) {
+func (fakeApiTokens) Create(context.Context, domain.APIToken) error { return nil }
+func (fakeApiTokens) ListByUser(context.Context, string) ([]domain.APITokenInfo, error) {
 	return nil, nil
 }
 func (fakeApiTokens) RevokeToken(context.Context, string, string) error { return nil }
-func (fakeApiTokens) FindByPrefix(context.Context, string) (domain.ApiToken, error) {
-	return domain.ApiToken{}, context.Canceled
+func (fakeApiTokens) FindByPrefix(context.Context, string) (domain.APIToken, error) {
+	return domain.APIToken{}, context.Canceled
 }
 
 type fakeRefreshStore struct {
@@ -198,47 +188,27 @@ func (f fakeFlags) Bool(_ context.Context, flag string, _ bool) bool {
 	}
 }
 
-func mustService(t *testing.T, otp domain.OTPRepository, users domain.UserRepository, n domain.Notifier, flags FlagEvaluator) *Service {
+func mustService(t *testing.T, otp domain.OTPStore, users domain.UserStore, n domain.Notifier, flags domain.Flags) *Service {
 	return mustServiceWithRefresh(t, otp, users, newFakeRefreshStore(), n, flags)
 }
 
-func mustServiceWithRefresh(t *testing.T, otp domain.OTPRepository, users domain.UserRepository, refresh domain.RefreshTokenRepository, n domain.Notifier, flags FlagEvaluator) *Service {
+func mustServiceWithRefresh(t *testing.T, otp domain.OTPStore, users domain.UserStore, refresh domain.RefreshTokenStore, n domain.Notifier, flags domain.Flags) *Service {
 	t.Helper()
-	t.Setenv("DEPLOYMENT_ENVIRONMENT", "dev")
-	testJWTKeyOnce.Do(func() {
-		testJWTPrivateKey, testJWTKeyErr = rsa.GenerateKey(rand.Reader, 2048)
+	return NewService(Deps{
+		OTP:      otp,
+		Users:    users,
+		Refresh:  refresh,
+		Tokens:   fakeApiTokens{},
+		Notifier: n,
+		Flags:    flags,
+		Clock:    fixedClock{at: time.Now().UTC()},
+		IDs:      fixedIDs{id: "11111111-1111-1111-1111-111111111111"},
+		Signer:   testSigner{},
+		Hasher:   testHasher{},
+		Codes:    testCodes{},
+		Secrets:  testSecrets{},
+		Logger:   func(string, ...any) {},
 	})
-	if testJWTKeyErr != nil {
-		t.Fatal(testJWTKeyErr)
-	}
-	tempDir := t.TempDir()
-	privateDER, err := x509.MarshalPKCS8PrivateKey(testJWTPrivateKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	privatePath := filepath.Join(tempDir, "private.pem")
-	if err := os.WriteFile(privatePath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER}), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	publicDER, err := x509.MarshalPKIXPublicKey(&testJWTPrivateKey.PublicKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	publicDir := filepath.Join(tempDir, "public")
-	if err := os.Mkdir(publicDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(publicDir, "test-key.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER}), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("JWT_PRIVATE_KEY_FILE", privatePath)
-	t.Setenv("JWT_ACTIVE_KEY_ID", "test-key")
-	t.Setenv("JWT_PUBLIC_KEYS_DIR", publicDir)
-	svc, err := NewService(otp, users, refresh, fakeApiTokens{}, n, flags, func(string, ...any) {})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return svc
 }
 
 func TestRequestOTP_MobileRequiresE164(t *testing.T) {
@@ -300,7 +270,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 		if !otp.consumed {
 			t.Fatal("expected challenge to be marked consumed")
 		}
-		uid, err := refreshStore.FindValid(context.Background(), hashToken(refresh))
+		uid, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(refresh))
 		if err != nil || uid != "u1" {
 			t.Fatalf("expected stored refresh token for user u1, got uid=%q err=%v", uid, err)
 		}
@@ -454,7 +424,7 @@ func TestRefresh_ValidRotation(t *testing.T) {
 
 	initialRefreshToken := "valid-refresh-token-value-12345"
 	userID := "user-42"
-	err := refreshStore.Store(context.Background(), userID, hashToken(initialRefreshToken), time.Now().UTC().Add(24*time.Hour))
+	err := refreshStore.Store(context.Background(), userID, domain.HashRefreshToken(initialRefreshToken), time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,13 +447,13 @@ func TestRefresh_ValidRotation(t *testing.T) {
 	}
 
 	// Verify old refresh token is revoked / deleted
-	_, err = refreshStore.FindValid(context.Background(), hashToken(initialRefreshToken))
+	_, err = refreshStore.FindValid(context.Background(), domain.HashRefreshToken(initialRefreshToken))
 	if err == nil {
 		t.Fatal("expected old refresh token to be revoked/invalidated")
 	}
 
 	// Verify new refresh token is stored and maps to user
-	storedUser, err := refreshStore.FindValid(context.Background(), hashToken(newRefresh))
+	storedUser, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(newRefresh))
 	if err != nil {
 		t.Fatalf("expected new refresh token to be valid in store: %v", err)
 	}
@@ -511,9 +481,9 @@ func TestRefresh_RevokedOrNonExistent(t *testing.T) {
 
 	t.Run("revoked refresh token", func(t *testing.T) {
 		token := "active-then-revoked-token"
-		_ = refreshStore.Store(context.Background(), "user-99", hashToken(token), time.Now().UTC().Add(time.Hour))
+		_ = refreshStore.Store(context.Background(), "user-99", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour))
 		// Revoke the token
-		_ = refreshStore.Revoke(context.Background(), hashToken(token))
+		_ = refreshStore.Revoke(context.Background(), domain.HashRefreshToken(token))
 
 		_, _, _, err := svc.Refresh(context.Background(), token)
 		if err == nil {

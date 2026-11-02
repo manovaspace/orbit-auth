@@ -20,14 +20,24 @@ export NOTIFICATIONS_GRPC_ADDR=localhost:10110
 export GRPC_PORT=10100
 export HEALTH_PORT=10101
 go run ./cmd/auth
+go run ./cmd/auth migrate status   # up, down, status
 go test ./...
+TEST_DATABASE_URL='postgres://postgres:postgres@localhost:55440/test?sslmode=disable' go test ./... -race -count=1
 ./scripts/generate-proto.sh   # after proto changes
 ```
 
-Ports: gRPC on **10100** (`GRPC_PORT`), HTTP health on **10101** (`HEALTH_PORT`, `/healthz`, `/readyz`).
+Ports: gRPC on **10100** (`GRPC_PORT`), HTTP health on **10101** (`HEALTH_PORT`, `/healthz`, `/readyz`). HTTP runs on Fiber v3; gRPC is unchanged.
 Requires `orbit-notifications` on **10110** and dev Postgres.
 
 Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
+
+## Architecture
+
+- `internal/domain` — user, OTP and API-token types, pinned token rules and the ports: `OTPStore`, `UserStore`, `RefreshTokenStore`, `APITokenStore`, `Notifier`, `Flags`, `Clock`, `IDGenerator`, `TokenSigner`, `Hasher`, `CodeGenerator`, `SecretGenerator`. It imports no infrastructure, driver, HTTP framework or process package.
+- `internal/application` — OTP, password, refresh-token, API-token and demo-seed use cases. It receives `application.Deps` and reads no environment variable.
+- `internal/infrastructure` — adapters: `postgres` (sqlc-generated queries), `postgres/migrations` (embedded goose), `grpc`, `httpapi` (Fiber v3 probes), `notifications` (gRPC client), `featureflags`, `credentials` (bcrypt, OTP codes, API secrets), `jwt` (RS256 signer), `clock`, `ids`.
+- `cmd/auth` — wiring only, including `migrate` and demo-mode parsing.
+- `.golangci.yml` `depguard` rules enforce both boundaries. Do not weaken them to land a change.
 
 ## Non-negotiables
 
@@ -35,32 +45,39 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 2. **JWT verification before mutations** — never trust unauthenticated claims or bypass token validation.
 3. **Notifications strictly via gRPC** — call `orbit-notifications` on port 10110; never implement direct SMTP or raw mail calls in orbit-auth.
 4. **`log/slog` only** — `log.Printf` and `fmt.Println` logging are strictly forbidden.
-5. **Sequential migrations** — migrations in `migrations/` must be numbered sequentially without gaps. Never alter previously applied migrations.
+5. **Sequential embedded migrations** — files in `internal/infrastructure/postgres/migrations/` are numbered sequentially without gaps. Never alter previously applied migrations. Adoption of the old `schema_migrations` state is documented in [docs/migrations.md](./docs/migrations.md).
 6. **Zero credential leakage** — never log passwords, plaintext OTP codes, or JWT signing keys in stdout/stderr.
+7. **Credential formats are contracts** — bcrypt cost, OTP rules, refresh-token shape, `oat_` API-token format and RS256 claims are pinned by characterization tests. Changing one needs a migration and an ADR, not a refactor.
 
 ## Engineering gotchas
 
 - **gRPC interceptor order:** Panic recovery must wrap the outermost boundary; auth token validation must precede tenant context extraction in the interceptor chain.
 - **Proto code regeneration:** When editing `api/proto/auth/v1/`, run `./scripts/generate-proto.sh`. Never manually modify generated `*.pb.go` files.
 - **Unleash flag fallback:** When Unleash flags (`manova.auth.email_otp`, `manova.auth.mobile_otp`) are toggled off or unreachable, handlers return typed errors (`ErrEmailOTPDisabled`). Unit tests must mock the flag provider.
-- **Demo mode guard:** `DEMO_MODE=true` is permitted only when `DEPLOYMENT_ENVIRONMENT=dev`. The server must fail closed if demo mode is enabled in production.
-
+- **Demo mode guard:** `DEMO_MODE=true` is permitted only when `DEPLOYMENT_ENVIRONMENT=dev`. `cmd/auth` fails closed before the service starts if demo mode is enabled elsewhere.
+- **Migration adoption:** `migrate up` maps the old `schema_migrations` rows to goose versions without running SQL and without touching `schema_migrations`. Do not drop that table in this release.
 
 ## Feature Flags & Demo Mode
 
 - **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
-- **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup.
+- **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup. `cmd/auth` parses the JSON; the application validates and hashes each entry.
+
+## Events
+
+None. The service publishes and consumes no events; it calls `orbit-notifications` over gRPC. Do not wire `messagebus.Bus` without an ADR change.
 
 ## Stack
 
-- Go 1.26, gRPC + Postgres
-- Migrations in `migrations/`
+- Go 1.27.3, gRPC + Fiber v3 health + Postgres
+- Embedded goose migrations in `internal/infrastructure/postgres/migrations/`
+- sqlc queries in `internal/infrastructure/postgres/queries/`, generated package committed
 - Proto in `api/proto/auth/v1/`
 
 ## Docs
 
 | Topic | Path |
 | --- | --- |
+| Migrations, adoption, rollback | `docs/migrations.md` |
 | Platform auth ADR | `handbook/docs/orbit/decisions/011-platform-auth-notifications.md` |
 | Password + API tokens | `handbook/docs/orbit/decisions/016-orbit-auth-password-and-api-tokens.md` |
 | Dev quickstart | `handbook/docs/orbit/guides/platform-dev-quickstart.md` |
@@ -70,11 +87,15 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 
 | Path | Role |
 | --- | --- |
-| `cmd/auth/` | gRPC server entry |
-| `internal/domain/` | Ports, entities |
-| `internal/application/` | OTP, password, token use cases |
-| `internal/infrastructure/postgres/` | Store adapter |
+| `cmd/auth/` | gRPC server entry, wiring and `migrate` |
+| `internal/domain/` | Entities, pinned rules, ports |
+| `internal/application/` | OTP, password, token and demo use cases |
+| `internal/infrastructure/postgres/` | Store adapter, sqlc queries and embedded goose migrations |
 | `internal/infrastructure/grpc/` | gRPC handlers |
+| `internal/infrastructure/httpapi/` | Fiber v3 health probes |
+| `internal/infrastructure/credentials/` | bcrypt, OTP code and API-secret adapters |
+| `internal/infrastructure/jwt/` | RS256 signer adapter |
+| `internal/testutil/` | disposable-schema integration-test helper |
 
 ## Session pre-flight
 
@@ -85,15 +106,16 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 ## Definition of done
 
 - [ ] `go test ./...` exits 0
-- [ ] `go vet ./...` exits 0
+- [ ] `go test ./... -race -count=1` with `TEST_DATABASE_URL` exits 0
+- [ ] `go vet ./...` exits 0 and `golangci-lint run` reports 0 issues
 - [ ] `./scripts/generate-proto.sh` leaves no unstaged proto drift
 - [ ] New migrations include clean rollback statements
 - [ ] Docs updated in `handbook/docs/orbit/` if auth contracts or endpoints changed
 
 ## Do / don't
 
-
 - Use `log/slog` — not `log.Printf`
 - Notification delivery via `orbit-notifications` gRPC — not direct SMTP
 - Migrations are sequential — do not skip numbers
+- Never edit `internal/infrastructure/postgres/sqlcgen` by hand
 - No commit unless user asks

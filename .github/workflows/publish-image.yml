@@ -1,4 +1,4 @@
-# GHCR publish for Go services — replace orbit-auth (e.g. orbit-auth).
+# GHCR publish for orbit-auth.
 # Skip for libraries without a Dockerfile.
 # After first push: GitHub → Packages → package → Package settings → Change visibility → Public.
 # Stable: v* tags → semver + latest + edge. Dogfood: workflow_dispatch → edge + sha-*.
