@@ -16,8 +16,9 @@ const (
 	ChannelEmail = "email"
 	ChannelSMS   = "sms"
 
-	UserActive   = "active"
-	UserDisabled = "disabled"
+	UserActive        = "active"
+	UserDisabled      = "disabled"
+	UserSignupPending = "signup_pending"
 
 	// OTPTTL is how long a requested OTP challenge stays valid.
 	OTPTTL = 10 * time.Minute
@@ -57,12 +58,13 @@ func HashIdentifier(identifier string) string {
 
 // User is a product user.
 type User struct {
-	ID           string
-	Email        string
-	Mobile       string
-	PasswordHash string
-	DisplayName  string
-	Status       string
+	ID            string
+	Email         string
+	Mobile        string
+	PasswordHash  string
+	DisplayName   string
+	Status        string
+	EmailVerified bool
 }
 
 // OTPChallenge is a pending one-time code.
@@ -72,6 +74,7 @@ type OTPChallenge struct {
 	Channel    string
 	CodeHash   string
 	ExpiresAt  time.Time
+	CreatedAt  time.Time
 	Attempts   int
 }
 

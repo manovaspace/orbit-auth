@@ -9,11 +9,49 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createSignupUser = `-- name: CreateSignupUser :execrows
+INSERT INTO users (id, email, password_hash, display_name, status, email_verified_at)
+VALUES (
+    $1::uuid,
+    $2::text,
+    $3::text,
+    $4::text,
+    $5::text,
+    $6::timestamptz
+)
+ON CONFLICT (email) DO NOTHING
+`
+
+type CreateSignupUserParams struct {
+	ID              uuid.UUID
+	Email           string
+	PasswordHash    string
+	DisplayName     string
+	Status          string
+	EmailVerifiedAt pgtype.Timestamptz
+}
+
+func (q *Queries) CreateSignupUser(ctx context.Context, arg CreateSignupUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createSignupUser,
+		arg.ID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.DisplayName,
+		arg.Status,
+		arg.EmailVerifiedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createUserWithEmail = `-- name: CreateUserWithEmail :exec
-INSERT INTO users (id, email, status)
-VALUES ($1::uuid, $2::text, $3::text)
+INSERT INTO users (id, email, status, email_verified_at)
+VALUES ($1::uuid, $2::text, $3::text, NOW())
 `
 
 type CreateUserWithEmailParams struct {
@@ -48,18 +86,20 @@ SELECT id::text AS id,
        COALESCE(mobile, '') AS mobile,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
-       COALESCE(status, 'active') AS status
+       COALESCE(status, 'active') AS status,
+       (email_verified_at IS NOT NULL)::boolean AS email_verified
 FROM users
 WHERE email = $1::text
 `
 
 type FindUserByEmailRow struct {
-	ID           string
-	Email        string
-	Mobile       string
-	PasswordHash string
-	DisplayName  string
-	Status       string
+	ID            string
+	Email         string
+	Mobile        string
+	PasswordHash  string
+	DisplayName   string
+	Status        string
+	EmailVerified bool
 }
 
 func (q *Queries) FindUserByEmail(ctx context.Context, email string) (FindUserByEmailRow, error) {
@@ -72,6 +112,7 @@ func (q *Queries) FindUserByEmail(ctx context.Context, email string) (FindUserBy
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.Status,
+		&i.EmailVerified,
 	)
 	return i, err
 }
@@ -82,18 +123,20 @@ SELECT id::text AS id,
        COALESCE(mobile, '') AS mobile,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
-       COALESCE(status, 'active') AS status
+       COALESCE(status, 'active') AS status,
+       (email_verified_at IS NOT NULL)::boolean AS email_verified
 FROM users
 WHERE id = $1::uuid
 `
 
 type FindUserByIDRow struct {
-	ID           string
-	Email        string
-	Mobile       string
-	PasswordHash string
-	DisplayName  string
-	Status       string
+	ID            string
+	Email         string
+	Mobile        string
+	PasswordHash  string
+	DisplayName   string
+	Status        string
+	EmailVerified bool
 }
 
 func (q *Queries) FindUserByID(ctx context.Context, id uuid.UUID) (FindUserByIDRow, error) {
@@ -106,6 +149,7 @@ func (q *Queries) FindUserByID(ctx context.Context, id uuid.UUID) (FindUserByIDR
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.Status,
+		&i.EmailVerified,
 	)
 	return i, err
 }
@@ -116,18 +160,20 @@ SELECT id::text AS id,
        COALESCE(mobile, '') AS mobile,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
-       COALESCE(status, 'active') AS status
+       COALESCE(status, 'active') AS status,
+       (email_verified_at IS NOT NULL)::boolean AS email_verified
 FROM users
 WHERE mobile = $1::text
 `
 
 type FindUserByMobileRow struct {
-	ID           string
-	Email        string
-	Mobile       string
-	PasswordHash string
-	DisplayName  string
-	Status       string
+	ID            string
+	Email         string
+	Mobile        string
+	PasswordHash  string
+	DisplayName   string
+	Status        string
+	EmailVerified bool
 }
 
 func (q *Queries) FindUserByMobile(ctx context.Context, mobile string) (FindUserByMobileRow, error) {
@@ -140,8 +186,48 @@ func (q *Queries) FindUserByMobile(ctx context.Context, mobile string) (FindUser
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.Status,
+		&i.EmailVerified,
 	)
 	return i, err
+}
+
+const purgeUnverifiedSignups = `-- name: PurgeUnverifiedSignups :execrows
+DELETE FROM users
+WHERE status = 'signup_pending'
+  AND email_verified_at IS NULL
+  AND created_at < $1::timestamptz
+`
+
+func (q *Queries) PurgeUnverifiedSignups(ctx context.Context, before pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeUnverifiedSignups, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const reissueSignupUser = `-- name: ReissueSignupUser :one
+UPDATE users
+SET password_hash = $1::text,
+    display_name = $2::text,
+    updated_at = NOW()
+WHERE email = $3::text
+  AND status = 'signup_pending'
+  AND email_verified_at IS NULL
+RETURNING id::text AS id
+`
+
+type ReissueSignupUserParams struct {
+	PasswordHash string
+	DisplayName  string
+	Email        string
+}
+
+func (q *Queries) ReissueSignupUser(ctx context.Context, arg ReissueSignupUserParams) (string, error) {
+	row := q.db.QueryRow(ctx, reissueSignupUser, arg.PasswordHash, arg.DisplayName, arg.Email)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateLastLogin = `-- name: UpdateLastLogin :exec
@@ -154,14 +240,15 @@ func (q *Queries) UpdateLastLogin(ctx context.Context, id uuid.UUID) error {
 }
 
 const upsertDemoUserByEmail = `-- name: UpsertDemoUserByEmail :exec
-INSERT INTO users (id, email, mobile, password_hash, display_name, status)
+INSERT INTO users (id, email, mobile, password_hash, display_name, status, email_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
     $3::text,
     $4::text,
     $5::text,
-    'active'
+    'active',
+    CASE WHEN $2::text IS NOT NULL THEN NOW() ELSE NULL END
 )
 ON CONFLICT (email) DO UPDATE SET
     email = COALESCE(EXCLUDED.email, users.email),
@@ -169,6 +256,10 @@ ON CONFLICT (email) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
     status = 'active',
+    email_verified_at = CASE
+        WHEN EXCLUDED.email IS NOT NULL THEN COALESCE(users.email_verified_at, NOW())
+        ELSE users.email_verified_at
+    END,
     updated_at = NOW()
 `
 
@@ -192,14 +283,15 @@ func (q *Queries) UpsertDemoUserByEmail(ctx context.Context, arg UpsertDemoUserB
 }
 
 const upsertDemoUserByMobile = `-- name: UpsertDemoUserByMobile :exec
-INSERT INTO users (id, email, mobile, password_hash, display_name, status)
+INSERT INTO users (id, email, mobile, password_hash, display_name, status, email_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
     $3::text,
     $4::text,
     $5::text,
-    'active'
+    'active',
+    CASE WHEN $2::text IS NOT NULL THEN NOW() ELSE NULL END
 )
 ON CONFLICT (mobile) DO UPDATE SET
     email = COALESCE(EXCLUDED.email, users.email),
@@ -207,6 +299,10 @@ ON CONFLICT (mobile) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
     status = 'active',
+    email_verified_at = CASE
+        WHEN EXCLUDED.email IS NOT NULL THEN COALESCE(users.email_verified_at, NOW())
+        ELSE users.email_verified_at
+    END,
     updated_at = NOW()
 `
 
@@ -227,4 +323,27 @@ func (q *Queries) UpsertDemoUserByMobile(ctx context.Context, arg UpsertDemoUser
 		arg.DisplayName,
 	)
 	return err
+}
+
+const verifySignupUser = `-- name: VerifySignupUser :execrows
+UPDATE users
+SET status = 'active',
+    email_verified_at = $1::timestamptz,
+    updated_at = NOW()
+WHERE id = $2::uuid
+  AND status = 'signup_pending'
+  AND email_verified_at IS NULL
+`
+
+type VerifySignupUserParams struct {
+	EmailVerifiedAt pgtype.Timestamptz
+	ID              uuid.UUID
+}
+
+func (q *Queries) VerifySignupUser(ctx context.Context, arg VerifySignupUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, verifySignupUser, arg.EmailVerifiedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

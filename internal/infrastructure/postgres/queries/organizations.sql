@@ -72,3 +72,9 @@ SELECT count(*)::bigint AS count
 FROM organization_memberships
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND status = 'active';
+
+-- name: DeleteEmptyOrganizations :execrows
+DELETE FROM organizations o
+WHERE NOT EXISTS (
+    SELECT 1 FROM organization_memberships m WHERE m.org_id = o.id
+);

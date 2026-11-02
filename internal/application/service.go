@@ -19,6 +19,7 @@ type Deps struct {
 	Tokens   domain.APITokenStore
 	Orgs     domain.OrgStore
 	Invites  domain.InviteStore
+	Signup   domain.SignupStore
 	Notifier domain.Notifier
 	Flags    domain.Flags
 	Clock    domain.Clock
@@ -27,6 +28,10 @@ type Deps struct {
 	Hasher   domain.Hasher
 	Codes    domain.CodeGenerator
 	Secrets  domain.SecretGenerator
+
+	// SignupOpen is AUTH_SIGNUP=open. The default is false, so deployments
+	// that do not opt in keep self-serve registration disabled.
+	SignupOpen bool
 
 	// DemoMode enables seeding on start; DemoUsers is the parsed
 	// AUTH_DEMO_USERS array. Both are resolved by cmd from the environment.
@@ -48,6 +53,7 @@ type Service struct {
 	tokens              domain.APITokenStore
 	orgs                domain.OrgStore
 	invites             domain.InviteStore
+	signup              domain.SignupStore
 	notifier            domain.Notifier
 	flags               domain.Flags
 	clock               domain.Clock
@@ -56,6 +62,7 @@ type Service struct {
 	hasher              domain.Hasher
 	codes               domain.CodeGenerator
 	secrets             domain.SecretGenerator
+	signupOpen          bool
 	demoMode            bool
 	demoUsers           []domain.DemoUser
 	autoSelectSingleOrg bool
@@ -75,6 +82,7 @@ func NewService(deps Deps) *Service {
 		tokens:              deps.Tokens,
 		orgs:                deps.Orgs,
 		invites:             deps.Invites,
+		signup:              deps.Signup,
 		notifier:            deps.Notifier,
 		flags:               deps.Flags,
 		clock:               deps.Clock,
@@ -83,6 +91,7 @@ func NewService(deps Deps) *Service {
 		hasher:              deps.Hasher,
 		codes:               deps.Codes,
 		secrets:             deps.Secrets,
+		signupOpen:          deps.SignupOpen,
 		demoMode:            deps.DemoMode,
 		demoUsers:           deps.DemoUsers,
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,
@@ -121,31 +130,53 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 		return time.Time{}, fmt.Errorf("unsupported channel %q", channel)
 	}
 
-	_ = s.otp.DeleteExpiredChallenges(ctx)
-	code, err := s.codes.NewCode()
+	ch, code, err := s.newOTPChallenge(ctx, identifier, channel)
 	if err != nil {
-		return time.Time{}, err
-	}
-	hash, err := s.hasher.Hash(code)
-	if err != nil {
-		return time.Time{}, err
-	}
-	expires := s.clock.Now().Add(domain.OTPTTL)
-	ch := domain.OTPChallenge{
-		ID:         s.ids.NewID(),
-		Identifier: identifier,
-		Channel:    channel,
-		CodeHash:   hash,
-		ExpiresAt:  expires,
-	}
-	if err := s.otp.UpsertChallenge(ctx, ch); err != nil {
 		return time.Time{}, err
 	}
 	if err := s.notifier.SendOTP(ctx, channel, identifier, code, correlationID); err != nil {
 		return time.Time{}, err
 	}
 	s.logger("otp_requested", "channel", channel, "identifier_hash", domain.HashIdentifier(identifier), "correlation_id", correlationID)
-	return expires, nil
+	return ch.ExpiresAt, nil
+}
+
+// newOTPChallenge creates and stores one challenge. RequestOTP and sign-up
+// registration share it so both use the pinned TTL, code format and attempt
+// limits.
+func (s *Service) newOTPChallenge(ctx context.Context, identifier, channel string) (domain.OTPChallenge, string, error) {
+	_ = s.otp.DeleteExpiredChallenges(ctx)
+	ch, code, err := s.buildOTPChallenge(identifier, channel)
+	if err != nil {
+		return domain.OTPChallenge{}, "", err
+	}
+	if err := s.otp.UpsertChallenge(ctx, ch); err != nil {
+		return domain.OTPChallenge{}, "", err
+	}
+	return ch, code, nil
+}
+
+// buildOTPChallenge creates the challenge and code without writing them. The
+// sign-up retry path writes the challenge through the signup store so the
+// credential update and challenge rotation share one transaction.
+func (s *Service) buildOTPChallenge(identifier, channel string) (domain.OTPChallenge, string, error) {
+	code, err := s.codes.NewCode()
+	if err != nil {
+		return domain.OTPChallenge{}, "", err
+	}
+	hash, err := s.hasher.Hash(code)
+	if err != nil {
+		return domain.OTPChallenge{}, "", err
+	}
+	now := s.clock.Now()
+	return domain.OTPChallenge{
+		ID:         s.ids.NewID(),
+		Identifier: identifier,
+		Channel:    channel,
+		CodeHash:   hash,
+		ExpiresAt:  now.Add(domain.OTPTTL),
+		CreatedAt:  now,
+	}, code, nil
 }
 
 // VerifyOTP consumes a valid challenge and issues a token pair.
@@ -153,21 +184,21 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	identifier = strings.TrimSpace(identifier)
 	channel = strings.TrimSpace(channel)
 	if identifier == "" || channel == "" || code == "" {
-		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
+		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	ch, err := s.otp.GetLatestChallenge(ctx, identifier, channel)
 	if err != nil {
-		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
+		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if s.clock.Now().After(ch.ExpiresAt) {
-		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
+		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if ch.Attempts >= domain.MaxOTPAttempts {
-		return "", "", time.Time{}, fmt.Errorf("too many attempts")
+		return "", "", time.Time{}, ErrTooManyOTPAttempts
 	}
 	if !s.hasher.Compare(ch.CodeHash, code) {
 		_ = s.otp.IncrementAttempts(ctx, ch.ID)
-		return "", "", time.Time{}, fmt.Errorf("invalid or expired code")
+		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if err := s.otp.ConsumeChallenge(ctx, ch.ID); err != nil {
 		return "", "", time.Time{}, err
@@ -183,6 +214,11 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	}
 	if err != nil {
 		return "", "", time.Time{}, err
+	}
+	// A self-serve account stays unusable until VerifySignup activates it.
+	// OTP login must not be a shortcut around that verification.
+	if user.Status == domain.UserSignupPending {
+		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	return s.issueTokens(ctx, user.ID)
 }

@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	notificationsv1 "github.com/manovaspace/orbit-notifications/api/notifications/v1"
@@ -37,6 +38,27 @@ func (c *Client) SendOTP(ctx context.Context, channel, recipient, code, correlat
 		Recipient:     recipient,
 		CorrelationId: correlationID,
 		Vars:          map[string]string{"code": code},
+	})
+	return err
+}
+
+// SendSignupVerification asks orbit-notifications to render and deliver the
+// signup_verify email template. The template itself lives in
+// orbit-notifications; this adapter only supplies its documented variables.
+func (c *Client) SendSignupVerification(ctx context.Context, recipient, code string, expiresInMinutes int, locale, correlationID string) error {
+	if locale != "fa" && locale != "en" {
+		locale = "en"
+	}
+	_, err := c.api.Send(ctx, &notificationsv1.SendRequest{
+		Template:      "signup_verify",
+		Channel:       "email",
+		Recipient:     recipient,
+		CorrelationId: correlationID,
+		Vars: map[string]string{
+			"code":               code,
+			"expires_in_minutes": strconv.Itoa(expiresInMinutes),
+			"locale":             locale,
+		},
 	})
 	return err
 }

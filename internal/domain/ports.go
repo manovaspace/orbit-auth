@@ -25,6 +25,22 @@ type UserStore interface {
 	UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error
 }
 
+// SignupStore persists self-serve sign-up accounts. CreateSignupUser writes
+// the account and, in the same transaction, either creates the organization it
+// owns or accepts the invitation that proved the address. VerifySignup
+// activates a pending account after the email OTP succeeded.
+type SignupStore interface {
+	CreateSignupUser(ctx context.Context, user User, org *Organization, invite *Invite, acceptedAt time.Time) (created bool, err error)
+	// ReissuePendingSignup replaces the credentials of an existing unverified
+	// sign-up. When challenge is non-nil it also invalidates the address's
+	// older challenges and writes the new one; when invite is non-nil it
+	// activates the account and accepts that invitation instead. It returns
+	// false when the address is not a pending sign-up.
+	ReissuePendingSignup(ctx context.Context, user User, challenge *OTPChallenge, invite *Invite, acceptedAt time.Time) (userID string, reissued bool, err error)
+	VerifySignup(ctx context.Context, userID string, verifiedAt time.Time) error
+	PurgeUnverifiedSignups(ctx context.Context, before time.Time) (int64, error)
+}
+
 // RefreshTokenStore persists refresh tokens by their hash. A stored token
 // remembers the organization selected when the pair was issued; orgID is empty
 // when no organization was active.
@@ -75,11 +91,12 @@ type InviteStore interface {
 	AcceptInvite(ctx context.Context, inviteID, orgID, userID string, acceptedAt time.Time) error
 }
 
-// Notifier sends an OTP or an organization invitation through
-// orbit-notifications. The service never talks to a mail or SMS provider
-// directly.
+// Notifier sends an OTP, a sign-up verification or an organization invitation
+// through orbit-notifications. The service never talks to a mail or SMS
+// provider directly.
 type Notifier interface {
 	SendOTP(ctx context.Context, channel, recipient, code, correlationID string) error
+	SendSignupVerification(ctx context.Context, recipient, code string, expiresInMinutes int, locale, correlationID string) error
 	SendOrgInvite(ctx context.Context, invite InviteNotification) error
 }
 

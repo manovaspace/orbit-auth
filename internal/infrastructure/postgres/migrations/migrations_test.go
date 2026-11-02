@@ -9,6 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/manovaspace/orbit-auth/internal/domain"
+	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres"
 	"github.com/manovaspace/orbit-auth/internal/testutil"
 )
 
@@ -99,16 +101,19 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 6 {
-		t.Fatalf("applied %d migrations, want 6", len(results))
+	if len(results) != 7 {
+		t.Fatalf("applied %d migrations, want 7", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
 			t.Fatalf("%s was not created", table)
 		}
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 6 || target != 6 {
-		t.Fatalf("version = %d/%d, err=%v, want 6/6", current, target, err)
+	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
+		t.Fatal("users.email_verified_at was not created")
+	}
+	if current, target, err := m.Version(ctx); err != nil || current != 7 || target != 7 {
+		t.Fatalf("version = %d/%d, err=%v, want 7/7", current, target, err)
 	}
 }
 
@@ -150,10 +155,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 6 || target != 6 {
-		t.Fatalf("version = %d/%d, err=%v, want 6/6", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 7 || target != 7 {
+		t.Fatalf("version = %d/%d, err=%v, want 7/7", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -206,7 +211,57 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7)
+}
+
+func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
+	db := testutil.OpenPostgres(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	m, err := Open(db.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Close() }()
+
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Roll 007 back so the next insert represents an account created before
+	// self-serve sign-up existed.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 007: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `
+		INSERT INTO users (id, email, password_hash, status)
+		VALUES ('11111111-1111-1111-1111-111111111111', 'legacy@example.com', 'hash', 'active')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatalf("reapply 007: %v", err)
+	}
+	var verified, created *time.Time
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT email_verified_at, created_at FROM users WHERE email = 'legacy@example.com'`).Scan(&verified, &created); err != nil {
+		t.Fatal(err)
+	}
+	if verified == nil {
+		t.Fatal("backfill left the existing email unverified")
+	}
+	if created == nil || !verified.Equal(*created) {
+		t.Fatalf("email_verified_at = %v, want created_at %v", verified, created)
+	}
+
+	store := postgres.New(db.Pool)
+	user, err := store.FindByEmail(ctx, "legacy@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !user.EmailVerified || user.Status != domain.UserActive {
+		t.Fatalf("backfilled user = %+v, want active and verified", user)
+	}
 }
 
 func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
@@ -227,6 +282,24 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("down: %v", err)
 	}
+	if result.Source.Version != 7 {
+		t.Fatalf("rolled back version %d, want 7", result.Source.Version)
+	}
+	if columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
+		t.Fatal("down left users.email_verified_at in place")
+	}
+	if !tableExists(t, ctx, db.Pool, db.Schema, "organization_invites") {
+		t.Fatal("down of 007 removed organization_invites from 006")
+	}
+	if !columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
+		t.Fatal("down of 007 removed refresh_tokens.org_id from 005")
+	}
+
+	// A second rollback removes migration 006 as well.
+	result, err = m.Down(ctx)
+	if err != nil {
+		t.Fatalf("second down: %v", err)
+	}
 	if result.Source.Version != 6 {
 		t.Fatalf("rolled back version %d, want 6", result.Source.Version)
 	}
@@ -243,20 +316,11 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 		t.Fatal("down removed api_tokens from migration 003")
 	}
 
-	// A second rollback removes migration 005 as well.
-	result, err = m.Down(ctx)
-	if err != nil {
-		t.Fatalf("second down: %v", err)
-	}
-	if result.Source.Version != 5 {
-		t.Fatalf("rolled back version %d, want 5", result.Source.Version)
-	}
-	if columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
-		t.Fatal("down left refresh_tokens.org_id in place")
-	}
-
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("reapply after down: %v", err)
+	}
+	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
+		t.Fatal("up after down did not recreate users.email_verified_at")
 	}
 	if !columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
 		t.Fatal("up after down did not recreate refresh_tokens.org_id")

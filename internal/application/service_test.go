@@ -62,6 +62,16 @@ func (f *fakeOTP) ConsumeChallenge(_ context.Context, id string) error {
 
 func (f *fakeOTP) DeleteExpiredChallenges(context.Context) error { return nil }
 
+func (f *fakeOTP) deleteChallenges(identifier, channel string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ch.Identifier == identifier && f.ch.Channel == channel {
+		f.ch = domain.OTPChallenge{}
+		f.consumed = false
+		f.attempts = 0
+	}
+}
+
 type fakeUsers struct {
 	mu   sync.RWMutex
 	user domain.User
@@ -182,6 +192,14 @@ type fakeNotifier struct {
 	invite        domain.InviteNotification
 	inviteCalls   int
 	inviteErr     error
+
+	signupRecipient   string
+	signupCode        string
+	signupExpires     int
+	signupLocale      string
+	signupCorrelation string
+	signupCalls       int
+	signupErr         error
 }
 
 func (f *fakeNotifier) SendOTP(_ context.Context, channel, recipient, _, _ string) error {
@@ -190,6 +208,18 @@ func (f *fakeNotifier) SendOTP(_ context.Context, channel, recipient, _, _ strin
 	f.lastChannel = channel
 	f.lastRecipient = recipient
 	return nil
+}
+
+func (f *fakeNotifier) SendSignupVerification(_ context.Context, recipient, code string, expiresInMinutes int, locale, correlationID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.signupRecipient = recipient
+	f.signupCode = code
+	f.signupExpires = expiresInMinutes
+	f.signupLocale = locale
+	f.signupCorrelation = correlationID
+	f.signupCalls++
+	return f.signupErr
 }
 
 func (f *fakeNotifier) SendOrgInvite(_ context.Context, invite domain.InviteNotification) error {

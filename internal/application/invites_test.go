@@ -212,8 +212,8 @@ func inviteFixture(t *testing.T) (*Service, *fakeOrgStore, *fakeInviteStore, *fa
 	users := inviteUsers{
 		fakeUsers: &fakeUsers{},
 		byID: map[string]domain.User{
-			"inviter": {ID: "inviter", Email: "owner@example.com", DisplayName: "Owner", Status: domain.UserActive},
-			"member":  {ID: "member", Email: "member@example.com", Status: domain.UserActive},
+			"inviter": {ID: "inviter", Email: "owner@example.com", DisplayName: "Owner", Status: domain.UserActive, EmailVerified: true},
+			"member":  {ID: "member", Email: "member@example.com", Status: domain.UserActive, EmailVerified: true},
 		},
 	}
 	notifier := &fakeNotifier{}
@@ -465,7 +465,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 		svc.users = inviteUsers{
 			fakeUsers: &fakeUsers{},
 			byID: map[string]domain.User{
-				"stranger": {ID: "stranger", Email: "stranger@example.com", Status: domain.UserActive},
+				"stranger": {ID: "stranger", Email: "stranger@example.com", Status: domain.UserActive, EmailVerified: true},
 			},
 		}
 		if _, err := svc.AcceptInvite(ctx, "stranger", notifier.invite.AcceptToken); !errors.Is(err, domain.ErrInvalidInvite) {
@@ -484,7 +484,23 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 		svc.users = inviteUsers{
 			fakeUsers: &fakeUsers{},
 			byID: map[string]domain.User{
-				"member": {ID: "member", Mobile: "+989121234567", Status: domain.UserActive},
+				"member": {ID: "member", Email: "member@example.com", Status: domain.UserSignupPending},
+			},
+		}
+		if _, err := svc.AcceptInvite(ctx, "member", notifier.invite.AcceptToken); !errors.Is(err, domain.ErrInvalidInvite) {
+			t.Fatalf("err = %v, want ErrInvalidInvite", err)
+		}
+	})
+
+	t.Run("active account with an unverified email", func(t *testing.T) {
+		svc, _, _, notifier, org := inviteFixture(t)
+		if _, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com"); err != nil {
+			t.Fatal(err)
+		}
+		svc.users = inviteUsers{
+			fakeUsers: &fakeUsers{},
+			byID: map[string]domain.User{
+				"member": {ID: "member", Email: "member@example.com", Status: domain.UserActive},
 			},
 		}
 		if _, err := svc.AcceptInvite(ctx, "member", notifier.invite.AcceptToken); !errors.Is(err, domain.ErrInvalidInvite) {
@@ -500,7 +516,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 		svc.users = inviteUsers{
 			fakeUsers: &fakeUsers{},
 			byID: map[string]domain.User{
-				"member": {ID: "member", Email: "member@example.com", Status: domain.UserDisabled},
+				"member": {ID: "member", Email: "member@example.com", Status: domain.UserDisabled, EmailVerified: true},
 			},
 		}
 		if _, err := svc.AcceptInvite(ctx, "member", notifier.invite.AcceptToken); !errors.Is(err, domain.ErrInvalidInvite) {

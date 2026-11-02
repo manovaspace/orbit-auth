@@ -69,13 +69,14 @@ type RefreshToken struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	Email        *string
-	CreatedAt    pgtype.Timestamptz
-	Mobile       *string
-	PasswordHash *string
-	DisplayName  *string
-	Status       string
-	UpdatedAt    pgtype.Timestamptz
-	LastLoginAt  pgtype.Timestamptz
+	ID              uuid.UUID
+	Email           *string
+	CreatedAt       pgtype.Timestamptz
+	Mobile          *string
+	PasswordHash    *string
+	DisplayName     *string
+	Status          string
+	UpdatedAt       pgtype.Timestamptz
+	LastLoginAt     pgtype.Timestamptz
+	EmailVerifiedAt pgtype.Timestamptz
 }

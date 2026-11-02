@@ -20,6 +20,7 @@ export NOTIFICATIONS_GRPC_ADDR=localhost:10110
 export GRPC_PORT=10100
 export HEALTH_PORT=10101
 export AUTH_AUTO_SELECT_SINGLE_ORG=true
+export AUTH_SIGNUP=off
 go run ./cmd/auth
 go run ./cmd/auth migrate status   # up, down, status
 go test ./...
@@ -63,6 +64,7 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 - **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds the optional `org` access-token claim at login when the user has exactly one active membership. Zero or many memberships omit it. `SelectOrg` rotates the refresh token and issues a pair carrying the selected org.
 - **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup. `cmd/auth` parses the JSON; the application validates and hashes each entry.
+- **Self-serve sign-up:** `AUTH_SIGNUP` is `open` or `off` (default `off`), read in `cmd/auth` and injected through `application.Deps`. While off, `SignupService` returns `codes.FailedPrecondition` "sign-up is disabled" and writes nothing. A sign-up account is `signup_pending` until `VerifySignup` receives both the `signup_verify` OTP and the pending account password; password and OTP login refuse it with the generic invalid-credentials error. A retry for a still-pending address replaces its credentials and reissues the code (at most once per 60 seconds); an active account is left untouched. Admin and demo accounts are verified from the start, and a valid invite token verifies the address without an OTP.
 
 ## Events
 
