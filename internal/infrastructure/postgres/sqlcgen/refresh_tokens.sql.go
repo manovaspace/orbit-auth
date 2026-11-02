@@ -13,18 +13,24 @@ import (
 )
 
 const findValidRefreshToken = `-- name: FindValidRefreshToken :one
-SELECT user_id::text AS user_id
+SELECT user_id::text AS user_id,
+       COALESCE(org_id::text, '')::text AS org_id
 FROM refresh_tokens
 WHERE token_hash = $1
   AND expires_at > NOW()
   AND revoked_at IS NULL
 `
 
-func (q *Queries) FindValidRefreshToken(ctx context.Context, tokenHash string) (string, error) {
+type FindValidRefreshTokenRow struct {
+	UserID string
+	OrgID  string
+}
+
+func (q *Queries) FindValidRefreshToken(ctx context.Context, tokenHash string) (FindValidRefreshTokenRow, error) {
 	row := q.db.QueryRow(ctx, findValidRefreshToken, tokenHash)
-	var user_id string
-	err := row.Scan(&user_id)
-	return user_id, err
+	var i FindValidRefreshTokenRow
+	err := row.Scan(&i.UserID, &i.OrgID)
+	return i, err
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
@@ -37,13 +43,20 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) erro
 }
 
 const storeRefreshToken = `-- name: StoreRefreshToken :exec
-INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-VALUES ($1::uuid, $2::uuid, $3, $4)
+INSERT INTO refresh_tokens (id, user_id, org_id, token_hash, expires_at)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::uuid,
+    $4,
+    $5
+)
 `
 
 type StoreRefreshTokenParams struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
+	OrgID     pgtype.UUID
 	TokenHash string
 	ExpiresAt pgtype.Timestamptz
 }
@@ -52,6 +65,7 @@ func (q *Queries) StoreRefreshToken(ctx context.Context, arg StoreRefreshTokenPa
 	_, err := q.db.Exec(ctx, storeRefreshToken,
 		arg.ID,
 		arg.UserID,
+		arg.OrgID,
 		arg.TokenHash,
 		arg.ExpiresAt,
 	)

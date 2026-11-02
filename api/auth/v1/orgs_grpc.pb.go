@@ -25,6 +25,7 @@ const (
 	OrgService_AddMember_FullMethodName     = "/auth.v1.OrgService/AddMember"
 	OrgService_RemoveMember_FullMethodName  = "/auth.v1.OrgService/RemoveMember"
 	OrgService_SuspendMember_FullMethodName = "/auth.v1.OrgService/SuspendMember"
+	OrgService_SelectOrg_FullMethodName     = "/auth.v1.OrgService/SelectOrg"
 )
 
 // OrgServiceClient is the client API for OrgService service.
@@ -46,6 +47,12 @@ type OrgServiceClient interface {
 	AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*AddMemberResponse, error)
 	RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error)
 	SuspendMember(ctx context.Context, in *SuspendMemberRequest, opts ...grpc.CallOption) (*SuspendMemberResponse, error)
+	// SelectOrg switches the caller's active organization. It rotates the
+	// presented refresh token and returns a new access/refresh pair that carries
+	// the org claim. The refresh token is required because the access token is
+	// stateless and cannot be revoked; rotation is what makes the switch durable
+	// and prevents an old pair from silently selecting the new organization.
+	SelectOrg(ctx context.Context, in *SelectOrgRequest, opts ...grpc.CallOption) (*SelectOrgResponse, error)
 }
 
 type orgServiceClient struct {
@@ -116,6 +123,16 @@ func (c *orgServiceClient) SuspendMember(ctx context.Context, in *SuspendMemberR
 	return out, nil
 }
 
+func (c *orgServiceClient) SelectOrg(ctx context.Context, in *SelectOrgRequest, opts ...grpc.CallOption) (*SelectOrgResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SelectOrgResponse)
+	err := c.cc.Invoke(ctx, OrgService_SelectOrg_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrgServiceServer is the server API for OrgService service.
 // All implementations must embed UnimplementedOrgServiceServer
 // for forward compatibility.
@@ -135,6 +152,12 @@ type OrgServiceServer interface {
 	AddMember(context.Context, *AddMemberRequest) (*AddMemberResponse, error)
 	RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error)
 	SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error)
+	// SelectOrg switches the caller's active organization. It rotates the
+	// presented refresh token and returns a new access/refresh pair that carries
+	// the org claim. The refresh token is required because the access token is
+	// stateless and cannot be revoked; rotation is what makes the switch durable
+	// and prevents an old pair from silently selecting the new organization.
+	SelectOrg(context.Context, *SelectOrgRequest) (*SelectOrgResponse, error)
 	mustEmbedUnimplementedOrgServiceServer()
 }
 
@@ -162,6 +185,9 @@ func (UnimplementedOrgServiceServer) RemoveMember(context.Context, *RemoveMember
 }
 func (UnimplementedOrgServiceServer) SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuspendMember not implemented")
+}
+func (UnimplementedOrgServiceServer) SelectOrg(context.Context, *SelectOrgRequest) (*SelectOrgResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SelectOrg not implemented")
 }
 func (UnimplementedOrgServiceServer) mustEmbedUnimplementedOrgServiceServer() {}
 func (UnimplementedOrgServiceServer) testEmbeddedByValue()                    {}
@@ -292,6 +318,24 @@ func _OrgService_SuspendMember_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrgService_SelectOrg_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SelectOrgRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).SelectOrg(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_SelectOrg_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).SelectOrg(ctx, req.(*SelectOrgRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrgService_ServiceDesc is the grpc.ServiceDesc for OrgService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -322,6 +366,10 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SuspendMember",
 			Handler:    _OrgService_SuspendMember_Handler,
+		},
+		{
+			MethodName: "SelectOrg",
+			Handler:    _OrgService_SelectOrg_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

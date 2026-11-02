@@ -61,3 +61,9 @@ func (s *Signer) KeySet() orbittoken.KeySet {
 func (s *Signer) SignAccessToken(subject string, expires time.Time) (string, error) {
 	return orbittoken.SignAccessToken(s.key, s.keyID, subject, expires)
 }
+
+// SignAccessTokenWithOrg signs a short-lived access token carrying the active
+// organization claim. A blank orgID omits the claim.
+func (s *Signer) SignAccessTokenWithOrg(subject, orgID string, expires time.Time) (string, error) {
+	return orbittoken.SignAccessTokenWithOrg(s.key, s.keyID, subject, orgID, expires)
+}

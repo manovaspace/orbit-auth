@@ -20,6 +20,7 @@ export HEALTH_PORT=10101
 export JWT_PRIVATE_KEY_FILE=./secrets/jwt-private.pem
 export JWT_ACTIVE_KEY_ID=orbit-dev-1
 export JWT_PUBLIC_KEYS_DIR=./secrets/jwt-public-keys
+export AUTH_AUTO_SELECT_SINGLE_ORG=true
 go run ./cmd/auth
 ```
 
@@ -108,6 +109,7 @@ must never be edited by hand.
 - **Demo Mode:** When `DEMO_MODE=true` in dev, pre-seeds accounts from `AUTH_DEMO_USERS` JSON array. Enabling it outside dev fails closed.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
 - **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
+- **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. `SelectOrg` switches organization and rotates the refresh token.
 
 ## Events
 
@@ -125,9 +127,10 @@ before integrating it.
 ## Reusable access token contract
 
 The public `token` package owns RS256 access-token signing, key loading, and
-issuer/expiry/subject validation for Orbit Auth and its consumers. It does not
-own product roles or refresh-token persistence. See `token/README.md` before
-integrating another verifier.
+issuer/expiry/subject validation for Orbit Auth and its consumers, plus the
+optional `org` claim for the active organization. It does not own product roles
+or refresh-token persistence. See `token/README.md` before integrating another
+verifier.
 
 ## Documentation
 

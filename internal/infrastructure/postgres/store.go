@@ -231,24 +231,39 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash,
 	})
 }
 
-// Store writes one refresh token by hash.
-func (s *Store) Store(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+// Store writes one refresh token by hash, remembering the selected
+// organization when orgID is not empty.
+func (s *Store) Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error {
 	user, err := uuid.Parse(userID)
 	if err != nil {
 		return fmt.Errorf("postgres: user id %q: %w", userID, err)
+	}
+	var org pgtype.UUID
+	if orgID != "" {
+		parsed, err := uuid.Parse(orgID)
+		if err != nil {
+			return fmt.Errorf("postgres: org id %q: %w", orgID, err)
+		}
+		org = pgtype.UUID{Bytes: parsed, Valid: true}
 	}
 	id := uuid.New()
 	return s.queries.StoreRefreshToken(ctx, sqlcgen.StoreRefreshTokenParams{
 		ID:        id,
 		UserID:    user,
+		OrgID:     org,
 		TokenHash: tokenHash,
 		ExpiresAt: timestamptz(expiresAt),
 	})
 }
 
-// FindValid returns the user ID of a live refresh token.
-func (s *Store) FindValid(ctx context.Context, tokenHash string) (string, error) {
-	return s.queries.FindValidRefreshToken(ctx, tokenHash)
+// FindValid returns the user ID and remembered organization of a live refresh
+// token. orgID is empty when the token has no selected organization.
+func (s *Store) FindValid(ctx context.Context, tokenHash string) (string, string, error) {
+	row, err := s.queries.FindValidRefreshToken(ctx, tokenHash)
+	if err != nil {
+		return "", "", err
+	}
+	return row.UserID, row.OrgID, nil
 }
 
 // Revoke marks one refresh token revoked.

@@ -17,6 +17,28 @@ format used by Orbit Auth and trusted consumers.
   mint them. This package does not own refresh tokens, product roles, or
   permission policy.
 
+## Organization claim
+
+An access token MAY carry an optional `org` claim: the UUID of the
+organization the user selected as active ([ADR-045 D3](/decisions/045-tenancy-and-access)).
+
+- `SignAccessToken` mints a token without the claim. `SignAccessTokenWithOrg`
+  mints one with it and rejects an org that is not a UUID.
+- The claim is omitted when no organization is active, so tokens minted before
+  the claim existed keep verifying. Consumers must treat a missing `org` as
+  "no active organization".
+- `AccessClaims.OrganizationID` parses the claim as `uuid.UUID`. It returns
+  `ok=false` when the claim is absent, blank or malformed; consumers must not
+  treat a malformed claim as an authorization decision.
+- Refreshing keeps the remembered organization while the user still has an
+  active membership. If the membership was suspended or removed, the refreshed
+  pair is issued without `org` and the refresh still succeeds.
+- `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds `org` at login only when
+  the user has exactly one active membership. Zero or many memberships produce
+  a token without `org`.
+- Roles and permissions are never in the token. Products resolve them per
+  request for the organization named by `org`.
+
 ## Key rotation
 
 1. Generate a new RSA key pair and a unique key ID. Add the new public PEM as

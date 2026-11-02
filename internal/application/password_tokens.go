@@ -13,6 +13,7 @@ var (
 	ErrInvalidCredentials = fmt.Errorf("invalid credentials")
 	ErrUserDisabled       = fmt.Errorf("user disabled")
 	ErrInvalidToken       = fmt.Errorf("invalid api token")
+	ErrInvalidRefresh     = fmt.Errorf("invalid refresh token")
 )
 
 // LoginWithPassword authenticates by email or E.164 mobile number plus password.

@@ -19,6 +19,10 @@ func (testSigner) SignAccessToken(subject string, _ time.Time) (string, error) {
 	return "signed-access-token-for-" + subject, nil
 }
 
+func (testSigner) SignAccessTokenWithOrg(subject, orgID string, _ time.Time) (string, error) {
+	return "signed-access-token-for-" + subject + "-org-" + orgID, nil
+}
+
 // testHasher mirrors the production bcrypt adapter so password-login tests run
 // the same comparison path.
 type testHasher struct{}

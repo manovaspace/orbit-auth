@@ -53,6 +53,7 @@ type RefreshToken struct {
 	ExpiresAt pgtype.Timestamptz
 	RevokedAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
+	OrgID     pgtype.UUID
 }
 
 type User struct {

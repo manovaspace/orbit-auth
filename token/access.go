@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 const (
@@ -32,8 +33,26 @@ const (
 )
 
 // AccessClaims contains the registered claims accepted by Orbit consumers.
+// OrgID is optional. It names the active organization when the user selected
+// one; a token without it remains valid and means "no active organization".
 type AccessClaims struct {
 	jwt.RegisteredClaims
+	OrgID string `json:"org,omitempty"`
+}
+
+// OrganizationID parses the optional org claim. It reports ok=false when the
+// claim is absent, blank or not a UUID, so consumers can treat all three cases
+// as "no active organization".
+func (c AccessClaims) OrganizationID() (uuid.UUID, bool) {
+	orgID := strings.TrimSpace(c.OrgID)
+	if orgID == "" {
+		return uuid.Nil, false
+	}
+	parsed, err := uuid.Parse(orgID)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return parsed, true
 }
 
 // KeySet maps JWT key IDs to the public keys that may verify access tokens.
@@ -155,8 +174,16 @@ func (keys KeySet) Document() JWKSet {
 	return document
 }
 
-// SignAccessToken signs a short-lived access token for an Orbit subject.
+// SignAccessToken signs a short-lived access token for an Orbit subject with
+// no active organization.
 func SignAccessToken(key *rsa.PrivateKey, keyID, subject string, expires time.Time) (string, error) {
+	return SignAccessTokenWithOrg(key, keyID, subject, "", expires)
+}
+
+// SignAccessTokenWithOrg signs a short-lived access token that carries the
+// optional active-organization claim. A blank orgID omits the claim, matching
+// SignAccessToken. A non-blank orgID must be a UUID.
+func SignAccessTokenWithOrg(key *rsa.PrivateKey, keyID, subject, orgID string, expires time.Time) (string, error) {
 	if key == nil {
 		return "", fmt.Errorf("JWT private key is required")
 	}
@@ -168,12 +195,23 @@ func SignAccessToken(key *rsa.PrivateKey, keyID, subject string, expires time.Ti
 	if subject == "" {
 		return "", fmt.Errorf("JWT subject is required")
 	}
-	claims := AccessClaims{RegisteredClaims: jwt.RegisteredClaims{
-		Issuer:    Issuer,
-		Subject:   subject,
-		ExpiresAt: jwt.NewNumericDate(expires),
-		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
-	}}
+	orgID = strings.TrimSpace(orgID)
+	if orgID != "" {
+		parsed, err := uuid.Parse(orgID)
+		if err != nil {
+			return "", fmt.Errorf("JWT org claim must be a UUID")
+		}
+		orgID = parsed.String()
+	}
+	claims := AccessClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    Issuer,
+			Subject:   subject,
+			ExpiresAt: jwt.NewNumericDate(expires),
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+		},
+		OrgID: orgID,
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = keyID
 	return token.SignedString(key)

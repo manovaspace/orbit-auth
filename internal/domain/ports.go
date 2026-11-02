@@ -25,10 +25,12 @@ type UserStore interface {
 	UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error
 }
 
-// RefreshTokenStore persists refresh tokens by their hash.
+// RefreshTokenStore persists refresh tokens by their hash. A stored token
+// remembers the organization selected when the pair was issued; orgID is empty
+// when no organization was active.
 type RefreshTokenStore interface {
-	Store(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
-	FindValid(ctx context.Context, tokenHash string) (userID string, err error)
+	Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error
+	FindValid(ctx context.Context, tokenHash string) (userID, orgID string, err error)
 	Revoke(ctx context.Context, tokenHash string) error
 }
 
@@ -78,9 +80,11 @@ type IDGenerator interface {
 	NewID() string
 }
 
-// TokenSigner signs an RS256 access token for subject.
+// TokenSigner signs an RS256 access token for subject, optionally carrying an
+// active organization claim.
 type TokenSigner interface {
 	SignAccessToken(subject string, expires time.Time) (string, error)
+	SignAccessTokenWithOrg(subject, orgID string, expires time.Time) (string, error)
 }
 
 // Hasher hashes and verifies passwords and API-token secrets. The production

@@ -127,38 +127,43 @@ func (fakeApiTokens) FindByPrefix(context.Context, string) (domain.APIToken, err
 	return domain.APIToken{}, context.Canceled
 }
 
+type fakeRefreshToken struct {
+	userID string
+	orgID  string
+}
+
 type fakeRefreshStore struct {
 	mu     sync.RWMutex
-	tokens map[string]string // tokenHash -> userID
+	tokens map[string]fakeRefreshToken // tokenHash -> user and org
 }
 
 func newFakeRefreshStore() *fakeRefreshStore {
 	return &fakeRefreshStore{
-		tokens: make(map[string]string),
+		tokens: make(map[string]fakeRefreshToken),
 	}
 }
 
-func (f *fakeRefreshStore) Store(_ context.Context, userID, tokenHash string, _ time.Time) error {
+func (f *fakeRefreshStore) Store(_ context.Context, userID, orgID, tokenHash string, _ time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.tokens == nil {
-		f.tokens = make(map[string]string)
+		f.tokens = make(map[string]fakeRefreshToken)
 	}
-	f.tokens[tokenHash] = userID
+	f.tokens[tokenHash] = fakeRefreshToken{userID: userID, orgID: orgID}
 	return nil
 }
 
-func (f *fakeRefreshStore) FindValid(_ context.Context, tokenHash string) (string, error) {
+func (f *fakeRefreshStore) FindValid(_ context.Context, tokenHash string) (string, string, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if f.tokens == nil {
-		return "", fmt.Errorf("refresh token not found")
+		return "", "", fmt.Errorf("refresh token not found")
 	}
-	userID, ok := f.tokens[tokenHash]
+	token, ok := f.tokens[tokenHash]
 	if !ok {
-		return "", fmt.Errorf("refresh token not found")
+		return "", "", fmt.Errorf("refresh token not found")
 	}
-	return userID, nil
+	return token.userID, token.orgID, nil
 }
 
 func (f *fakeRefreshStore) Revoke(_ context.Context, tokenHash string) error {
@@ -279,7 +284,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 		if !otp.consumed {
 			t.Fatal("expected challenge to be marked consumed")
 		}
-		uid, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(refresh))
+		uid, _, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(refresh))
 		if err != nil || uid != "u1" {
 			t.Fatalf("expected stored refresh token for user u1, got uid=%q err=%v", uid, err)
 		}
@@ -433,7 +438,7 @@ func TestRefresh_ValidRotation(t *testing.T) {
 
 	initialRefreshToken := "valid-refresh-token-value-12345"
 	userID := "user-42"
-	err := refreshStore.Store(context.Background(), userID, domain.HashRefreshToken(initialRefreshToken), time.Now().UTC().Add(24*time.Hour))
+	err := refreshStore.Store(context.Background(), userID, "", domain.HashRefreshToken(initialRefreshToken), time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,18 +461,21 @@ func TestRefresh_ValidRotation(t *testing.T) {
 	}
 
 	// Verify old refresh token is revoked / deleted
-	_, err = refreshStore.FindValid(context.Background(), domain.HashRefreshToken(initialRefreshToken))
+	_, _, err = refreshStore.FindValid(context.Background(), domain.HashRefreshToken(initialRefreshToken))
 	if err == nil {
 		t.Fatal("expected old refresh token to be revoked/invalidated")
 	}
 
 	// Verify new refresh token is stored and maps to user
-	storedUser, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(newRefresh))
+	storedUser, storedOrg, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(newRefresh))
 	if err != nil {
 		t.Fatalf("expected new refresh token to be valid in store: %v", err)
 	}
 	if storedUser != userID {
 		t.Fatalf("expected stored user %q, got %q", userID, storedUser)
+	}
+	if storedOrg != "" {
+		t.Fatalf("expected no stored org, got %q", storedOrg)
 	}
 
 	// Verify attempting to reuse old refresh token fails
@@ -490,7 +498,7 @@ func TestRefresh_RevokedOrNonExistent(t *testing.T) {
 
 	t.Run("revoked refresh token", func(t *testing.T) {
 		token := "active-then-revoked-token"
-		_ = refreshStore.Store(context.Background(), "user-99", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour))
+		_ = refreshStore.Store(context.Background(), "user-99", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour))
 		// Revoke the token
 		_ = refreshStore.Revoke(context.Background(), domain.HashRefreshToken(token))
 

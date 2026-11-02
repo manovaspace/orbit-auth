@@ -99,16 +99,16 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 4 {
-		t.Fatalf("applied %d migrations, want 4", len(results))
+	if len(results) != 5 {
+		t.Fatalf("applied %d migrations, want 5", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
 			t.Fatalf("%s was not created", table)
 		}
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 4 || target != 4 {
-		t.Fatalf("version = %d/%d, err=%v, want 4/4", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 5 || target != 5 {
+		t.Fatalf("version = %d/%d, err=%v, want 5/5", current, target, err)
 	}
 }
 
@@ -150,10 +150,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 4 || target != 4 {
-		t.Fatalf("version = %d/%d, err=%v, want 4/4", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 5 || target != 5 {
+		t.Fatalf("version = %d/%d, err=%v, want 5/5", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -206,7 +206,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5)
 }
 
 func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
@@ -227,14 +227,14 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("down: %v", err)
 	}
-	if result.Source.Version != 4 {
-		t.Fatalf("rolled back version %d, want 4", result.Source.Version)
+	if result.Source.Version != 5 {
+		t.Fatalf("rolled back version %d, want 5", result.Source.Version)
 	}
-	if tableExists(t, ctx, db.Pool, db.Schema, "organizations") {
-		t.Fatal("down left organizations in place")
+	if columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
+		t.Fatal("down left refresh_tokens.org_id in place")
 	}
-	if tableExists(t, ctx, db.Pool, db.Schema, "organization_memberships") {
-		t.Fatal("down left organization_memberships in place")
+	if !tableExists(t, ctx, db.Pool, db.Schema, "organizations") {
+		t.Fatal("down removed organizations from migration 004")
 	}
 	if !tableExists(t, ctx, db.Pool, db.Schema, "api_tokens") {
 		t.Fatal("down removed api_tokens from migration 003")
@@ -242,11 +242,8 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("reapply after down: %v", err)
 	}
-	if !tableExists(t, ctx, db.Pool, db.Schema, "organizations") {
-		t.Fatal("up after down did not recreate organizations")
-	}
-	if !tableExists(t, ctx, db.Pool, db.Schema, "organization_memberships") {
-		t.Fatal("up after down did not recreate organization_memberships")
+	if !columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
+		t.Fatal("up after down did not recreate refresh_tokens.org_id")
 	}
 }
 
@@ -350,6 +347,19 @@ func tableExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, 
 			JOIN pg_namespace n ON n.oid = c.relnamespace
 			WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('r', 'p')
 		)`, schema, name).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	return exists
+}
+
+func columnExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, table, column string) bool {
+	t.Helper()
+	var exists bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+		)`, schema, table, column).Scan(&exists); err != nil {
 		t.Fatal(err)
 	}
 	return exists
