@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	unleash "github.com/Unleash/unleash-client-go/v4"
@@ -19,8 +20,17 @@ type Evaluator struct {
 // NewFromEnv connects to Unleash when configured. On failure, returns an evaluator
 // that always returns the safe default (ponytail: duplicated in orbit-notifications;
 // extract to shared module when a third consumer appears — no retry loop; restart to reconnect).
+//
+// Provider registration is non-blocking: openfeature.SetProvider starts the
+// provider's Init in the background and returns immediately, so an unreachable
+// Unleash cannot delay startup. Until the provider is ready, evaluations return
+// the caller's default, which Bool already handles.
 func NewFromEnv(appName string, log func(msg string, args ...any)) *Evaluator {
 	url := envOr("UNLEASH_URL", "http://localhost:10050/api/")
+	if isDisabledURL(url) {
+		log("feature_flags_disabled", "UNLEASH_URL", url)
+		return &Evaluator{}
+	}
 	token := os.Getenv("UNLEASH_API_TOKEN")
 	if token == "" {
 		token = "default:development.unleash-insecure-api-token" // Unleash requires a token string; override in prod
@@ -43,16 +53,19 @@ func NewFromEnv(appName string, log func(msg string, args ...any)) *Evaluator {
 		log("feature_flags_init_failed", "error", err)
 		return &Evaluator{}
 	}
-	if err := provider.Init(openfeature.EvaluationContext{}); err != nil {
-		log("feature_flags_init_failed", "error", err)
-		return &Evaluator{}
-	}
 	if err := openfeature.SetProvider(provider); err != nil {
 		log("feature_flags_init_failed", "error", err)
 		return &Evaluator{}
 	}
 
 	return &Evaluator{client: openfeature.NewClient(name)}
+}
+
+// isDisabledURL reports whether UNLEASH_URL was explicitly set to opt out of
+// Unleash entirely.
+func isDisabledURL(url string) bool {
+	url = strings.TrimSpace(url)
+	return strings.EqualFold(url, "off") || strings.EqualFold(url, "disabled")
 }
 
 // Bool returns the flag value, or defaultVal when the client is unavailable.
