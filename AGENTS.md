@@ -25,6 +25,7 @@ go run ./cmd/auth
 go run ./cmd/auth migrate status   # up, down, status
 go test ./...
 TEST_DATABASE_URL='postgres://postgres:postgres@localhost:55440/test?sslmode=disable' go test ./... -race -count=1
+TEST_NATS_URL=nats://localhost:4222 go test ./...   # runs the NATS durable-consumer test
 ./scripts/generate-proto.sh   # after proto changes
 ```
 
