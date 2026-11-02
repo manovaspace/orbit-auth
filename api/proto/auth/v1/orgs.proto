@@ -4,6 +4,8 @@ package auth.v1;
 
 option go_package = "github.com/manovaspace/orbit-auth/api/auth/v1;authv1";
 
+import "auth/v1/auth.proto";
+
 // OrgService creates organizations and manages their memberships.
 //
 // The caller is always taken from the validated access token, never from the
@@ -19,6 +21,12 @@ service OrgService {
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  // SelectOrg switches the caller's active organization. It rotates the
+  // presented refresh token and returns a new access/refresh pair that carries
+  // the org claim. The refresh token is required because the access token is
+  // stateless and cannot be revoked; rotation is what makes the switch durable
+  // and prevents an old pair from silently selecting the new organization.
+  rpc SelectOrg(SelectOrgRequest) returns (SelectOrgResponse);
 }
 
 message Organization {
@@ -78,3 +86,14 @@ message SuspendMemberRequest {
 }
 
 message SuspendMemberResponse {}
+
+message SelectOrgRequest {
+  string org_id = 1;
+  // Refresh token from the current session. It is rotated and revoked, matching
+  // RefreshToken, so an old refresh token cannot keep selecting organizations.
+  string refresh_token = 2;
+}
+
+message SelectOrgResponse {
+  TokenResponse tokens = 1;
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
+	"github.com/manovaspace/orbit-auth/internal/application"
 	"github.com/manovaspace/orbit-auth/internal/domain"
 	orbittoken "github.com/manovaspace/orbit-auth/token"
 	googlegrpc "google.golang.org/grpc"
@@ -49,6 +50,18 @@ type fakeOrgService struct {
 	suspendOrgID  string
 	suspendUserID string
 	suspendErr    error
+
+	selectCalls   []selectCall
+	selectAccess  string
+	selectRefresh string
+	selectExpires time.Time
+	selectErr     error
+}
+
+type selectCall struct {
+	userID       string
+	refreshToken string
+	orgID        string
 }
 
 type activeCall struct {
@@ -89,6 +102,11 @@ func (f *fakeOrgService) SuspendMember(_ context.Context, orgID, userID string) 
 func (f *fakeOrgService) IsActiveMember(_ context.Context, orgID, userID string) (bool, error) {
 	f.activeCalls = append(f.activeCalls, activeCall{orgID: orgID, userID: userID})
 	return f.active, f.activeErr
+}
+
+func (f *fakeOrgService) SelectOrg(_ context.Context, userID, refreshToken, orgID string) (string, string, time.Time, error) {
+	f.selectCalls = append(f.selectCalls, selectCall{userID: userID, refreshToken: refreshToken, orgID: orgID})
+	return f.selectAccess, f.selectRefresh, f.selectExpires, f.selectErr
 }
 
 func authenticatedOrgContext(callerID string) context.Context {
@@ -227,11 +245,15 @@ func TestOrgServiceUnauthenticated(t *testing.T) {
 			_, err := srv.SuspendMember(ctx, &authv1.SuspendMemberRequest{OrgId: orgID, UserId: userID})
 			return err
 		},
+		func() error {
+			_, err := srv.SelectOrg(ctx, &authv1.SelectOrgRequest{OrgId: orgID, RefreshToken: "r1"})
+			return err
+		},
 	}
 	for _, call := range calls {
 		assertCode(t, call(), codes.Unauthenticated, "authentication required")
 	}
-	if len(app.activeCalls) != 0 || app.listMembersOrgID != "" {
+	if len(app.activeCalls) != 0 || app.listMembersOrgID != "" || len(app.selectCalls) != 0 {
 		t.Fatal("an unauthenticated call reached the service")
 	}
 }
@@ -254,6 +276,62 @@ func TestOrgServiceNonMemberGetsNotFound(t *testing.T) {
 	if app.listMembersOrgID != "" || app.addOrgID != "" || app.removeOrgID != "" || app.suspendOrgID != "" {
 		t.Fatal("a non-member reached the organization use case")
 	}
+}
+
+func TestOrgServiceSelectOrgAsMember(t *testing.T) {
+	orgID := uuid.NewString()
+	expires := time.Date(2026, 11, 2, 12, 15, 0, 0, time.UTC)
+	app := &fakeOrgService{
+		active:        true,
+		selectAccess:  "access-with-org",
+		selectRefresh: "refresh-with-org",
+		selectExpires: expires,
+	}
+	srv := NewOrg(app)
+
+	resp, err := srv.SelectOrg(authenticatedOrgContext("caller-1"), &authv1.SelectOrgRequest{
+		OrgId: orgID, RefreshToken: "presented-refresh",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.activeCalls) != 1 || app.activeCalls[0] != (activeCall{orgID: orgID, userID: "caller-1"}) {
+		t.Fatalf("active calls = %+v", app.activeCalls)
+	}
+	if len(app.selectCalls) != 1 || app.selectCalls[0] != (selectCall{
+		userID: "caller-1", refreshToken: "presented-refresh", orgID: orgID,
+	}) {
+		t.Fatalf("select calls = %+v", app.selectCalls)
+	}
+	if got := resp.GetTokens(); got.GetAccessToken() != "access-with-org" ||
+		got.GetRefreshToken() != "refresh-with-org" || got.GetExpiresAt() != "2026-11-02T12:15:00Z" {
+		t.Fatalf("response = %+v", got)
+	}
+}
+
+func TestOrgServiceSelectOrgNonMemberGetsNotFound(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{active: false}
+	srv := NewOrg(app)
+
+	_, err := srv.SelectOrg(authenticatedOrgContext("stranger"), &authv1.SelectOrgRequest{
+		OrgId: orgID, RefreshToken: "presented-refresh",
+	})
+	assertCode(t, err, codes.NotFound, "organization not found")
+	if len(app.selectCalls) != 0 {
+		t.Fatal("a non-member selected an organization")
+	}
+}
+
+func TestOrgServiceSelectOrgInvalidRefreshToken(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{active: true, selectErr: application.ErrInvalidRefresh}
+	srv := NewOrg(app)
+
+	_, err := srv.SelectOrg(authenticatedOrgContext("caller-1"), &authv1.SelectOrgRequest{
+		OrgId: orgID, RefreshToken: "bad-refresh",
+	})
+	assertCode(t, err, codes.Unauthenticated, "invalid refresh token")
 }
 
 func TestOrgServiceLastActiveMemberIsFailedPrecondition(t *testing.T) {

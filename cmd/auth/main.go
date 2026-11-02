@@ -104,7 +104,10 @@ func main() {
 		Secrets:   credentials.NewSecrets(),
 		DemoMode:  os.Getenv("DEMO_MODE") == "true",
 		DemoUsers: demoUsers,
-		Logger:    func(msg string, args ...any) { log.Info(msg, args...) },
+		// AUTH_AUTO_SELECT_SINGLE_ORG defaults to true; only an explicit
+		// false disables it.
+		AutoSelectSingleOrg: !strings.EqualFold(envOr("AUTH_AUTO_SELECT_SINGLE_ORG", "true"), "false"),
+		Logger:              func(msg string, args ...any) { log.Info(msg, args...) },
 	})
 	if err := svc.SeedDemoUsers(ctx); err != nil {
 		log.Error("demo seed failed", "error", err)

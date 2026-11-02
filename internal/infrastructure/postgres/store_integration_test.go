@@ -190,26 +190,39 @@ func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Store(ctx, user.ID, "hash-1", time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "hash-1", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	userID, err := store.FindValid(ctx, "hash-1")
-	if err != nil || userID != user.ID {
-		t.Fatalf("find = %q, %v", userID, err)
+	userID, orgID, err := store.FindValid(ctx, "hash-1")
+	if err != nil || userID != user.ID || orgID != "" {
+		t.Fatalf("find = %q, %q, %v", userID, orgID, err)
 	}
 	if err := store.Revoke(ctx, "hash-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.FindValid(ctx, "hash-1"); !errors.Is(err, pgx.ErrNoRows) {
+	if _, _, err := store.FindValid(ctx, "hash-1"); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("revoked token err = %v", err)
 	}
 
 	// An expired token is not valid.
-	if err := store.Store(ctx, user.ID, "hash-2", time.Now().UTC().Add(-time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "hash-2", time.Now().UTC().Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.FindValid(ctx, "hash-2"); !errors.Is(err, pgx.ErrNoRows) {
+	if _, _, err := store.FindValid(ctx, "hash-2"); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("expired token err = %v", err)
+	}
+
+	// A selected organization round-trips with the refresh token.
+	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := store.CreateOrg(ctx, org, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Store(ctx, user.ID, org.ID, "hash-3", time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	storedUserID, storedOrgID, err := store.FindValid(ctx, "hash-3")
+	if err != nil || storedUserID != user.ID || storedOrgID != org.ID {
+		t.Fatalf("find with org = %q, %q, %v", storedUserID, storedOrgID, err)
 	}
 
 	var stored string
@@ -311,7 +324,7 @@ func TestStoreRejectsInvalidUUIDs(t *testing.T) {
 	if err := store.Create(ctx, domain.APIToken{ID: "not-a-uuid", UserID: "also-bad"}); err == nil {
 		t.Fatal("invalid api token id was accepted")
 	}
-	if err := store.Store(ctx, "not-a-uuid", "hash", time.Now()); err == nil {
+	if err := store.Store(ctx, "not-a-uuid", "", "hash", time.Now()); err == nil {
 		t.Fatal("invalid user id was accepted")
 	}
 }

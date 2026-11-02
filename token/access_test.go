@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 func generateTestKey(t *testing.T) *rsa.PrivateKey {
@@ -36,6 +37,84 @@ func TestSignAndParseAccessToken(t *testing.T) {
 	}
 	if claims.Issuer != Issuer || claims.Subject != wantSubject || claims.ExpiresAt == nil || claims.IssuedAt == nil {
 		t.Fatalf("unexpected verified claims: %+v", claims.RegisteredClaims)
+	}
+}
+
+func TestSignAndParseAccessTokenWithOrg(t *testing.T) {
+	key := generateTestKey(t)
+	orgID := uuid.NewString()
+	raw, err := SignAccessTokenWithOrg(key, "key-1", "user-1", orgID, time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	claims, err := ParseAccessToken(raw, KeySet{"key-1": &key.PublicKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.OrgID != orgID {
+		t.Fatalf("org = %q, want %q", claims.OrgID, orgID)
+	}
+	parsed, ok := claims.OrganizationID()
+	if !ok || parsed.String() != orgID {
+		t.Fatalf("OrganizationID = %s, %v, want %s, true", parsed, ok, orgID)
+	}
+}
+
+func TestAccessTokenWithoutOrgStillVerifies(t *testing.T) {
+	key := generateTestKey(t)
+	raw, err := SignAccessToken(key, "key-1", "user-1", time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := ParseAccessToken(raw, KeySet{"key-1": &key.PublicKey})
+	if err != nil {
+		t.Fatalf("token without org was rejected: %v", err)
+	}
+	if claims.OrgID != "" {
+		t.Fatalf("org = %q, want empty", claims.OrgID)
+	}
+	if _, ok := claims.OrganizationID(); ok {
+		t.Fatal("absent org claim parsed as present")
+	}
+
+	// A token minted before the claim existed carries only registered claims.
+	old := jwt.NewWithClaims(jwt.SigningMethodRS256, AccessClaims{RegisteredClaims: jwt.RegisteredClaims{
+		Issuer: Issuer, Subject: "old-user", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+	}})
+	old.Header["kid"] = "key-1"
+	oldRaw, err := old.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldClaims, err := ParseAccessToken(oldRaw, KeySet{"key-1": &key.PublicKey})
+	if err != nil {
+		t.Fatalf("old token was rejected: %v", err)
+	}
+	if oldClaims.Subject != "old-user" || oldClaims.OrgID != "" {
+		t.Fatalf("old claims = %+v", oldClaims)
+	}
+}
+
+func TestOrganizationIDRejectsMalformedClaim(t *testing.T) {
+	for _, orgID := range []string{"", "   ", "not-a-uuid", "11111111-1111-1111-1111-11111111111z"} {
+		claims := AccessClaims{OrgID: orgID}
+		if _, ok := claims.OrganizationID(); ok {
+			t.Fatalf("OrganizationID accepted %q", orgID)
+		}
+	}
+	valid := uuid.NewString()
+	claims := AccessClaims{OrgID: " " + valid + " "}
+	parsed, ok := claims.OrganizationID()
+	if !ok || parsed.String() != valid {
+		t.Fatalf("OrganizationID = %s, %v, want %s, true", parsed, ok, valid)
+	}
+}
+
+func TestSignAccessTokenWithOrgRejectsMalformedOrg(t *testing.T) {
+	key := generateTestKey(t)
+	if _, err := SignAccessTokenWithOrg(key, "key-1", "user-1", "not-a-uuid", time.Now().Add(time.Minute)); err == nil {
+		t.Fatal("SignAccessTokenWithOrg accepted a malformed org")
 	}
 }
 

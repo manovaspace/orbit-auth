@@ -19,6 +19,7 @@ export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10333/auth?sslmode=disa
 export NOTIFICATIONS_GRPC_ADDR=localhost:10110
 export GRPC_PORT=10100
 export HEALTH_PORT=10101
+export AUTH_AUTO_SELECT_SINGLE_ORG=true
 go run ./cmd/auth
 go run ./cmd/auth migrate status   # up, down, status
 go test ./...
@@ -60,6 +61,7 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 ## Feature Flags & Demo Mode
 
 - **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
+- **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds the optional `org` access-token claim at login when the user has exactly one active membership. Zero or many memberships omit it. `SelectOrg` rotates the refresh token and issues a pair carrying the selected org.
 - **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup. `cmd/auth` parses the JSON; the application validates and hashes each entry.
 
 ## Events

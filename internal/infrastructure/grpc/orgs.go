@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
+	"github.com/manovaspace/orbit-auth/internal/application"
 	"github.com/manovaspace/orbit-auth/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,6 +25,7 @@ type OrgService interface {
 	SuspendMember(ctx context.Context, orgID, userID string) error
 	RemoveMember(ctx context.Context, orgID, userID string) error
 	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
+	SelectOrg(ctx context.Context, userID, refreshToken, orgID string) (access, refresh string, expires time.Time, err error)
 }
 
 // OrgServer implements the OrgService gRPC API. The caller is always the
@@ -112,6 +114,28 @@ func (s *OrgServer) SuspendMember(ctx context.Context, req *authv1.SuspendMember
 		return nil, orgError(err)
 	}
 	return &authv1.SuspendMemberResponse{}, nil
+}
+
+// SelectOrg switches the caller's active organization. Membership is gated the
+// same way as every other organization-scoped call; the presented refresh token
+// is rotated so an old pair cannot keep selecting organizations.
+func (s *OrgServer) SelectOrg(ctx context.Context, req *authv1.SelectOrgRequest) (*authv1.SelectOrgResponse, error) {
+	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	access, refresh, expires, err := s.svc.SelectOrg(ctx, callerID, req.GetRefreshToken(), orgID)
+	if err != nil {
+		if errors.Is(err, application.ErrInvalidRefresh) {
+			return nil, status.Error(codes.Unauthenticated, "invalid refresh token")
+		}
+		return nil, orgError(err)
+	}
+	return &authv1.SelectOrgResponse{Tokens: tokenResponse(access, refresh, expires)}, nil
 }
 
 // caller returns the verified access-token subject. Handlers never accept the
