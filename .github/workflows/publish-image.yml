@@ -51,7 +51,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.8.0
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         id: meta
         with:
           images: ghcr.io/manovaspace/orbit-auth
