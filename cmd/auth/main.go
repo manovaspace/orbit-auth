@@ -30,9 +30,13 @@ import (
 	googlegrpc "google.golang.org/grpc"
 )
 
+// version is the service version reported to observability. Release builds
+// override it with -X main.version.
+var version = "dev"
+
 func main() {
 	ctx := context.Background()
-	if err := observability.Configure(observability.ConfigFromEnv("orbit-auth", "0.1.0")); err != nil {
+	if err := observability.Configure(observability.ConfigFromEnv("orbit-auth", version)); err != nil {
 		panic(err)
 	}
 	log := observability.Logger()
