@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/manovaspace/orbit-auth/compare/v0.4.0...v0.5.0) (2026-11-03)
+
+
+### Features
+
+* **flags:** add the platform flag store and public read API ([#64](https://github.com/manovaspace/orbit-auth/issues/64)) ([ea6721c](https://github.com/manovaspace/orbit-auth/commit/ea6721cb9183d1dca54de8e9a117029e5f54d47d))
+* **flags:** read feature flags from the platform endpoint ([#66](https://github.com/manovaspace/orbit-auth/issues/66)) ([e68286e](https://github.com/manovaspace/orbit-auth/commit/e68286e0b191d187168429542b737d9b33145442))
+
 ## [0.4.0](https://github.com/manovaspace/orbit-auth/compare/v0.3.0...v0.4.0) (2026-11-02)
 
 
