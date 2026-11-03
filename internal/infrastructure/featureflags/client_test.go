@@ -2,17 +2,21 @@ package featureflags
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/open-feature/go-sdk/openfeature"
 )
 
-// recorder collects log messages emitted by NewFromEnv. NewFromEnv logs from the
-// caller's goroutine only, so no locking is needed to read the result, but -race
-// stays clean if that ever changes.
+const knownFlag = "manova.auth.email_otp"
+
+// recorder collects log messages emitted by NewFromEnv and the provider.
 type recorder struct {
 	mu   sync.Mutex
 	msgs []string
@@ -35,12 +39,105 @@ func (r *recorder) contains(want string) bool {
 	return false
 }
 
-// TestNewFromEnvNonBlockingWithUnreachableUnleash pins the startup contract:
-// registering the provider must not wait for Unleash, and evaluations return the
-// caller's default until the provider is ready.
-func TestNewFromEnvNonBlockingWithUnreachableUnleash(t *testing.T) {
-	t.Setenv("UNLEASH_URL", "http://10.255.255.1:1/api/")
-	t.Setenv("UNLEASH_API_TOKEN", "test-token")
+// newEvaluator registers a provider pointing at url and returns an Evaluator
+// backed by the OpenFeature client. SetProviderAndWait makes the initial fetch
+// deterministic.
+func newEvaluator(t *testing.T, url string, rec *recorder) (*Evaluator, *PlatformProvider) {
+	t.Helper()
+
+	provider := newPlatformProvider(url, rec.log)
+	if err := openfeature.SetProviderAndWait(provider); err != nil {
+		t.Fatalf("SetProviderAndWait: %v", err)
+	}
+	t.Cleanup(openfeature.Shutdown)
+
+	return &Evaluator{client: openfeature.NewClient("orbit-auth-test")}, provider
+}
+
+func TestBoolUsesServedFlags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"version":"2026-11-03T00:00:00Z","flags":[{"name":%q,"enabled":true,"description":"email otp"}]}`, knownFlag)
+	}))
+	t.Cleanup(srv.Close)
+
+	evaluator, _ := newEvaluator(t, srv.URL, &recorder{})
+
+	if got := evaluator.Bool(context.Background(), knownFlag, false); got != true {
+		t.Fatalf("Bool(%s, false) = %v, want true", knownFlag, got)
+	}
+	if got := evaluator.Bool(context.Background(), "unknown.flag", true); got != true {
+		t.Fatalf("Bool(unknown.flag, true) = %v, want true", got)
+	}
+	if got := evaluator.Bool(context.Background(), "unknown.flag", false); got != false {
+		t.Fatalf("Bool(unknown.flag, false) = %v, want false", got)
+	}
+}
+
+func TestBoolFallsBackToDefaultWhenFetchFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := &recorder{}
+	evaluator, _ := newEvaluator(t, srv.URL, rec)
+
+	if got := evaluator.Bool(context.Background(), knownFlag, true); got != true {
+		t.Fatalf("Bool(%s, true) = %v, want true", knownFlag, got)
+	}
+	if got := evaluator.Bool(context.Background(), knownFlag, false); got != false {
+		t.Fatalf("Bool(%s, false) = %v, want false", knownFlag, got)
+	}
+	if !rec.contains("feature_flags_refresh_failed") {
+		t.Fatalf("expected feature_flags_refresh_failed log, got %v", rec.msgs)
+	}
+}
+
+func TestRefreshUpdatesAndFailedRefreshKeepsCache(t *testing.T) {
+	var enabled atomic.Bool
+	enabled.Store(true)
+	var failing atomic.Bool
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if failing.Load() {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"version":"2026-11-03T00:00:00Z","flags":[{"name":%q,"enabled":%t,"description":"email otp"}]}`, knownFlag, enabled.Load())
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := &recorder{}
+	evaluator, provider := newEvaluator(t, srv.URL, rec)
+
+	if got := evaluator.Bool(context.Background(), knownFlag, false); got != true {
+		t.Fatalf("initial Bool(%s, false) = %v, want true", knownFlag, got)
+	}
+
+	enabled.Store(false)
+	if err := provider.refresh(context.Background()); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if got := evaluator.Bool(context.Background(), knownFlag, true); got != false {
+		t.Fatalf("refreshed Bool(%s, true) = %v, want false", knownFlag, got)
+	}
+
+	failing.Store(true)
+	if err := provider.refresh(context.Background()); err == nil {
+		t.Fatal("refresh: want error, got nil")
+	}
+	if got := evaluator.Bool(context.Background(), knownFlag, true); got != false {
+		t.Fatalf("after failed refresh Bool(%s, true) = %v, want cached false", knownFlag, got)
+	}
+}
+
+// TestNewFromEnvNonBlockingWithUnreachableEndpoint pins the startup contract:
+// registering the provider must not wait for the flag endpoint, and
+// evaluations return the caller's default until the provider is ready.
+func TestNewFromEnvNonBlockingWithUnreachableEndpoint(t *testing.T) {
+	t.Setenv("FLAGS_URL", "http://10.255.255.1:1/v1/flags")
 	t.Cleanup(openfeature.Shutdown)
 
 	rec := &recorder{}
@@ -61,7 +158,7 @@ func TestNewFromEnvDisabledURLReturnsDefaultsImmediately(t *testing.T) {
 
 	for _, url := range []string{"off", "OFF", "disabled", "Disabled"} {
 		t.Run(url, func(t *testing.T) {
-			t.Setenv("UNLEASH_URL", url)
+			t.Setenv("FLAGS_URL", url)
 
 			rec := &recorder{}
 			start := time.Now()
