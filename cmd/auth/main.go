@@ -88,6 +88,9 @@ func main() {
 	}
 
 	store := postgres.New(pool)
+	// Platform flags are read over HTTP before sign-in; writes arrive with the
+	// admin surface later.
+	flagService := application.NewFeatureFlags(store)
 
 	// Lifecycle events go through the Postgres outbox. The transport is
 	// selected from BUS_TRANSPORT (default inproc); only cmd reads it.
@@ -157,7 +160,7 @@ func main() {
 	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
 	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
 
-	health := httpapi.New()
+	health := httpapi.New(flagService)
 	healthPort := envOr("HEALTH_PORT", "10101")
 
 	go func() {

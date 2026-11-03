@@ -91,6 +91,11 @@ type InviteStore interface {
 	AcceptInvite(ctx context.Context, inviteID, orgID, userID string, acceptedAt time.Time) error
 }
 
+// FeatureFlagStore reads the platform feature flags.
+type FeatureFlagStore interface {
+	ListFeatureFlags(ctx context.Context) ([]FeatureFlag, error)
+}
+
 // Notifier sends an OTP, a sign-up verification or an organization invitation
 // through orbit-notifications. The service never talks to a mail or SMS
 // provider directly.
