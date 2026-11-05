@@ -23,7 +23,7 @@ export JWT_PUBLIC_KEYS_DIR=./secrets/jwt-public-keys
 export AUTH_AUTO_SELECT_SINGLE_ORG=true
 export AUTH_SIGNUP=off
 export BUS_TRANSPORT=inproc
-# export BUS_NATS_URL=nats://localhost:10422
+# export BUS_NATS_URL=nats://localhost:10006
 go run ./cmd/auth
 ```
 
