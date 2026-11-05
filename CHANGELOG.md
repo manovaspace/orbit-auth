@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/manovaspace/orbit-auth/compare/v0.6.1...v0.7.0) (2026-11-05)
+
+
+### Features
+
+* **ports:** move orbit-auth into the 50-port orbit block ([a2fc78b](https://github.com/manovaspace/orbit-auth/commit/a2fc78ba400764e7bf1aec01cc7dadcbd7148942))
+* **ports:** move orbit-auth into the 50-port orbit block ([5060dcd](https://github.com/manovaspace/orbit-auth/commit/5060dcde931b12ede54ad88dace107173c87f690))
+
 ## [0.6.1](https://github.com/manovaspace/orbit-auth/compare/v0.6.0...v0.6.1) (2026-11-05)
 
 
