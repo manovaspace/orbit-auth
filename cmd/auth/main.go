@@ -77,7 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	notifAddr := envOr("NOTIFICATIONS_GRPC_ADDR", "localhost:10110")
+	notifAddr := envOr("NOTIFICATIONS_GRPC_ADDR", "localhost:10012")
 	dialOpts := append(observability.GRPCDialOptions(), observability.InternalAuthDialOption())
 	notif, err := notifications.NewClient(notifAddr, dialOpts...)
 	if err != nil {
@@ -152,7 +152,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	grpcPort := envOr("GRPC_PORT", "10100")
+	grpcPort := envOr("GRPC_PORT", "10010")
 	lis, err := net.Listen("tcp", ":"+grpcPort)
 	if err != nil {
 		log.Error("listen failed", "error", err)
@@ -165,7 +165,7 @@ func main() {
 	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
 
 	health := httpapi.New(flagService)
-	healthPort := envOr("HEALTH_PORT", "10101")
+	healthPort := envOr("HEALTH_PORT", "10011")
 
 	go func() {
 		log.Info("grpc listening", "port", grpcPort)

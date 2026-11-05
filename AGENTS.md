@@ -15,10 +15,10 @@ Tier 2 product user authentication — OTP login, password login, JWT sessions, 
 
 ```bash
 export DEPLOYMENT_ENVIRONMENT=dev
-export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10333/auth?sslmode=disable
-export NOTIFICATIONS_GRPC_ADDR=localhost:10110
-export GRPC_PORT=10100
-export HEALTH_PORT=10101
+export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10000/auth?sslmode=disable
+export NOTIFICATIONS_GRPC_ADDR=localhost:10012
+export GRPC_PORT=10010
+export HEALTH_PORT=10011
 export AUTH_AUTO_SELECT_SINGLE_ORG=true
 export AUTH_SIGNUP=off
 go run ./cmd/auth
@@ -29,8 +29,8 @@ TEST_NATS_URL=nats://localhost:4222 go test ./...   # runs the NATS durable-cons
 ./scripts/generate-proto.sh   # after proto changes
 ```
 
-Ports: gRPC on **10100** (`GRPC_PORT`), HTTP health on **10101** (`HEALTH_PORT`, `/healthz`, `/readyz`). HTTP runs on Fiber v3; gRPC is unchanged.
-Requires `orbit-notifications` on **10110** and dev Postgres.
+Ports: gRPC on **10010** (`GRPC_PORT`), HTTP health on **10011** (`HEALTH_PORT`, `/healthz`, `/readyz`). HTTP runs on Fiber v3; gRPC is unchanged.
+Requires `orbit-notifications` on **10012** and dev Postgres.
 
 Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 
@@ -46,7 +46,7 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 
 1. **Tenant isolation is sacred** — all user queries and data operations must be scoped by tenant/user ID. Zero cross-tenant leakage.
 2. **JWT verification before mutations** — never trust unauthenticated claims or bypass token validation.
-3. **Notifications strictly via gRPC** — call `orbit-notifications` on port 10110; never implement direct SMTP or raw mail calls in orbit-auth.
+3. **Notifications strictly via gRPC** — call `orbit-notifications` on port 10012; never implement direct SMTP or raw mail calls in orbit-auth.
 4. **`log/slog` only** — `log.Printf` and `fmt.Println` logging are strictly forbidden.
 5. **Sequential embedded migrations** — files in `internal/infrastructure/postgres/migrations/` are numbered sequentially without gaps. Never alter previously applied migrations. Adoption of the old `schema_migrations` state is documented in [docs/migrations.md](./docs/migrations.md).
 6. **Zero credential leakage** — never log passwords, plaintext OTP codes, or JWT signing keys in stdout/stderr.
@@ -114,7 +114,7 @@ Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version i
 
 ## Session pre-flight
 
-1. `rtk o port list` — verify 10100 (gRPC) and 10101 (health) allocations
+1. `rtk o port list` — verify 10010 (gRPC) and 10011 (health) allocations
 2. `rtk o status orbit` — check dependency state (`orbit-notifications`, dev Postgres)
 3. `rtk git log --oneline -6 origin/main` — inspect recently landed changes
 

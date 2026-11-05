@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultFlagsURL = "http://localhost:10101/v1/flags"
+	defaultFlagsURL = "http://localhost:10011/v1/flags"
 	refreshInterval = 30 * time.Second
 	fetchTimeout    = 5 * time.Second
 )
