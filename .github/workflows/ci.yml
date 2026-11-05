@@ -21,10 +21,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: manovaspace/ci@v1
         with:
           stack: go
+          migrations-glob: "internal/infrastructure/postgres/migrations/*.sql"
         env:
           GH_READ_TOKEN: ${{ secrets.GH_READ_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: sqlc
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code

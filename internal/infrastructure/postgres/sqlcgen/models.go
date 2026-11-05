@@ -21,6 +21,13 @@ type ApiToken struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type FeatureFlag struct {
+	Name        string
+	Enabled     bool
+	Description string
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID        uuid.UUID
 	Name      string
