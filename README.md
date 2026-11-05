@@ -13,10 +13,10 @@ Requires Postgres and the [orbit-notifications](https://github.com/manovaspace/o
 
 ```bash
 export DEPLOYMENT_ENVIRONMENT=dev
-export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10333/auth?sslmode=disable
-export NOTIFICATIONS_GRPC_ADDR=localhost:10110
-export GRPC_PORT=10100
-export HEALTH_PORT=10101
+export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10000/auth?sslmode=disable
+export NOTIFICATIONS_GRPC_ADDR=localhost:10012
+export GRPC_PORT=10010
+export HEALTH_PORT=10011
 export JWT_PRIVATE_KEY_FILE=./secrets/jwt-private.pem
 export JWT_ACTIVE_KEY_ID=orbit-dev-1
 export JWT_PUBLIC_KEYS_DIR=./secrets/jwt-public-keys
@@ -33,7 +33,7 @@ Keep the private PEM readable only by the auth service. The gateway publishes
 the matching public PEMs as JWKS; consumers can verify tokens but cannot mint
 them. See [the token contract](./token/README.md) for key rotation.
 
-Default gRPC listen: `localhost:10100` (`GRPC_PORT`) · Health: `localhost:10101` (`HEALTH_PORT`).
+Default gRPC listen: `localhost:10010` (`GRPC_PORT`) · Health: `localhost:10011` (`HEALTH_PORT`).
 
 Migrations are embedded in the binary. The binary applies pending migrations
 on start (`MIGRATE_ON_START`, default `true`) and exposes the same commands
@@ -124,9 +124,9 @@ must never be edited by hand.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | required | Postgres DSN owned by this service |
-| `NOTIFICATIONS_GRPC_ADDR` | `localhost:10110` | `orbit-notifications` gRPC endpoint |
-| `GRPC_PORT` | `10100` | gRPC listen port |
-| `HEALTH_PORT` | `10101` | Fiber health port (`/healthz`, `/readyz`) |
+| `NOTIFICATIONS_GRPC_ADDR` | `localhost:10012` | `orbit-notifications` gRPC endpoint |
+| `GRPC_PORT` | `10010` | gRPC listen port |
+| `HEALTH_PORT` | `10011` | Fiber health port (`/healthz`, `/readyz`) |
 | `MIGRATE_ON_START` | `true` | Apply embedded goose migrations on start |
 | `AUTH_AUTO_SELECT_SINGLE_ORG` | `true` | Add the `org` claim when the user has one active membership |
 | `AUTH_SIGNUP` | `off` | `open` enables self-serve sign-up |
