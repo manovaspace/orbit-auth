@@ -58,6 +58,8 @@ github.com/manovaspace/orbit-observability v0.0.0-20261030132041-1f2432c107ee h1
 github.com/manovaspace/orbit-observability v0.0.0-20261030132041-1f2432c107ee/go.mod h1:quZ47jGSei4aKSkoDUHKKBmTsUYTcKQeRKavUISNZ/w=
 github.com/manovaspace/orbit-observability v0.1.0 h1:FgStbc3/eiM7tfDWCGrDzNtpSo1JTLp7iw0he90KeW4=
 github.com/manovaspace/orbit-observability v0.1.0/go.mod h1:euYx2P84Y0qqwZvyTQVaru4njxPjdGILov+UNRYPR9A=
+github.com/manovaspace/orbit-observability v0.2.0 h1:0hjuptxvlwsyIx1ZdIoXz5BBA5dHteHgEorencedego=
+github.com/manovaspace/orbit-observability v0.2.0/go.mod h1:euYx2P84Y0qqwZvyTQVaru4njxPjdGILov+UNRYPR9A=
 github.com/mattn/go-colorable v0.1.16 h1:+2YjeAe7xP1OQbZW1jERPWWCDLlNqFNCvjiqGiAt84A=
 github.com/mattn/go-colorable v0.1.16/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
