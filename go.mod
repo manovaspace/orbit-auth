@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/manovaspace/orbit-message-bus v0.1.0
-	github.com/manovaspace/orbit-notifications v0.0.0-20261029235826-3ccd242c100c
+	github.com/manovaspace/orbit-notifications v0.2.0
 	github.com/manovaspace/orbit-observability v0.2.0
 	github.com/nats-io/nats.go v1.55.0
 	github.com/open-feature/go-sdk v1.20.0
