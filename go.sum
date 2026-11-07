@@ -54,6 +54,8 @@ github.com/manovaspace/orbit-message-bus v0.1.0 h1:fvmzAkUqb2UYJ/FG8n42gFOYo237f
 github.com/manovaspace/orbit-message-bus v0.1.0/go.mod h1:9aNLa+5qOP+UUCvv/T5CAXPuaNaAPNjD4DjZlcchgmo=
 github.com/manovaspace/orbit-notifications v0.0.0-20261029235826-3ccd242c100c h1:jQlFjyFO1lPr8hZRMi1R2IG60eb78nlGc3xZblbe8CI=
 github.com/manovaspace/orbit-notifications v0.0.0-20261029235826-3ccd242c100c/go.mod h1:H83gV+XeEjb7b23DAubj6l1vb1pwCKn/FRa+RJQNKTU=
+github.com/manovaspace/orbit-notifications v0.2.0 h1:HfgFzWpdIzfamktmBQgqnVWwedwKFAa0PwU8/ik5Uv4=
+github.com/manovaspace/orbit-notifications v0.2.0/go.mod h1:fyzQTJyZTWMXtJzTrvIysfCWsJb4ZI8ngtHRJqjA+jA=
 github.com/manovaspace/orbit-observability v0.0.0-20261030132041-1f2432c107ee h1:OZc3/Sv1HJ3TPUCqLROYss/JImZT0R2fruVBXaWYU8s=
 github.com/manovaspace/orbit-observability v0.0.0-20261030132041-1f2432c107ee/go.mod h1:quZ47jGSei4aKSkoDUHKKBmTsUYTcKQeRKavUISNZ/w=
 github.com/manovaspace/orbit-observability v0.1.0 h1:FgStbc3/eiM7tfDWCGrDzNtpSo1JTLp7iw0he90KeW4=
