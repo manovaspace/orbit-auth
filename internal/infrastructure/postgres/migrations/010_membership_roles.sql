@@ -1,9 +1,12 @@
 -- +goose Up
+SET lock_timeout = '5s';
+SET statement_timeout = '60s';
+
 -- Organization administration tier. orbit-auth does not model product roles
 -- (ADR-045 D1), but it must know who administers an organization so that
 -- membership and invite writes can be authorized where the data lives.
 ALTER TABLE organization_memberships
-    ADD COLUMN role TEXT NOT NULL DEFAULT 'member'
+    ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member'
         CHECK (role IN ('owner', 'admin', 'member'));
 
 -- Backfill: every organization that has an active member gets exactly one
