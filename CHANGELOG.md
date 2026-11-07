@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1](https://github.com/manovaspace/orbit-auth/compare/v0.7.0...v0.7.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **migrations:** satisfy squawk in 010 ([d74dd71](https://github.com/manovaspace/orbit-auth/commit/d74dd71719233aa1e56354867fc4208c16513599))
+* **orgs:** recheck membership authority under the organization lock ([361c417](https://github.com/manovaspace/orbit-auth/commit/361c417589e6517d66aec5b642d4a44ec22ac702))
+* **orgs:** require org-admin authority for membership writes ([90f9026](https://github.com/manovaspace/orbit-auth/commit/90f90268ce5c5fe0ad8371b92c8302f361e25ff6))
+* **orgs:** require org-admin authority for membership writes ([9a3c6f0](https://github.com/manovaspace/orbit-auth/commit/9a3c6f01efd19e957e3777fdd7803b9220dfd1c3)), closes [#82](https://github.com/manovaspace/orbit-auth/issues/82)
+
 ## [0.7.0](https://github.com/manovaspace/orbit-auth/compare/v0.6.1...v0.7.0) (2026-11-05)
 
 
