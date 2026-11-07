@@ -19,6 +19,7 @@ func TestLifecycleEventSubjectsAndVersion(t *testing.T) {
 		{"membership removed", SubjectMembershipRemoved, "auth.membership.removed"},
 		{"membership suspended", SubjectMembershipSuspended, "auth.membership.suspended"},
 		{"membership role changed", SubjectMembershipRoleChanged, "auth.membership.role_changed"},
+		{"org slug changed", SubjectOrgSlugChanged, "auth.org.slug_changed"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,7 +43,8 @@ func TestLifecycleEventPayloadSchemas(t *testing.T) {
 		payload any
 	}{
 		{"user.created", UserCreatedPayload{UserID: "u-1", OccurredAt: at}},
-		{"org.created", OrgCreatedPayload{OrgID: "o-1", Name: "Acme", OccurredAt: at}},
+		{"org.created", OrgCreatedPayload{OrgID: "o-1", Name: "Acme", Slug: "acme", OccurredAt: at}},
+		{"org.slug_changed", OrgSlugChangedPayload{OrgID: "o-1", Slug: "acme-cafe", PreviousSlug: "acme", ActorID: "u-1", OccurredAt: at}},
 		{"membership.added", MembershipAddedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipActive, Role: RoleMember, OccurredAt: at}},
 		{"membership.removed", MembershipRemovedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipActive, OccurredAt: at}},
 		{"membership.suspended", MembershipSuspendedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipSuspended, OccurredAt: at}},
@@ -63,10 +65,11 @@ func TestLifecycleEventConstructors(t *testing.T) {
 		subject string
 	}{
 		{"user", NewUserCreatedEvent("u-1", at), SubjectUserCreated},
-		{"org", NewOrgCreatedEvent("o-1", "Acme", at), SubjectOrgCreated},
+		{"org", NewOrgCreatedEvent("o-1", "Acme", "acme", at), SubjectOrgCreated},
 		{"added", NewMembershipAddedEvent("o-1", "u-1", MembershipActive, RoleMember, at), SubjectMembershipAdded},
 		{"removed", NewMembershipRemovedEvent("o-1", "u-1", MembershipSuspended, at), SubjectMembershipRemoved},
 		{"suspended", NewMembershipSuspendedEvent("o-1", "u-1", MembershipSuspended, at), SubjectMembershipSuspended},
+		{"slug changed", NewOrgSlugChangedEvent("o-1", "acme-cafe", "acme", "u-1", at), SubjectOrgSlugChanged},
 		{"role changed", NewMembershipRoleChangedEvent("o-1", "u-1", RoleAdmin, RoleMember, "u-2", at), SubjectMembershipRoleChanged},
 	}
 	for _, tc := range tests {

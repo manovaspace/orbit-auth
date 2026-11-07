@@ -24,8 +24,19 @@ import (
 type fakeOrgService struct {
 	createCreator string
 	createName    string
+	createSlug    string
 	created       domain.Organization
 	createErr     error
+
+	slugOrgID  string
+	slugCaller string
+	slugValue  string
+	slugResult domain.Organization
+	slugErr    error
+
+	resolveSlug string
+	resolved    domain.Organization
+	resolveErr  error
 
 	listUserID  string
 	orgs        []domain.Organization
@@ -100,9 +111,19 @@ type activeCall struct {
 	userID string
 }
 
-func (f *fakeOrgService) CreateOrg(_ context.Context, creatorID, name string) (domain.Organization, error) {
-	f.createCreator, f.createName = creatorID, name
+func (f *fakeOrgService) CreateOrg(_ context.Context, creatorID, name, slug string) (domain.Organization, error) {
+	f.createCreator, f.createName, f.createSlug = creatorID, name, slug
 	return f.created, f.createErr
+}
+
+func (f *fakeOrgService) SetOrgSlug(_ context.Context, orgID, callerID, slug string) (domain.Organization, error) {
+	f.slugOrgID, f.slugCaller, f.slugValue = orgID, callerID, slug
+	return f.slugResult, f.slugErr
+}
+
+func (f *fakeOrgService) ResolveOrg(_ context.Context, slug string) (domain.Organization, error) {
+	f.resolveSlug = slug
+	return f.resolved, f.resolveErr
 }
 
 func (f *fakeOrgService) ListOrgsForUser(_ context.Context, userID string) ([]domain.Organization, error) {
@@ -795,4 +816,76 @@ func TestOrgServiceMembersCarryRole(t *testing.T) {
 	if resp.GetMembers()[0].GetRole() != "owner" {
 		t.Fatalf("role = %q, want owner", resp.GetMembers()[0].GetRole())
 	}
+}
+
+func TestOrgServiceSetOrgSlug(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{active: true, slugResult: domain.Organization{ID: orgID, Name: "Acme", Slug: "new-name"}}
+	srv := NewOrg(app)
+
+	resp, err := srv.SetOrgSlug(authenticatedOrgContext("caller-1"), &authv1.SetOrgSlugRequest{OrgId: orgID, Slug: "new-name"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.slugOrgID != orgID || app.slugCaller != "caller-1" || app.slugValue != "new-name" {
+		t.Fatalf("service call = %+v", app)
+	}
+	if resp.GetOrganization().GetSlug() != "new-name" {
+		t.Fatalf("response slug = %q", resp.GetOrganization().GetSlug())
+	}
+
+	for _, tc := range []struct {
+		err  error
+		code codes.Code
+	}{
+		{domain.ErrForbidden, codes.PermissionDenied},
+		{domain.ErrInvalidSlug, codes.InvalidArgument},
+		{domain.ErrSlugTaken, codes.AlreadyExists},
+	} {
+		app.slugErr = tc.err
+		_, err := srv.SetOrgSlug(authenticatedOrgContext("caller-1"), &authv1.SetOrgSlugRequest{OrgId: orgID, Slug: "x"})
+		assertCode(t, err, tc.code, tc.err.Error())
+	}
+	app.active = false
+	_, err = srv.SetOrgSlug(authenticatedOrgContext("caller-1"), &authv1.SetOrgSlugRequest{OrgId: orgID, Slug: "x"})
+	assertCode(t, err, codes.NotFound, "organization not found")
+}
+
+func TestOrgServiceCreateOrgPassesTheRequestedSlug(t *testing.T) {
+	app := &fakeOrgService{created: domain.Organization{ID: uuid.NewString(), Name: "Acme", Slug: "acme"}}
+	if _, err := NewOrg(app).CreateOrg(authenticatedOrgContext("caller-1"), &authv1.CreateOrgRequest{Name: "Acme", Slug: "acme"}); err != nil {
+		t.Fatal(err)
+	}
+	if app.createSlug != "acme" {
+		t.Fatalf("slug passed to the service = %q", app.createSlug)
+	}
+}
+
+func TestTenantServiceResolvesWithoutACaller(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{resolved: domain.Organization{ID: orgID, Name: "Acme", Slug: "current"}}
+	srv := NewTenant(app)
+
+	// No caller in the context: the edge asks before anyone signs in.
+	resp, err := srv.ResolveTenant(context.Background(), &authv1.ResolveTenantRequest{Slug: "current"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetOrgId() != orgID || resp.GetName() != "Acme" || resp.GetSlug() != "current" || resp.GetRetired() {
+		t.Fatalf("response = %+v", resp)
+	}
+	retired, err := srv.ResolveTenant(context.Background(), &authv1.ResolveTenantRequest{Slug: " Old-Name "})
+	if err != nil || !retired.GetRetired() || retired.GetSlug() != "current" {
+		t.Fatalf("retired response = %+v, %v", retired, err)
+	}
+	if app.resolveSlug != " Old-Name " {
+		t.Fatalf("slug forwarded = %q", app.resolveSlug)
+	}
+
+	app.resolveErr = domain.ErrSlugNotFound
+	_, err = srv.ResolveTenant(context.Background(), &authv1.ResolveTenantRequest{Slug: "nobody"})
+	assertCode(t, err, codes.NotFound, "tenant not found")
+	app.resolveErr = errors.New("database down")
+	_, err = srv.ResolveTenant(context.Background(), &authv1.ResolveTenantRequest{Slug: "x"})
+	assertCode(t, err, codes.Internal, "internal error")
 }

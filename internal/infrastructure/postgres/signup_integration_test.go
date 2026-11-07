@@ -71,7 +71,7 @@ func TestSignupUserCreateVerifyAndPurge(t *testing.T) {
 	// Old pending accounts are purged; fresh pending and verified accounts are
 	// kept.
 	old := signupUser("old@example.com", domain.UserSignupPending)
-	oldOrg := domain.Organization{ID: uuid.NewString(), Name: "Old Org", CreatedAt: now, UpdatedAt: now}
+	oldOrg := testOrg("Old Org", now)
 	if _, err := store.CreateSignupUser(ctx, old, &oldOrg, nil, now); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestSignupUserCreatesOrganizationAndOwnerAtomically(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	user := signupUser("owner@example.com", domain.UserSignupPending)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	created, err := store.CreateSignupUser(ctx, user, &org, nil, now)
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestSignupUserCreatesOrganizationAndOwnerAtomically(t *testing.T) {
 	// A failure after the user insert rolls the account back with the
 	// organization write.
 	failing := signupUser("rollback@example.com", domain.UserSignupPending)
-	badOrg := domain.Organization{ID: "not-a-uuid", Name: "Bad", CreatedAt: now, UpdatedAt: now}
+	badOrg := domain.Organization{ID: "not-a-uuid", Name: "Bad", Slug: "bad-org", CreatedAt: now, UpdatedAt: now}
 	if _, err := store.CreateSignupUser(ctx, failing, &badOrg, nil, now); err == nil {
 		t.Fatal("invalid organization id was accepted")
 	}
@@ -226,7 +226,7 @@ func TestSignupUserAcceptsInvitationAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, inviter.ID); err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,9 @@ type fakeOrgStore struct {
 	orgs        map[string]domain.Organization
 	memberships map[string]map[string]domain.Membership
 	roleChanges []roleChange
+	// slugs maps every slug an organization has held to its id.
+	slugs       map[string]string
+	slugChanges []string
 }
 
 // roleChange records one UpdateMemberRole call.
@@ -48,6 +51,58 @@ func (f *fakeOrgStore) CreateOrg(_ context.Context, org domain.Organization, cre
 		},
 	}
 	return nil
+}
+
+func (f *fakeOrgStore) SlugAvailable(_ context.Context, slug string) (bool, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if _, taken := f.slugs[slug]; taken {
+		return false, nil
+	}
+	for _, org := range f.orgs {
+		if org.Slug == slug {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (f *fakeOrgStore) SetOrgSlug(_ context.Context, orgID, slug string, by domain.MembershipActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	org, ok := f.orgs[orgID]
+	if !ok {
+		return domain.ErrOrgNotFound
+	}
+	if owner, taken := f.slugs[slug]; taken && owner != orgID {
+		return domain.ErrSlugTaken
+	}
+	if org.Slug == slug {
+		return nil
+	}
+	if f.slugs == nil {
+		f.slugs = map[string]string{}
+	}
+	f.slugs[org.Slug] = orgID
+	f.slugs[slug] = orgID
+	org.Slug = slug
+	f.orgs[orgID] = org
+	f.slugChanges = append(f.slugChanges, by.CallerID+":"+slug)
+	return nil
+}
+
+func (f *fakeOrgStore) ResolveSlug(_ context.Context, slug string) (domain.Organization, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if orgID, ok := f.slugs[slug]; ok {
+		return f.orgs[orgID], nil
+	}
+	for _, org := range f.orgs {
+		if org.Slug == slug {
+			return org, nil
+		}
+	}
+	return domain.Organization{}, domain.ErrSlugNotFound
 }
 
 func (f *fakeOrgStore) GetOrg(_ context.Context, orgID string) (domain.Organization, error) {
@@ -240,7 +295,7 @@ func TestCreateOrgAddsCreatorAsActiveMember(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
 
-	org, err := svc.CreateOrg(context.Background(), "user-1", "  Acme  ")
+	org, err := svc.CreateOrg(context.Background(), "user-1", "  Acme  ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +322,7 @@ func TestCreateOrgRejectsBlankName(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
 
-	if _, err := svc.CreateOrg(context.Background(), "user-1", "   "); !errors.Is(err, domain.ErrInvalidOrgName) {
+	if _, err := svc.CreateOrg(context.Background(), "user-1", "   ", ""); !errors.Is(err, domain.ErrInvalidOrgName) {
 		t.Fatalf("err = %v, want ErrInvalidOrgName", err)
 	}
 	if len(store.orgs) != 0 {
@@ -279,7 +334,7 @@ func TestCreateOrgRequiresCreator(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
 
-	if _, err := svc.CreateOrg(context.Background(), "", "Acme"); err == nil {
+	if _, err := svc.CreateOrg(context.Background(), "", "Acme", ""); err == nil {
 		t.Fatal("expected an error for a missing creator")
 	}
 }
@@ -313,7 +368,7 @@ func TestListOrgsForUserReturnsOnlyActiveMemberships(t *testing.T) {
 func TestListMembersReturnsEveryMembershipWithStatus(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +424,7 @@ func TestListMembersRequiresOrganization(t *testing.T) {
 func TestAddMemberMakesUserActive(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +448,7 @@ func TestAddMemberMakesUserActive(t *testing.T) {
 func TestAddMemberDoesNotReactivateSuspendedMember(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +481,7 @@ func TestAddMemberRejectsUnknownOrganization(t *testing.T) {
 func TestMemberManagementRejectsUnknownUser(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +509,7 @@ func TestMemberManagementRejectsUnknownUser(t *testing.T) {
 func TestSuspendMemberKeepsLastActiveMember(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +545,7 @@ func TestSuspendMemberKeepsLastActiveMember(t *testing.T) {
 func TestSuspendMemberRejectsNonMember(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +557,7 @@ func TestSuspendMemberRejectsNonMember(t *testing.T) {
 func TestRemoveMemberKeepsLastActiveMember(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +579,7 @@ func TestRemoveMemberKeepsLastActiveMember(t *testing.T) {
 func TestRemoveMemberAllowsNonActiveMembership(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +593,7 @@ func TestRemoveMemberAllowsNonActiveMembership(t *testing.T) {
 func TestRemoveMemberRejectsNonMember(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +605,7 @@ func TestRemoveMemberRejectsNonMember(t *testing.T) {
 func TestIsActiveMemberStates(t *testing.T) {
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +641,7 @@ func orgWithRoles(t *testing.T) (*Service, *fakeOrgStore, string) {
 	t.Helper()
 	store := newFakeOrgStore()
 	svc := newOrgService(t, store)
-	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,5 +759,82 @@ func TestSuspendedOwnerCannotAdminister(t *testing.T) {
 
 	if err := svc.AddMember(ctx, orgID, "ghost", "new-user"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("suspended owner add err = %v, want ErrForbidden", err)
+	}
+}
+
+func TestCreateOrgAllocatesASlug(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeOrgStore()
+	svc := newOrgService(t, store)
+
+	derived, err := svc.CreateOrg(ctx, "u1", "Acme Cafe", "")
+	if err != nil || derived.Slug != "acme-cafe" {
+		t.Fatalf("derived slug = %q, %v; want acme-cafe", derived.Slug, err)
+	}
+	explicit, err := svc.CreateOrg(ctx, "u1", "Whatever", "  Fryto ")
+	if err != nil || explicit.Slug != "fryto" {
+		t.Fatalf("explicit slug = %q, %v; want fryto", explicit.Slug, err)
+	}
+	// The same derived name collides, so the id-based fallback is used.
+	clash, err := svc.CreateOrg(ctx, "u1", "Acme Cafe", "")
+	if err != nil || clash.Slug != domain.FallbackSlug(clash.ID) {
+		t.Fatalf("clashing slug = %q, %v; want the id-based fallback", clash.Slug, err)
+	}
+	// A name with no usable ASCII also falls back.
+	persian, err := svc.CreateOrg(ctx, "u1", "فرایتو", "")
+	if err != nil || persian.Slug != domain.FallbackSlug(persian.ID) {
+		t.Fatalf("persian slug = %q, %v; want the id-based fallback", persian.Slug, err)
+	}
+	// An explicit slug is never silently replaced.
+	if _, err := svc.CreateOrg(ctx, "u1", "Other", "fryto"); !errors.Is(err, domain.ErrSlugTaken) {
+		t.Fatalf("taken slug err = %v, want ErrSlugTaken", err)
+	}
+	for _, bad := range []string{"www", "Bad_Slug", "a", "ab--cd"} {
+		if _, err := svc.CreateOrg(ctx, "u1", "Other", bad); !errors.Is(err, domain.ErrInvalidSlug) {
+			t.Fatalf("slug %q err = %v, want ErrInvalidSlug", bad, err)
+		}
+	}
+}
+
+func TestSetOrgSlugNeedsAnOwnerAndKeepsTheOldSlug(t *testing.T) {
+	ctx := context.Background()
+	svc, store, orgID := orgWithRoles(t)
+	seeded := store.orgs[orgID]
+	seeded.Slug = "acme"
+	store.orgs[orgID] = seeded
+
+	for _, caller := range []string{"admin", "staff"} {
+		if _, err := svc.SetOrgSlug(ctx, orgID, caller, "new-name"); !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("%s rename err = %v, want ErrForbidden", caller, err)
+		}
+	}
+	if _, err := svc.SetOrgSlug(ctx, orgID, "stranger", "new-name"); !errors.Is(err, domain.ErrNotMember) {
+		t.Fatalf("stranger rename err = %v, want ErrNotMember", err)
+	}
+	if _, err := svc.SetOrgSlug(ctx, orgID, "owner", "Not Valid"); !errors.Is(err, domain.ErrInvalidSlug) {
+		t.Fatalf("invalid slug err = %v, want ErrInvalidSlug", err)
+	}
+
+	renamed, err := svc.SetOrgSlug(ctx, orgID, "owner", " New-Name ")
+	if err != nil || renamed.Slug != "new-name" {
+		t.Fatalf("rename = %q, %v; want new-name", renamed.Slug, err)
+	}
+	resolved, err := svc.ResolveOrg(ctx, "acme")
+	if err != nil || resolved.ID != orgID || resolved.Slug != "new-name" {
+		t.Fatalf("old slug resolves to %+v, %v; want the same organization with its new slug", resolved, err)
+	}
+	if _, err := svc.ResolveOrg(ctx, "unknown"); !errors.Is(err, domain.ErrSlugNotFound) {
+		t.Fatalf("unknown slug err = %v, want ErrSlugNotFound", err)
+	}
+	if _, err := svc.ResolveOrg(ctx, "WWW"); !errors.Is(err, domain.ErrSlugNotFound) {
+		t.Fatalf("reserved slug err = %v, want ErrSlugNotFound", err)
+	}
+
+	other, err := svc.CreateOrg(ctx, "u2", "Other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SetOrgSlug(ctx, other.ID, "u2", "acme"); !errors.Is(err, domain.ErrSlugTaken) {
+		t.Fatalf("claiming a retired slug err = %v, want ErrSlugTaken", err)
 	}
 }

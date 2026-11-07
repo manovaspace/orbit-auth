@@ -218,7 +218,7 @@ func inviteFixture(t *testing.T) (*Service, *fakeOrgStore, *fakeInviteStore, *fa
 	}
 	notifier := &fakeNotifier{}
 	svc := newInviteService(t, orgs, invites, users, notifier)
-	org, err := svc.CreateOrg(context.Background(), "inviter", "Acme")
+	org, err := svc.CreateOrg(context.Background(), "inviter", "Acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}

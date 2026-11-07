@@ -106,26 +106,7 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 		if err != nil {
 			return false, fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
 		}
-		if err := queries.CreateOrganization(ctx, sqlcgen.CreateOrganizationParams{
-			ID:        orgID,
-			Name:      org.Name,
-			CreatedAt: timestamptz(org.CreatedAt),
-			UpdatedAt: timestamptz(org.UpdatedAt),
-		}); err != nil {
-			return false, fmt.Errorf("postgres: create signup organization: %w", err)
-		}
-		if err := queries.AddOrganizationMembership(ctx, sqlcgen.AddOrganizationMembershipParams{
-			OrgID:  orgID,
-			UserID: userID,
-			Status: string(domain.MembershipActive),
-			Role:   string(domain.RoleOwner),
-		}); err != nil {
-			return false, fmt.Errorf("postgres: add signup organization owner: %w", err)
-		}
-		if err := emitEvents(ctx, sink,
-			domain.NewOrgCreatedEvent(org.ID, org.Name, occurredAt),
-			domain.NewMembershipAddedEvent(org.ID, user.ID, domain.MembershipActive, domain.RoleOwner, occurredAt),
-		); err != nil {
+		if err := createOrganizationTx(ctx, queries, sink, *org, orgID, userID, occurredAt); err != nil {
 			return false, err
 		}
 	}

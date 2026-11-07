@@ -69,6 +69,15 @@ Memberships carry an administration tier `role` (`owner`, `admin`, `member`; mig
 - The store keeps at least one active owner (`ErrLastOwner` → `FailedPrecondition`) under the organization row lock, so concurrent demotions cannot orphan an organization. The creator of an organization (`CreateOrg`, sign-up with `org_name`) is its first owner; invited and added members start as `member`.
 - Migration 010 backfilled the earliest active member of each organization as its owner.
 
+## Organization slugs and tenant hosts
+
+Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<env>`; migration 011).
+
+- Format (`domain.ValidateSlug`): 3 to 30 lowercase ASCII letters, digits and single hyphens, starting with a letter and ending with a letter or digit, not in the reserved list (`www`, `api`, `app`, `auth`, `admin`, `demo`, `internal`, `login`, `falak`, ...). The check constraint pins the format; the reserved list is code.
+- Allocation (`CreateOrg`, sign-up with `org_name`): an explicit `slug` must be valid and free, otherwise the request fails. Without one the slug is derived from the name, then from the organization id (`org-` and 12 hex digits) when the name has no usable ASCII (for example a Persian name) or the derived slug is taken.
+- `organization_slugs` is the registry of every slug an organization has held; its primary key makes a slug unique across organizations **and across time**. `SetOrgSlug` (owner only, rechecked under the organization lock) retires the old slug, which stays reserved for the organization and keeps resolving, so a rename never frees an address for someone else. An organization can take its own retired slug back.
+- `TenantService.ResolveTenant` is the only unauthenticated organization call. It answers the organization id, name and current slug and whether the requested slug is retired, never members. Unknown, invalid and reserved slugs are the same `NotFound`.
+
 ## Feature Flags & Demo Mode
 
 - **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
@@ -86,6 +95,7 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 
 - `auth.membership.removed` — `RemoveMember`
 - `auth.membership.suspended` — `SuspendMember`
 - `auth.membership.role_changed` — `SetMemberRole` (carries `role`, `previous_role` and `actor_id`)
+- `auth.org.slug_changed` — `SetOrgSlug` (carries `slug`, `previous_slug` and `actor_id`); `auth.org.created` carries the new organization's `slug`
 
 Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version is envelope metadata `version="1"`, not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: owner, admin or member, never a product role) on `membership.added` and `occurred_at`; they never carry emails, tokens or secrets.
 

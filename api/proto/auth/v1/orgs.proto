@@ -26,6 +26,10 @@ service OrgService {
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  // SetOrgSlug changes the organization's slug, which is the label of its
+  // tenant host. Only an owner may. The old slug stays reserved for the
+  // organization and keeps resolving to it.
+  rpc SetOrgSlug(SetOrgSlugRequest) returns (SetOrgSlugResponse);
   // SetMemberRole changes a member's organization administration tier.
   rpc SetMemberRole(SetMemberRoleRequest) returns (SetMemberRoleResponse);
   // InviteMember creates a pending invitation and sends the org_invite email
@@ -53,6 +57,32 @@ message Organization {
   string name = 2;
   string created_at = 3;
   string updated_at = 4;
+  // slug is the current host label: 3 to 30 lowercase letters, digits and
+  // hyphens, unique across organizations and across time.
+  string slug = 5;
+}
+
+// TenantService answers which organization a tenant host label belongs to. It
+// is public on purpose: the edge asks it before anyone has signed in, so it
+// returns only the organization id, name and current slug and never members.
+service TenantService {
+  // ResolveTenant finds the organization that holds or once held the slug. A
+  // retired slug resolves to the same organization and reports its current slug
+  // so the edge can redirect. An unknown or invalid slug is NotFound.
+  rpc ResolveTenant(ResolveTenantRequest) returns (ResolveTenantResponse);
+}
+
+message ResolveTenantRequest {
+  string slug = 1;
+}
+
+message ResolveTenantResponse {
+  string org_id = 1;
+  string name = 2;
+  // slug is the organization's current slug.
+  string slug = 3;
+  // retired is true when the requested slug is no longer the current one.
+  bool retired = 4;
 }
 
 message Membership {
@@ -80,6 +110,17 @@ message Invite {
 
 message CreateOrgRequest {
   string name = 1;
+  // slug is optional. When empty it is derived from the name.
+  string slug = 2;
+}
+
+message SetOrgSlugRequest {
+  string org_id = 1;
+  string slug = 2;
+}
+
+message SetOrgSlugResponse {
+  Organization organization = 1;
 }
 
 message CreateOrgResponse {

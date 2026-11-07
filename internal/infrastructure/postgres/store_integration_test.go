@@ -213,7 +213,7 @@ func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	}
 
 	// A selected organization round-trips with the refresh token.
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	org := testOrg("Acme", time.Now().UTC())
 	if err := store.CreateOrg(ctx, org, user.ID); err != nil {
 		t.Fatal(err)
 	}

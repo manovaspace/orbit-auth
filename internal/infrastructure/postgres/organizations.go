@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/sqlcgen"
@@ -32,13 +33,38 @@ func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorI
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	queries := s.queries.WithTx(tx)
+	occurredAt := org.CreatedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	if err := createOrganizationTx(ctx, queries, newOutboxSink(tx), org, orgID, userID, occurredAt); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit create organization: %w", err)
+	}
+	return nil
+}
+
+// createOrganizationTx writes a new organization, its slug registry row, its
+// creator as the first owner, and the creation events. It is shared by CreateOrg
+// and sign-up with an organization so both allocate slugs the same way. A slug
+// that another organization holds or has held is domain.ErrSlugTaken.
+func createOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, orgID, userID uuid.UUID, occurredAt time.Time) error {
+	if err := domain.ValidateSlug(org.Slug); err != nil {
+		return err
+	}
 	if err := queries.CreateOrganization(ctx, sqlcgen.CreateOrganizationParams{
 		ID:        orgID,
 		Name:      org.Name,
+		Slug:      org.Slug,
 		CreatedAt: timestamptz(org.CreatedAt),
 		UpdatedAt: timestamptz(org.UpdatedAt),
 	}); err != nil {
-		return fmt.Errorf("postgres: create organization: %w", err)
+		return slugConflict(fmt.Errorf("postgres: create organization: %w", err))
+	}
+	if err := queries.InsertOrganizationSlug(ctx, sqlcgen.InsertOrganizationSlugParams{Slug: org.Slug, OrgID: orgID}); err != nil {
+		return slugConflict(fmt.Errorf("postgres: register organization slug: %w", err))
 	}
 	if err := queries.AddOrganizationMembership(ctx, sqlcgen.AddOrganizationMembershipParams{
 		OrgID:  orgID,
@@ -48,20 +74,107 @@ func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorI
 	}); err != nil {
 		return fmt.Errorf("postgres: add organization creator: %w", err)
 	}
-	occurredAt := org.CreatedAt
-	if occurredAt.IsZero() {
-		occurredAt = time.Now().UTC()
+	return emitEvents(ctx, sink,
+		domain.NewOrgCreatedEvent(org.ID, org.Name, org.Slug, occurredAt),
+		domain.NewMembershipAddedEvent(org.ID, userID.String(), domain.MembershipActive, domain.RoleOwner, occurredAt),
+	)
+}
+
+// slugConflict turns a unique violation on a slug into domain.ErrSlugTaken and
+// leaves every other error as it is.
+func slugConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return domain.ErrSlugTaken
+	}
+	return err
+}
+
+// SlugAvailable reports whether no organization holds or has held slug.
+func (s *Store) SlugAvailable(ctx context.Context, slug string) (bool, error) {
+	exists, err := s.queries.OrganizationSlugExists(ctx, slug)
+	if err != nil {
+		return false, err
+	}
+	return !exists, nil
+}
+
+// SetOrgSlug makes slug the organization's current slug in one transaction
+// under the organization lock. The previous slug is retired, stays reserved for
+// this organization and keeps resolving, so a rename never frees an address for
+// someone else. Re-claiming one of the organization's own retired slugs is
+// allowed.
+func (s *Store) SetOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor) error {
+	if err := domain.ValidateSlug(slug); err != nil {
+		return err
+	}
+	org, err := uuid.Parse(orgID)
+	if err != nil {
+		return fmt.Errorf("postgres: organization id %q: %w", orgID, err)
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin set organization slug: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	if err := lockOrganization(ctx, queries, org); err != nil {
+		return err
+	}
+	if err := authorizeUnderLock(ctx, queries, org, by, nil, ""); err != nil {
+		return err
+	}
+	current, err := queries.GetOrganization(ctx, org)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrOrgNotFound
+		}
+		return err
+	}
+	if current.Slug == slug {
+		return tx.Commit(ctx)
+	}
+	if err := queries.RetireCurrentOrganizationSlug(ctx, org); err != nil {
+		return err
+	}
+	revived, err := queries.ReviveOwnOrganizationSlug(ctx, sqlcgen.ReviveOwnOrganizationSlugParams{Slug: slug, OrgID: org})
+	if err != nil {
+		return err
+	}
+	if revived == 0 {
+		if err := queries.InsertOrganizationSlug(ctx, sqlcgen.InsertOrganizationSlugParams{Slug: slug, OrgID: org}); err != nil {
+			return slugConflict(fmt.Errorf("postgres: register organization slug: %w", err))
+		}
+	}
+	if err := queries.UpdateOrganizationSlug(ctx, sqlcgen.UpdateOrganizationSlugParams{Slug: slug, ID: org}); err != nil {
+		return slugConflict(fmt.Errorf("postgres: update organization slug: %w", err))
 	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewOrgCreatedEvent(org.ID, org.Name, occurredAt),
-		domain.NewMembershipAddedEvent(org.ID, creatorID, domain.MembershipActive, domain.RoleOwner, occurredAt),
+		domain.NewOrgSlugChangedEvent(orgID, slug, current.Slug, by.CallerID, time.Now().UTC()),
 	); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("postgres: commit create organization: %w", err)
+		return fmt.Errorf("postgres: commit organization slug: %w", err)
 	}
 	return nil
+}
+
+// ResolveSlug finds the organization that holds or once held slug. The result
+// carries the organization's current slug.
+func (s *Store) ResolveSlug(ctx context.Context, slug string) (domain.Organization, error) {
+	row, err := s.queries.ResolveOrganizationSlug(ctx, slug)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Organization{}, domain.ErrSlugNotFound
+	}
+	if err != nil {
+		return domain.Organization{}, err
+	}
+	return domain.Organization{
+		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+	}, nil
 }
 
 // GetOrg returns one organization or domain.ErrOrgNotFound.
@@ -80,6 +193,7 @@ func (s *Store) GetOrg(ctx context.Context, orgID string) (domain.Organization, 
 	return domain.Organization{
 		ID:        row.ID,
 		Name:      row.Name,
+		Slug:      row.Slug,
 		CreatedAt: row.CreatedAt.Time,
 		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
@@ -100,6 +214,7 @@ func (s *Store) ListOrgsForUser(ctx context.Context, userID string) ([]domain.Or
 		out = append(out, domain.Organization{
 			ID:        row.ID,
 			Name:      row.Name,
+			Slug:      row.Slug,
 			CreatedAt: row.CreatedAt.Time,
 			UpdatedAt: row.UpdatedAt.Time,
 		})

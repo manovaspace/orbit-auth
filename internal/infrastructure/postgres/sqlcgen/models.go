@@ -33,6 +33,7 @@ type Organization struct {
 	Name      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	Slug      string
 }
 
 type OrganizationInvite struct {
@@ -54,6 +55,13 @@ type OrganizationMembership struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	Role      string
+}
+
+type OrganizationSlug struct {
+	Slug      string
+	OrgID     uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	RetiredAt pgtype.Timestamptz
 }
 
 type OtpChallenge struct {

@@ -9,9 +9,12 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )
 
-// CreateOrg creates an organization and makes its creator an active member in
-// the same store transaction.
-func (s *Service) CreateOrg(ctx context.Context, creatorID, name string) (domain.Organization, error) {
+// CreateOrg creates an organization and makes its creator its first owner in
+// the same store transaction. slug is optional: when empty it is derived from
+// the name, or from the organization id when the name has no usable ASCII
+// (for example a Persian name). An explicit slug that is invalid or taken is an
+// error rather than silently replaced.
+func (s *Service) CreateOrg(ctx context.Context, creatorID, name, slug string) (domain.Organization, error) {
 	creatorID = strings.TrimSpace(creatorID)
 	name = strings.TrimSpace(name)
 	if creatorID == "" {
@@ -21,9 +24,15 @@ func (s *Service) CreateOrg(ctx context.Context, creatorID, name string) (domain
 		return domain.Organization{}, domain.ErrInvalidOrgName
 	}
 	now := s.clock.Now()
+	orgID := s.ids.NewID()
+	slug, err := s.allocateSlug(ctx, slug, name, orgID)
+	if err != nil {
+		return domain.Organization{}, err
+	}
 	org := domain.Organization{
-		ID:        s.ids.NewID(),
+		ID:        orgID,
 		Name:      name,
+		Slug:      slug,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -32,6 +41,72 @@ func (s *Service) CreateOrg(ctx context.Context, creatorID, name string) (domain
 	}
 	s.logger("organization_created", "org_id", org.ID, "creator_id", creatorID)
 	return org, nil
+}
+
+// allocateSlug picks the slug for a new organization. An explicit request must
+// be valid and free. Otherwise the candidates are the slug derived from the
+// name and then the id-based fallback, and the first valid, free one wins.
+func (s *Service) allocateSlug(ctx context.Context, requested, name, orgID string) (string, error) {
+	if requested = strings.ToLower(strings.TrimSpace(requested)); requested != "" {
+		if err := domain.ValidateSlug(requested); err != nil {
+			return "", err
+		}
+		available, err := s.orgs.SlugAvailable(ctx, requested)
+		if err != nil {
+			return "", err
+		}
+		if !available {
+			return "", domain.ErrSlugTaken
+		}
+		return requested, nil
+	}
+	for _, candidate := range []string{domain.SlugFromName(name), domain.FallbackSlug(orgID)} {
+		if candidate == "" || domain.ValidateSlug(candidate) != nil {
+			continue
+		}
+		available, err := s.orgs.SlugAvailable(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if available {
+			return candidate, nil
+		}
+	}
+	return "", domain.ErrSlugTaken
+}
+
+// SetOrgSlug renames the organization's slug, which changes the address of its
+// tenant host. Only an owner may. The old slug stays reserved for this
+// organization and keeps resolving to it.
+func (s *Service) SetOrgSlug(ctx context.Context, orgID, callerID, slug string) (domain.Organization, error) {
+	orgID, callerID = strings.TrimSpace(orgID), strings.TrimSpace(callerID)
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	if orgID == "" || callerID == "" {
+		return domain.Organization{}, fmt.Errorf("org_id and caller_id required")
+	}
+	if err := s.authorizeMembership(ctx, orgID, callerID, domain.ActionSetSlug, "", ""); err != nil {
+		return domain.Organization{}, err
+	}
+	if err := domain.ValidateSlug(slug); err != nil {
+		return domain.Organization{}, err
+	}
+	if err := s.orgs.SetOrgSlug(ctx, orgID, slug, domain.MembershipActor{CallerID: callerID, Action: domain.ActionSetSlug}); err != nil {
+		return domain.Organization{}, err
+	}
+	s.logger("organization_slug_changed", "org_id", orgID, "slug", slug, "actor_id", callerID)
+	return s.orgs.GetOrg(ctx, orgID)
+}
+
+// ResolveOrg finds the organization behind a tenant host label. It is public:
+// it answers only the organization id, name and current slug, never members. A
+// retired slug resolves to the same organization and reports its current slug,
+// so the caller can redirect. An invalid or unknown slug is ErrSlugNotFound.
+func (s *Service) ResolveOrg(ctx context.Context, slug string) (domain.Organization, error) {
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	if domain.ValidateSlug(slug) != nil {
+		return domain.Organization{}, domain.ErrSlugNotFound
+	}
+	return s.orgs.ResolveSlug(ctx, slug)
 }
 
 // ListOrgsForUser lists the organizations in which userID has an active

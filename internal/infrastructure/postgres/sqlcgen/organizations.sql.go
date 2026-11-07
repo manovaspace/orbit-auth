@@ -70,18 +70,20 @@ func (q *Queries) CountActiveOrganizationOwners(ctx context.Context, orgID uuid.
 }
 
 const createOrganization = `-- name: CreateOrganization :exec
-INSERT INTO organizations (id, name, created_at, updated_at)
+INSERT INTO organizations (id, name, slug, created_at, updated_at)
 VALUES (
     $1::uuid,
     $2::text,
-    $3::timestamptz,
-    $4::timestamptz
+    $3::text,
+    $4::timestamptz,
+    $5::timestamptz
 )
 `
 
 type CreateOrganizationParams struct {
 	ID        uuid.UUID
 	Name      string
+	Slug      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 }
@@ -90,6 +92,7 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 	_, err := q.db.Exec(ctx, createOrganization,
 		arg.ID,
 		arg.Name,
+		arg.Slug,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -128,7 +131,7 @@ func (q *Queries) DeleteOrganizationMembership(ctx context.Context, arg DeleteOr
 }
 
 const getOrganization = `-- name: GetOrganization :one
-SELECT id::text AS id, name, created_at, updated_at
+SELECT id::text AS id, name, slug, created_at, updated_at
 FROM organizations
 WHERE id = $1::uuid
 `
@@ -136,6 +139,7 @@ WHERE id = $1::uuid
 type GetOrganizationRow struct {
 	ID        string
 	Name      string
+	Slug      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 }
@@ -146,6 +150,7 @@ func (q *Queries) GetOrganization(ctx context.Context, id uuid.UUID) (GetOrganiz
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Slug,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -190,6 +195,21 @@ func (q *Queries) GetOrganizationMembership(ctx context.Context, arg GetOrganiza
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertOrganizationSlug = `-- name: InsertOrganizationSlug :exec
+INSERT INTO organization_slugs (slug, org_id)
+VALUES ($1::text, $2::uuid)
+`
+
+type InsertOrganizationSlugParams struct {
+	Slug  string
+	OrgID uuid.UUID
+}
+
+func (q *Queries) InsertOrganizationSlug(ctx context.Context, arg InsertOrganizationSlugParams) error {
+	_, err := q.db.Exec(ctx, insertOrganizationSlug, arg.Slug, arg.OrgID)
+	return err
 }
 
 const listOrganizationMembers = `-- name: ListOrganizationMembers :many
@@ -241,7 +261,7 @@ func (q *Queries) ListOrganizationMembers(ctx context.Context, orgID uuid.UUID) 
 }
 
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
-SELECT o.id::text AS id, o.name, o.created_at, o.updated_at
+SELECT o.id::text AS id, o.name, o.slug, o.created_at, o.updated_at
 FROM organizations o
 JOIN organization_memberships m ON m.org_id = o.id
 WHERE m.user_id = $1::uuid
@@ -252,6 +272,7 @@ ORDER BY o.created_at, o.id
 type ListOrganizationsForUserRow struct {
 	ID        string
 	Name      string
+	Slug      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 }
@@ -268,6 +289,7 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Slug,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -293,6 +315,77 @@ func (q *Queries) LockOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const organizationSlugExists = `-- name: OrganizationSlugExists :one
+SELECT EXISTS (SELECT 1 FROM organization_slugs WHERE slug = $1::text) AS found
+`
+
+func (q *Queries) OrganizationSlugExists(ctx context.Context, slug string) (bool, error) {
+	row := q.db.QueryRow(ctx, organizationSlugExists, slug)
+	var found bool
+	err := row.Scan(&found)
+	return found, err
+}
+
+const resolveOrganizationSlug = `-- name: ResolveOrganizationSlug :one
+SELECT o.id::text AS id, o.name, o.slug, o.created_at, o.updated_at
+FROM organization_slugs s
+JOIN organizations o ON o.id = s.org_id
+WHERE s.slug = $1::text
+`
+
+type ResolveOrganizationSlugRow struct {
+	ID        string
+	Name      string
+	Slug      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ResolveOrganizationSlug(ctx context.Context, slug string) (ResolveOrganizationSlugRow, error) {
+	row := q.db.QueryRow(ctx, resolveOrganizationSlug, slug)
+	var i ResolveOrganizationSlugRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const retireCurrentOrganizationSlug = `-- name: RetireCurrentOrganizationSlug :exec
+UPDATE organization_slugs
+SET retired_at = NOW()
+WHERE org_id = $1::uuid
+  AND retired_at IS NULL
+`
+
+func (q *Queries) RetireCurrentOrganizationSlug(ctx context.Context, orgID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, retireCurrentOrganizationSlug, orgID)
+	return err
+}
+
+const reviveOwnOrganizationSlug = `-- name: ReviveOwnOrganizationSlug :execrows
+UPDATE organization_slugs
+SET retired_at = NULL
+WHERE slug = $1::text
+  AND org_id = $2::uuid
+`
+
+type ReviveOwnOrganizationSlugParams struct {
+	Slug  string
+	OrgID uuid.UUID
+}
+
+func (q *Queries) ReviveOwnOrganizationSlug(ctx context.Context, arg ReviveOwnOrganizationSlugParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reviveOwnOrganizationSlug, arg.Slug, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateOrganizationMembershipRole = `-- name: UpdateOrganizationMembershipRole :exec
@@ -330,5 +423,22 @@ type UpdateOrganizationMembershipStatusParams struct {
 
 func (q *Queries) UpdateOrganizationMembershipStatus(ctx context.Context, arg UpdateOrganizationMembershipStatusParams) error {
 	_, err := q.db.Exec(ctx, updateOrganizationMembershipStatus, arg.Status, arg.OrgID, arg.UserID)
+	return err
+}
+
+const updateOrganizationSlug = `-- name: UpdateOrganizationSlug :exec
+UPDATE organizations
+SET slug = $1::text,
+    updated_at = NOW()
+WHERE id = $2::uuid
+`
+
+type UpdateOrganizationSlugParams struct {
+	Slug string
+	ID   uuid.UUID
+}
+
+func (q *Queries) UpdateOrganizationSlug(ctx context.Context, arg UpdateOrganizationSlugParams) error {
+	_, err := q.db.Exec(ctx, updateOrganizationSlug, arg.Slug, arg.ID)
 	return err
 }

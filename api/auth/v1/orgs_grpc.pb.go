@@ -25,6 +25,7 @@ const (
 	OrgService_AddMember_FullMethodName     = "/auth.v1.OrgService/AddMember"
 	OrgService_RemoveMember_FullMethodName  = "/auth.v1.OrgService/RemoveMember"
 	OrgService_SuspendMember_FullMethodName = "/auth.v1.OrgService/SuspendMember"
+	OrgService_SetOrgSlug_FullMethodName    = "/auth.v1.OrgService/SetOrgSlug"
 	OrgService_SetMemberRole_FullMethodName = "/auth.v1.OrgService/SetMemberRole"
 	OrgService_InviteMember_FullMethodName  = "/auth.v1.OrgService/InviteMember"
 	OrgService_AcceptInvite_FullMethodName  = "/auth.v1.OrgService/AcceptInvite"
@@ -57,6 +58,10 @@ type OrgServiceClient interface {
 	AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*AddMemberResponse, error)
 	RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error)
 	SuspendMember(ctx context.Context, in *SuspendMemberRequest, opts ...grpc.CallOption) (*SuspendMemberResponse, error)
+	// SetOrgSlug changes the organization's slug, which is the label of its
+	// tenant host. Only an owner may. The old slug stays reserved for the
+	// organization and keeps resolving to it.
+	SetOrgSlug(ctx context.Context, in *SetOrgSlugRequest, opts ...grpc.CallOption) (*SetOrgSlugResponse, error)
 	// SetMemberRole changes a member's organization administration tier.
 	SetMemberRole(ctx context.Context, in *SetMemberRoleRequest, opts ...grpc.CallOption) (*SetMemberRoleResponse, error)
 	// InviteMember creates a pending invitation and sends the org_invite email
@@ -147,6 +152,16 @@ func (c *orgServiceClient) SuspendMember(ctx context.Context, in *SuspendMemberR
 	return out, nil
 }
 
+func (c *orgServiceClient) SetOrgSlug(ctx context.Context, in *SetOrgSlugRequest, opts ...grpc.CallOption) (*SetOrgSlugResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetOrgSlugResponse)
+	err := c.cc.Invoke(ctx, OrgService_SetOrgSlug_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orgServiceClient) SetMemberRole(ctx context.Context, in *SetMemberRoleRequest, opts ...grpc.CallOption) (*SetMemberRoleResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetMemberRoleResponse)
@@ -231,6 +246,10 @@ type OrgServiceServer interface {
 	AddMember(context.Context, *AddMemberRequest) (*AddMemberResponse, error)
 	RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error)
 	SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error)
+	// SetOrgSlug changes the organization's slug, which is the label of its
+	// tenant host. Only an owner may. The old slug stays reserved for the
+	// organization and keeps resolving to it.
+	SetOrgSlug(context.Context, *SetOrgSlugRequest) (*SetOrgSlugResponse, error)
 	// SetMemberRole changes a member's organization administration tier.
 	SetMemberRole(context.Context, *SetMemberRoleRequest) (*SetMemberRoleResponse, error)
 	// InviteMember creates a pending invitation and sends the org_invite email
@@ -278,6 +297,9 @@ func (UnimplementedOrgServiceServer) RemoveMember(context.Context, *RemoveMember
 }
 func (UnimplementedOrgServiceServer) SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuspendMember not implemented")
+}
+func (UnimplementedOrgServiceServer) SetOrgSlug(context.Context, *SetOrgSlugRequest) (*SetOrgSlugResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetOrgSlug not implemented")
 }
 func (UnimplementedOrgServiceServer) SetMemberRole(context.Context, *SetMemberRoleRequest) (*SetMemberRoleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetMemberRole not implemented")
@@ -426,6 +448,24 @@ func _OrgService_SuspendMember_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrgService_SetOrgSlug_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetOrgSlugRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).SetOrgSlug(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_SetOrgSlug_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).SetOrgSlug(ctx, req.(*SetOrgSlugRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrgService_SetMemberRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetMemberRoleRequest)
 	if err := dec(in); err != nil {
@@ -566,6 +606,10 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _OrgService_SuspendMember_Handler,
 		},
 		{
+			MethodName: "SetOrgSlug",
+			Handler:    _OrgService_SetOrgSlug_Handler,
+		},
+		{
 			MethodName: "SetMemberRole",
 			Handler:    _OrgService_SetMemberRole_Handler,
 		},
@@ -588,6 +632,122 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SelectOrg",
 			Handler:    _OrgService_SelectOrg_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "auth/v1/orgs.proto",
+}
+
+const (
+	TenantService_ResolveTenant_FullMethodName = "/auth.v1.TenantService/ResolveTenant"
+)
+
+// TenantServiceClient is the client API for TenantService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// TenantService answers which organization a tenant host label belongs to. It
+// is public on purpose: the edge asks it before anyone has signed in, so it
+// returns only the organization id, name and current slug and never members.
+type TenantServiceClient interface {
+	// ResolveTenant finds the organization that holds or once held the slug. A
+	// retired slug resolves to the same organization and reports its current slug
+	// so the edge can redirect. An unknown or invalid slug is NotFound.
+	ResolveTenant(ctx context.Context, in *ResolveTenantRequest, opts ...grpc.CallOption) (*ResolveTenantResponse, error)
+}
+
+type tenantServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewTenantServiceClient(cc grpc.ClientConnInterface) TenantServiceClient {
+	return &tenantServiceClient{cc}
+}
+
+func (c *tenantServiceClient) ResolveTenant(ctx context.Context, in *ResolveTenantRequest, opts ...grpc.CallOption) (*ResolveTenantResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveTenantResponse)
+	err := c.cc.Invoke(ctx, TenantService_ResolveTenant_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// TenantServiceServer is the server API for TenantService service.
+// All implementations must embed UnimplementedTenantServiceServer
+// for forward compatibility.
+//
+// TenantService answers which organization a tenant host label belongs to. It
+// is public on purpose: the edge asks it before anyone has signed in, so it
+// returns only the organization id, name and current slug and never members.
+type TenantServiceServer interface {
+	// ResolveTenant finds the organization that holds or once held the slug. A
+	// retired slug resolves to the same organization and reports its current slug
+	// so the edge can redirect. An unknown or invalid slug is NotFound.
+	ResolveTenant(context.Context, *ResolveTenantRequest) (*ResolveTenantResponse, error)
+	mustEmbedUnimplementedTenantServiceServer()
+}
+
+// UnimplementedTenantServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedTenantServiceServer struct{}
+
+func (UnimplementedTenantServiceServer) ResolveTenant(context.Context, *ResolveTenantRequest) (*ResolveTenantResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveTenant not implemented")
+}
+func (UnimplementedTenantServiceServer) mustEmbedUnimplementedTenantServiceServer() {}
+func (UnimplementedTenantServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeTenantServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TenantServiceServer will
+// result in compilation errors.
+type UnsafeTenantServiceServer interface {
+	mustEmbedUnimplementedTenantServiceServer()
+}
+
+func RegisterTenantServiceServer(s grpc.ServiceRegistrar, srv TenantServiceServer) {
+	// If the following call panics, it indicates UnimplementedTenantServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&TenantService_ServiceDesc, srv)
+}
+
+func _TenantService_ResolveTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveTenantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TenantServiceServer).ResolveTenant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TenantService_ResolveTenant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TenantServiceServer).ResolveTenant(ctx, req.(*ResolveTenantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// TenantService_ServiceDesc is the grpc.ServiceDesc for TenantService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var TenantService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "auth.v1.TenantService",
+	HandlerType: (*TenantServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ResolveTenant",
+			Handler:    _TenantService_ResolveTenant_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
