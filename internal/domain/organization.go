@@ -15,7 +15,41 @@ const (
 	MembershipSuspended MembershipStatus = "suspended"
 )
 
+// MembershipRole is a member's administration tier inside one organization.
+// It decides who may change memberships and invites; it is not a product
+// role, and products keep their own roles and permissions (ADR-045 D1). The
+// values are part of the storage contract pinned by migration 010.
+type MembershipRole string
+
+const (
+	// RoleOwner administers the organization, including other admins and
+	// owners. An organization keeps at least one active owner.
+	RoleOwner MembershipRole = "owner"
+	// RoleAdmin manages plain members and invitations.
+	RoleAdmin MembershipRole = "admin"
+	// RoleMember has no administration rights.
+	RoleMember MembershipRole = "member"
+)
+
+// ParseMembershipRole validates a role string.
+func ParseMembershipRole(value string) (MembershipRole, error) {
+	switch role := MembershipRole(value); role {
+	case RoleOwner, RoleAdmin, RoleMember:
+		return role, nil
+	default:
+		return "", ErrInvalidRole
+	}
+}
+
 var (
+	// ErrForbidden reports a caller without the organization-administration
+	// authority an operation needs.
+	ErrForbidden = errors.New("organization administration required")
+	// ErrLastOwner refuses a change that would leave an organization without
+	// an active owner.
+	ErrLastOwner = errors.New("organization must keep at least one active owner")
+	// ErrInvalidRole reports a membership role outside owner, admin and member.
+	ErrInvalidRole = errors.New("invalid membership role")
 	// ErrOrgNotFound reports an organization that does not exist.
 	ErrOrgNotFound = errors.New("organization not found")
 	// ErrNotMember reports a user without a membership in the organization.
@@ -42,6 +76,7 @@ type Membership struct {
 	OrgID     string
 	UserID    string
 	Status    MembershipStatus
+	Role      MembershipRole
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

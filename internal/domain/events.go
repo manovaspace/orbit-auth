@@ -15,6 +15,9 @@ const (
 	SubjectMembershipAdded     = "auth.membership.added"
 	SubjectMembershipRemoved   = "auth.membership.removed"
 	SubjectMembershipSuspended = "auth.membership.suspended"
+	// SubjectMembershipRoleChanged is published when a member's
+	// administration tier changes (owner, admin or member).
+	SubjectMembershipRoleChanged = "auth.membership.role_changed"
 )
 
 // EventSource is the envelope metadata source of every event this service
@@ -42,12 +45,26 @@ type OrgCreatedPayload struct {
 }
 
 // MembershipAddedPayload is the body of auth.membership.added. Status is the
-// role-free membership lifecycle state.
+// membership lifecycle state and Role the organization administration tier
+// (owner, admin or member), never a product role. Consumers that predate Role
+// ignore the field.
 type MembershipAddedPayload struct {
 	OrgID      string           `json:"org_id"`
 	UserID     string           `json:"user_id"`
 	Status     MembershipStatus `json:"status"`
+	Role       MembershipRole   `json:"role"`
 	OccurredAt time.Time        `json:"occurred_at"`
+}
+
+// MembershipRoleChangedPayload is the body of auth.membership.role_changed.
+// ActorID is the member who made the change.
+type MembershipRoleChangedPayload struct {
+	OrgID        string         `json:"org_id"`
+	UserID       string         `json:"user_id"`
+	Role         MembershipRole `json:"role"`
+	PreviousRole MembershipRole `json:"previous_role"`
+	ActorID      string         `json:"actor_id"`
+	OccurredAt   time.Time      `json:"occurred_at"`
 }
 
 // MembershipRemovedPayload is the body of auth.membership.removed. Status is
@@ -101,10 +118,10 @@ func NewOrgCreatedEvent(orgID, name string, at time.Time) Event {
 }
 
 // NewMembershipAddedEvent builds auth.membership.added.
-func NewMembershipAddedEvent(orgID, userID string, status MembershipStatus, at time.Time) Event {
+func NewMembershipAddedEvent(orgID, userID string, status MembershipStatus, role MembershipRole, at time.Time) Event {
 	return Event{
 		Subject:    SubjectMembershipAdded,
-		Payload:    MembershipAddedPayload{OrgID: orgID, UserID: userID, Status: status, OccurredAt: at},
+		Payload:    MembershipAddedPayload{OrgID: orgID, UserID: userID, Status: status, Role: role, OccurredAt: at},
 		OccurredAt: at,
 	}
 }
@@ -123,6 +140,17 @@ func NewMembershipSuspendedEvent(orgID, userID string, status MembershipStatus, 
 	return Event{
 		Subject:    SubjectMembershipSuspended,
 		Payload:    MembershipSuspendedPayload{OrgID: orgID, UserID: userID, Status: status, OccurredAt: at},
+		OccurredAt: at,
+	}
+}
+
+// NewMembershipRoleChangedEvent builds auth.membership.role_changed.
+func NewMembershipRoleChangedEvent(orgID, userID string, role, previous MembershipRole, actorID string, at time.Time) Event {
+	return Event{
+		Subject: SubjectMembershipRoleChanged,
+		Payload: MembershipRoleChangedPayload{
+			OrgID: orgID, UserID: userID, Role: role, PreviousRole: previous, ActorID: actorID, OccurredAt: at,
+		},
 		OccurredAt: at,
 	}
 }

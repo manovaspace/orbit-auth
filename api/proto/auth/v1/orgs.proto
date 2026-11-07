@@ -10,10 +10,15 @@ import "auth/v1/auth.proto";
 //
 // The caller is always taken from the validated access token, never from the
 // request body. Orbit Auth gates every organization-scoped call on the caller
-// being an active member of that organization. Member management is
-// membership-gated only: any product or gateway that exposes it must add its
-// own admin check.
-// orbit-auth does not decide who administers an organization inside a product.
+// being an active member of that organization (NotFound otherwise).
+//
+// Every membership and invitation write additionally needs organization
+// administration authority: the caller must be an active owner or admin, an
+// admin can change only plain members, and only an owner can grant owner or
+// admin. A caller without that authority gets PermissionDenied. An organization
+// always keeps at least one active owner (FailedPrecondition). Any active member
+// may remove themselves. The owner/admin/member tier is not a product role:
+// products keep their own roles and permissions (ADR-045).
 service OrgService {
   rpc CreateOrg(CreateOrgRequest) returns (CreateOrgResponse);
   rpc ListMyOrgs(ListMyOrgsRequest) returns (ListMyOrgsResponse);
@@ -21,9 +26,10 @@ service OrgService {
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  // SetMemberRole changes a member's organization administration tier.
+  rpc SetMemberRole(SetMemberRoleRequest) returns (SetMemberRoleResponse);
   // InviteMember creates a pending invitation and sends the org_invite email
-  // through orbit-notifications. Orbit Auth gates the call on the caller being
-  // an active member only; products and the gateway add their own admin check.
+  // through orbit-notifications. The caller must be an active owner or admin.
   // Re-inviting an address with a pending invite rotates that invite.
   rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
   // AcceptInvite consumes one invitation token. It works for any authenticated
@@ -55,6 +61,8 @@ message Membership {
   string status = 3;
   string created_at = 4;
   string updated_at = 5;
+  // owner, admin or member: the organization administration tier.
+  string role = 6;
 }
 
 // Invite is an organization invitation without its secret token.
@@ -112,6 +120,17 @@ message SuspendMemberRequest {
 }
 
 message SuspendMemberResponse {}
+
+message SetMemberRoleRequest {
+  string org_id = 1;
+  string user_id = 2;
+  // owner, admin or member.
+  string role = 3;
+}
+
+message SetMemberRoleResponse {
+  Membership membership = 1;
+}
 
 message InviteMemberRequest {
   string org_id = 1;

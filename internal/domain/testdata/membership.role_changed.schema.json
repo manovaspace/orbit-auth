@@ -1,0 +1,10 @@
+{
+	"fields": {
+		"actor_id": "string",
+		"occurred_at": "string",
+		"org_id": "string",
+		"previous_role": "string",
+		"role": "string",
+		"user_id": "string"
+	}
+}

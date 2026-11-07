@@ -17,6 +17,13 @@ type fakeOrgStore struct {
 	mu          sync.RWMutex
 	orgs        map[string]domain.Organization
 	memberships map[string]map[string]domain.Membership
+	roleChanges []roleChange
+}
+
+// roleChange records one UpdateMemberRole call.
+type roleChange struct {
+	orgID, userID, actorID string
+	role                   domain.MembershipRole
 }
 
 func newFakeOrgStore() *fakeOrgStore {
@@ -35,6 +42,7 @@ func (f *fakeOrgStore) CreateOrg(_ context.Context, org domain.Organization, cre
 			OrgID:     org.ID,
 			UserID:    creatorID,
 			Status:    domain.MembershipActive,
+			Role:      domain.RoleOwner,
 			CreatedAt: org.CreatedAt,
 			UpdatedAt: org.UpdatedAt,
 		},
@@ -77,7 +85,7 @@ func (f *fakeOrgStore) ListMembers(_ context.Context, orgID string) ([]domain.Me
 	return out, nil
 }
 
-func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status domain.MembershipStatus) error {
+func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status domain.MembershipStatus, role domain.MembershipRole) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.orgs[orgID]; !ok {
@@ -93,13 +101,14 @@ func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status
 		OrgID:     orgID,
 		UserID:    userID,
 		Status:    status,
+		Role:      role,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
 	return nil
 }
 
-func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID string, status domain.MembershipStatus) error {
+func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID string, status domain.MembershipStatus, _ domain.MembershipActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	membership, ok := f.memberships[orgID][userID]
@@ -110,6 +119,9 @@ func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID strin
 		if f.countActiveLocked(orgID) <= 1 {
 			return domain.ErrLastActiveMember
 		}
+		if f.lastActiveOwnerLocked(orgID, membership) {
+			return domain.ErrLastOwner
+		}
 	}
 	membership.Status = status
 	membership.UpdatedAt = time.Now().UTC()
@@ -117,7 +129,7 @@ func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID strin
 	return nil
 }
 
-func (f *fakeOrgStore) RemoveMember(_ context.Context, orgID, userID string) error {
+func (f *fakeOrgStore) RemoveMember(_ context.Context, orgID, userID string, _ domain.MembershipActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	membership, ok := f.memberships[orgID][userID]
@@ -127,8 +139,44 @@ func (f *fakeOrgStore) RemoveMember(_ context.Context, orgID, userID string) err
 	if membership.Status == domain.MembershipActive && f.countActiveLocked(orgID) <= 1 {
 		return domain.ErrLastActiveMember
 	}
+	if membership.Status == domain.MembershipActive && f.lastActiveOwnerLocked(orgID, membership) {
+		return domain.ErrLastOwner
+	}
 	delete(f.memberships[orgID], userID)
 	return nil
+}
+
+func (f *fakeOrgStore) UpdateMemberRole(_ context.Context, orgID, userID string, role domain.MembershipRole, actorID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	membership, ok := f.memberships[orgID][userID]
+	if !ok {
+		return domain.ErrNotMember
+	}
+	if membership.Role == role {
+		return nil
+	}
+	if role != domain.RoleOwner && f.lastActiveOwnerLocked(orgID, membership) {
+		return domain.ErrLastOwner
+	}
+	membership.Role = role
+	membership.UpdatedAt = time.Now().UTC()
+	f.memberships[orgID][userID] = membership
+	f.roleChanges = append(f.roleChanges, roleChange{orgID: orgID, userID: userID, role: role, actorID: actorID})
+	return nil
+}
+
+func (f *fakeOrgStore) lastActiveOwnerLocked(orgID string, target domain.Membership) bool {
+	if target.Role != domain.RoleOwner || target.Status != domain.MembershipActive {
+		return false
+	}
+	owners := 0
+	for _, membership := range f.memberships[orgID] {
+		if membership.Role == domain.RoleOwner && membership.Status == domain.MembershipActive {
+			owners++
+		}
+	}
+	return owners <= 1
 }
 
 func (f *fakeOrgStore) GetMembership(_ context.Context, orgID, userID string) (domain.Membership, error) {
@@ -156,6 +204,9 @@ func (f *fakeOrgStore) seedMembership(m domain.Membership) {
 	defer f.mu.Unlock()
 	if f.memberships[m.OrgID] == nil {
 		f.memberships[m.OrgID] = make(map[string]domain.Membership)
+	}
+	if m.Role == "" {
+		m.Role = domain.RoleMember
 	}
 	f.memberships[m.OrgID][m.UserID] = m
 }
@@ -266,10 +317,10 @@ func TestListMembersReturnsEveryMembershipWithStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.AddMember(context.Background(), org.ID, "member"); err != nil {
+	if err := svc.AddMember(context.Background(), org.ID, "owner", "member"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SuspendMember(context.Background(), org.ID, "member"); err != nil {
+	if err := svc.SuspendMember(context.Background(), org.ID, "owner", "member"); err != nil {
 		t.Fatal(err)
 	}
 	store.seedMembership(domain.Membership{OrgID: org.ID, UserID: "invited", Status: domain.MembershipInvited})
@@ -323,7 +374,7 @@ func TestAddMemberMakesUserActive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := svc.AddMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.AddMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
 	membership, err := store.GetMembership(context.Background(), org.ID, "user-2")
@@ -346,14 +397,14 @@ func TestAddMemberDoesNotReactivateSuspendedMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.AddMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.AddMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SuspendMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.SuspendMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := svc.AddMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.AddMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
 	membership, err := store.GetMembership(context.Background(), org.ID, "user-2")
@@ -367,8 +418,8 @@ func TestAddMemberDoesNotReactivateSuspendedMember(t *testing.T) {
 
 func TestAddMemberRejectsUnknownOrganization(t *testing.T) {
 	svc := newOrgService(t, newFakeOrgStore())
-	if err := svc.AddMember(context.Background(), "missing", "user-2"); !errors.Is(err, domain.ErrOrgNotFound) {
-		t.Fatalf("err = %v, want ErrOrgNotFound", err)
+	if err := svc.AddMember(context.Background(), "missing", "owner", "user-2"); !errors.Is(err, domain.ErrNotMember) {
+		t.Fatalf("err = %v, want ErrNotMember", err)
 	}
 }
 
@@ -386,9 +437,9 @@ func TestMemberManagementRejectsUnknownUser(t *testing.T) {
 	ctx := context.Background()
 
 	calls := []func() error{
-		func() error { return svc.AddMember(ctx, org.ID, "missing") },
-		func() error { return svc.SuspendMember(ctx, org.ID, "missing") },
-		func() error { return svc.RemoveMember(ctx, org.ID, "missing") },
+		func() error { return svc.AddMember(ctx, org.ID, "owner", "missing") },
+		func() error { return svc.SuspendMember(ctx, org.ID, "owner", "missing") },
+		func() error { return svc.RemoveMember(ctx, org.ID, "owner", "missing") },
 	}
 	for _, call := range calls {
 		if err := call(); !errors.Is(err, domain.ErrUserNotFound) {
@@ -408,14 +459,14 @@ func TestSuspendMemberKeepsLastActiveMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := svc.SuspendMember(context.Background(), org.ID, "owner"); !errors.Is(err, domain.ErrLastActiveMember) {
+	if err := svc.SuspendMember(context.Background(), org.ID, "owner", "owner"); !errors.Is(err, domain.ErrLastActiveMember) {
 		t.Fatalf("err = %v, want ErrLastActiveMember", err)
 	}
 
-	if err := svc.AddMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.AddMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SuspendMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.SuspendMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
 	membership, err := store.GetMembership(context.Background(), org.ID, "user-2")
@@ -431,7 +482,7 @@ func TestSuspendMemberKeepsLastActiveMember(t *testing.T) {
 	}
 
 	// Suspending an already suspended member is a no-op.
-	if err := svc.SuspendMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.SuspendMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatalf("second suspend: %v", err)
 	}
 }
@@ -443,7 +494,7 @@ func TestSuspendMemberRejectsNonMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SuspendMember(context.Background(), org.ID, "stranger"); !errors.Is(err, domain.ErrNotMember) {
+	if err := svc.SuspendMember(context.Background(), org.ID, "owner", "stranger"); !errors.Is(err, domain.ErrNotMember) {
 		t.Fatalf("err = %v, want ErrNotMember", err)
 	}
 }
@@ -455,14 +506,14 @@ func TestRemoveMemberKeepsLastActiveMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RemoveMember(context.Background(), org.ID, "owner"); !errors.Is(err, domain.ErrLastActiveMember) {
+	if err := svc.RemoveMember(context.Background(), org.ID, "owner", "owner"); !errors.Is(err, domain.ErrLastActiveMember) {
 		t.Fatalf("err = %v, want ErrLastActiveMember", err)
 	}
 
-	if err := svc.AddMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.AddMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RemoveMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.RemoveMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.GetMembership(context.Background(), org.ID, "user-2"); !errors.Is(err, domain.ErrNotMember) {
@@ -479,7 +530,7 @@ func TestRemoveMemberAllowsNonActiveMembership(t *testing.T) {
 	}
 	store.seedMembership(domain.Membership{OrgID: org.ID, UserID: "user-2", Status: domain.MembershipSuspended})
 
-	if err := svc.RemoveMember(context.Background(), org.ID, "user-2"); err != nil {
+	if err := svc.RemoveMember(context.Background(), org.ID, "owner", "user-2"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -491,7 +542,7 @@ func TestRemoveMemberRejectsNonMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RemoveMember(context.Background(), org.ID, "stranger"); !errors.Is(err, domain.ErrNotMember) {
+	if err := svc.RemoveMember(context.Background(), org.ID, "owner", "stranger"); !errors.Is(err, domain.ErrNotMember) {
 		t.Fatalf("err = %v, want ErrNotMember", err)
 	}
 }
@@ -526,5 +577,132 @@ func TestIsActiveMemberStates(t *testing.T) {
 				t.Fatalf("IsActiveMember = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// orgWithRoles creates an organization owned by "owner" and seeds one active
+// member per role: "admin", "staff" (a plain member) and "second-owner".
+func orgWithRoles(t *testing.T) (*Service, *fakeOrgStore, string) {
+	t.Helper()
+	store := newFakeOrgStore()
+	svc := newOrgService(t, store)
+	org, err := svc.CreateOrg(context.Background(), "owner", "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.seedMembership(domain.Membership{OrgID: org.ID, UserID: "admin", Status: domain.MembershipActive, Role: domain.RoleAdmin})
+	store.seedMembership(domain.Membership{OrgID: org.ID, UserID: "staff", Status: domain.MembershipActive, Role: domain.RoleMember})
+	store.seedMembership(domain.Membership{OrgID: org.ID, UserID: "other", Status: domain.MembershipActive, Role: domain.RoleMember})
+	return svc, store, org.ID
+}
+
+func TestMemberCannotChangeOtherMembers(t *testing.T) {
+	svc, store, orgID := orgWithRoles(t)
+	ctx := context.Background()
+
+	calls := map[string]func() error{
+		"add":     func() error { return svc.AddMember(ctx, orgID, "staff", "new-user") },
+		"suspend": func() error { return svc.SuspendMember(ctx, orgID, "staff", "other") },
+		"remove":  func() error { return svc.RemoveMember(ctx, orgID, "staff", "admin") },
+		"role": func() error {
+			_, err := svc.SetMemberRole(ctx, orgID, "staff", "other", domain.RoleAdmin)
+			return err
+		},
+	}
+	for name, call := range calls {
+		if err := call(); !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("%s err = %v, want ErrForbidden", name, err)
+		}
+	}
+	if m, err := store.GetMembership(ctx, orgID, "admin"); err != nil || m.Status != domain.MembershipActive {
+		t.Fatalf("admin membership after forbidden remove = %+v, %v", m, err)
+	}
+	if _, err := store.GetMembership(ctx, orgID, "new-user"); !errors.Is(err, domain.ErrNotMember) {
+		t.Fatalf("forbidden add left a membership: %v", err)
+	}
+}
+
+func TestAdminCannotTouchAdminsOrOwners(t *testing.T) {
+	svc, store, orgID := orgWithRoles(t)
+	ctx := context.Background()
+	store.seedMembership(domain.Membership{OrgID: orgID, UserID: "admin-2", Status: domain.MembershipActive, Role: domain.RoleAdmin})
+
+	if err := svc.RemoveMember(ctx, orgID, "admin", "admin-2"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("admin removes admin: %v, want ErrForbidden", err)
+	}
+	if err := svc.SuspendMember(ctx, orgID, "admin", "owner"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("admin suspends owner: %v, want ErrForbidden", err)
+	}
+	if _, err := svc.SetMemberRole(ctx, orgID, "admin", "staff", domain.RoleAdmin); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("admin promotes: %v, want ErrForbidden", err)
+	}
+	if err := svc.RemoveMember(ctx, orgID, "admin", "staff"); err != nil {
+		t.Fatalf("admin removes plain member: %v", err)
+	}
+}
+
+func TestSetMemberRoleByOwner(t *testing.T) {
+	svc, store, orgID := orgWithRoles(t)
+	ctx := context.Background()
+
+	membership, err := svc.SetMemberRole(ctx, orgID, "owner", "staff", domain.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.Role != domain.RoleAdmin {
+		t.Fatalf("role = %q, want admin", membership.Role)
+	}
+	if len(store.roleChanges) != 1 || store.roleChanges[0].actorID != "owner" || store.roleChanges[0].userID != "staff" {
+		t.Fatalf("role changes = %+v", store.roleChanges)
+	}
+	if _, err := svc.SetMemberRole(ctx, orgID, "owner", "staff", "root"); !errors.Is(err, domain.ErrInvalidRole) {
+		t.Fatalf("unknown role err = %v, want ErrInvalidRole", err)
+	}
+	if _, err := svc.SetMemberRole(ctx, orgID, "owner", "stranger", domain.RoleAdmin); !errors.Is(err, domain.ErrNotMember) {
+		t.Fatalf("non-member target err = %v, want ErrNotMember", err)
+	}
+}
+
+func TestLastOwnerCannotBeDemotedRemovedOrSuspended(t *testing.T) {
+	svc, _, orgID := orgWithRoles(t)
+	ctx := context.Background()
+
+	if _, err := svc.SetMemberRole(ctx, orgID, "owner", "owner", domain.RoleAdmin); !errors.Is(err, domain.ErrLastOwner) {
+		t.Fatalf("demote last owner err = %v, want ErrLastOwner", err)
+	}
+	if err := svc.SuspendMember(ctx, orgID, "owner", "owner"); !errors.Is(err, domain.ErrLastOwner) {
+		t.Fatalf("suspend last owner err = %v, want ErrLastOwner", err)
+	}
+	if err := svc.RemoveMember(ctx, orgID, "owner", "owner"); !errors.Is(err, domain.ErrLastOwner) {
+		t.Fatalf("remove last owner err = %v, want ErrLastOwner", err)
+	}
+
+	if _, err := svc.SetMemberRole(ctx, orgID, "owner", "admin", domain.RoleOwner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SetMemberRole(ctx, orgID, "owner", "owner", domain.RoleAdmin); err != nil {
+		t.Fatalf("demote with a second owner: %v", err)
+	}
+}
+
+func TestMemberCanLeaveTheOrganization(t *testing.T) {
+	svc, store, orgID := orgWithRoles(t)
+	ctx := context.Background()
+
+	if err := svc.RemoveMember(ctx, orgID, "staff", "staff"); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	if _, err := store.GetMembership(ctx, orgID, "staff"); !errors.Is(err, domain.ErrNotMember) {
+		t.Fatalf("membership after leaving: %v", err)
+	}
+}
+
+func TestSuspendedOwnerCannotAdminister(t *testing.T) {
+	svc, store, orgID := orgWithRoles(t)
+	ctx := context.Background()
+	store.seedMembership(domain.Membership{OrgID: orgID, UserID: "ghost", Status: domain.MembershipSuspended, Role: domain.RoleOwner})
+
+	if err := svc.AddMember(ctx, orgID, "ghost", "new-user"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("suspended owner add err = %v, want ErrForbidden", err)
 	}
 }

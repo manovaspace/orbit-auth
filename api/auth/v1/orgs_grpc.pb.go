@@ -25,6 +25,7 @@ const (
 	OrgService_AddMember_FullMethodName     = "/auth.v1.OrgService/AddMember"
 	OrgService_RemoveMember_FullMethodName  = "/auth.v1.OrgService/RemoveMember"
 	OrgService_SuspendMember_FullMethodName = "/auth.v1.OrgService/SuspendMember"
+	OrgService_SetMemberRole_FullMethodName = "/auth.v1.OrgService/SetMemberRole"
 	OrgService_InviteMember_FullMethodName  = "/auth.v1.OrgService/InviteMember"
 	OrgService_AcceptInvite_FullMethodName  = "/auth.v1.OrgService/AcceptInvite"
 	OrgService_RevokeInvite_FullMethodName  = "/auth.v1.OrgService/RevokeInvite"
@@ -40,10 +41,15 @@ const (
 //
 // The caller is always taken from the validated access token, never from the
 // request body. Orbit Auth gates every organization-scoped call on the caller
-// being an active member of that organization. Member management is
-// membership-gated only: any product or gateway that exposes it must add its
-// own admin check.
-// orbit-auth does not decide who administers an organization inside a product.
+// being an active member of that organization (NotFound otherwise).
+//
+// Every membership and invitation write additionally needs organization
+// administration authority: the caller must be an active owner or admin, an
+// admin can change only plain members, and only an owner can grant owner or
+// admin. A caller without that authority gets PermissionDenied. An organization
+// always keeps at least one active owner (FailedPrecondition). Any active member
+// may remove themselves. The owner/admin/member tier is not a product role:
+// products keep their own roles and permissions (ADR-045).
 type OrgServiceClient interface {
 	CreateOrg(ctx context.Context, in *CreateOrgRequest, opts ...grpc.CallOption) (*CreateOrgResponse, error)
 	ListMyOrgs(ctx context.Context, in *ListMyOrgsRequest, opts ...grpc.CallOption) (*ListMyOrgsResponse, error)
@@ -51,9 +57,10 @@ type OrgServiceClient interface {
 	AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*AddMemberResponse, error)
 	RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error)
 	SuspendMember(ctx context.Context, in *SuspendMemberRequest, opts ...grpc.CallOption) (*SuspendMemberResponse, error)
+	// SetMemberRole changes a member's organization administration tier.
+	SetMemberRole(ctx context.Context, in *SetMemberRoleRequest, opts ...grpc.CallOption) (*SetMemberRoleResponse, error)
 	// InviteMember creates a pending invitation and sends the org_invite email
-	// through orbit-notifications. Orbit Auth gates the call on the caller being
-	// an active member only; products and the gateway add their own admin check.
+	// through orbit-notifications. The caller must be an active owner or admin.
 	// Re-inviting an address with a pending invite rotates that invite.
 	InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*InviteMemberResponse, error)
 	// AcceptInvite consumes one invitation token. It works for any authenticated
@@ -140,6 +147,16 @@ func (c *orgServiceClient) SuspendMember(ctx context.Context, in *SuspendMemberR
 	return out, nil
 }
 
+func (c *orgServiceClient) SetMemberRole(ctx context.Context, in *SetMemberRoleRequest, opts ...grpc.CallOption) (*SetMemberRoleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetMemberRoleResponse)
+	err := c.cc.Invoke(ctx, OrgService_SetMemberRole_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orgServiceClient) InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*InviteMemberResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(InviteMemberResponse)
@@ -198,10 +215,15 @@ func (c *orgServiceClient) SelectOrg(ctx context.Context, in *SelectOrgRequest, 
 //
 // The caller is always taken from the validated access token, never from the
 // request body. Orbit Auth gates every organization-scoped call on the caller
-// being an active member of that organization. Member management is
-// membership-gated only: any product or gateway that exposes it must add its
-// own admin check.
-// orbit-auth does not decide who administers an organization inside a product.
+// being an active member of that organization (NotFound otherwise).
+//
+// Every membership and invitation write additionally needs organization
+// administration authority: the caller must be an active owner or admin, an
+// admin can change only plain members, and only an owner can grant owner or
+// admin. A caller without that authority gets PermissionDenied. An organization
+// always keeps at least one active owner (FailedPrecondition). Any active member
+// may remove themselves. The owner/admin/member tier is not a product role:
+// products keep their own roles and permissions (ADR-045).
 type OrgServiceServer interface {
 	CreateOrg(context.Context, *CreateOrgRequest) (*CreateOrgResponse, error)
 	ListMyOrgs(context.Context, *ListMyOrgsRequest) (*ListMyOrgsResponse, error)
@@ -209,9 +231,10 @@ type OrgServiceServer interface {
 	AddMember(context.Context, *AddMemberRequest) (*AddMemberResponse, error)
 	RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error)
 	SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error)
+	// SetMemberRole changes a member's organization administration tier.
+	SetMemberRole(context.Context, *SetMemberRoleRequest) (*SetMemberRoleResponse, error)
 	// InviteMember creates a pending invitation and sends the org_invite email
-	// through orbit-notifications. Orbit Auth gates the call on the caller being
-	// an active member only; products and the gateway add their own admin check.
+	// through orbit-notifications. The caller must be an active owner or admin.
 	// Re-inviting an address with a pending invite rotates that invite.
 	InviteMember(context.Context, *InviteMemberRequest) (*InviteMemberResponse, error)
 	// AcceptInvite consumes one invitation token. It works for any authenticated
@@ -255,6 +278,9 @@ func (UnimplementedOrgServiceServer) RemoveMember(context.Context, *RemoveMember
 }
 func (UnimplementedOrgServiceServer) SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuspendMember not implemented")
+}
+func (UnimplementedOrgServiceServer) SetMemberRole(context.Context, *SetMemberRoleRequest) (*SetMemberRoleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetMemberRole not implemented")
 }
 func (UnimplementedOrgServiceServer) InviteMember(context.Context, *InviteMemberRequest) (*InviteMemberResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InviteMember not implemented")
@@ -400,6 +426,24 @@ func _OrgService_SuspendMember_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrgService_SetMemberRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetMemberRoleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).SetMemberRole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_SetMemberRole_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).SetMemberRole(ctx, req.(*SetMemberRoleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrgService_InviteMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InviteMemberRequest)
 	if err := dec(in); err != nil {
@@ -520,6 +564,10 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SuspendMember",
 			Handler:    _OrgService_SuspendMember_Handler,
+		},
+		{
+			MethodName: "SetMemberRole",
+			Handler:    _OrgService_SetMemberRole_Handler,
 		},
 		{
 			MethodName: "InviteMember",

@@ -24,6 +24,7 @@ ORDER BY o.created_at, o.id;
 SELECT org_id::text AS org_id,
        user_id::text AS user_id,
        status,
+       role,
        created_at,
        updated_at
 FROM organization_memberships
@@ -31,11 +32,12 @@ WHERE org_id = sqlc.arg('org_id')::uuid
 ORDER BY created_at, user_id;
 
 -- name: AddOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status)
+INSERT INTO organization_memberships (org_id, user_id, status, role)
 VALUES (
     sqlc.arg('org_id')::uuid,
     sqlc.arg('user_id')::uuid,
-    sqlc.arg('status')::text
+    sqlc.arg('status')::text,
+    sqlc.arg('role')::text
 )
 ON CONFLICT (org_id, user_id) DO NOTHING;
 
@@ -52,6 +54,13 @@ SET status = sqlc.arg('status')::text,
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND user_id = sqlc.arg('user_id')::uuid;
 
+-- name: UpdateOrganizationMembershipRole :exec
+UPDATE organization_memberships
+SET role = sqlc.arg('role')::text,
+    updated_at = NOW()
+WHERE org_id = sqlc.arg('org_id')::uuid
+  AND user_id = sqlc.arg('user_id')::uuid;
+
 -- name: DeleteOrganizationMembership :exec
 DELETE FROM organization_memberships
 WHERE org_id = sqlc.arg('org_id')::uuid
@@ -61,6 +70,7 @@ WHERE org_id = sqlc.arg('org_id')::uuid
 SELECT org_id::text AS org_id,
        user_id::text AS user_id,
        status,
+       role,
        created_at,
        updated_at
 FROM organization_memberships
@@ -72,6 +82,13 @@ SELECT count(*)::bigint AS count
 FROM organization_memberships
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND status = 'active';
+
+-- name: CountActiveOrganizationOwners :one
+SELECT count(*)::bigint AS count
+FROM organization_memberships
+WHERE org_id = sqlc.arg('org_id')::uuid
+  AND status = 'active'
+  AND role = 'owner';
 
 -- name: DeleteEmptyOrganizations :execrows
 DELETE FROM organizations o

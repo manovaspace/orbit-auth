@@ -168,10 +168,10 @@ func TestInviteAcceptRefusesSuspendedMember(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "suspended-token")
@@ -202,7 +202,7 @@ func TestInviteAcceptKeepsAnActiveMemberActive(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "active-token")
@@ -233,7 +233,7 @@ func TestInviteAcceptActivatesAnInvitedMember(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipInvited); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipInvited, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "invited-token")

@@ -268,7 +268,7 @@ func TestInviteMemberStoresOnlyTheTokenHash(t *testing.T) {
 		t.Fatalf("notification = %+v", notifier.invite)
 	}
 
-	list, err := svc.ListInvites(ctx, org.ID)
+	list, err := svc.ListInvites(ctx, org.ID, "inviter")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +553,35 @@ func TestRevokeInviteRequiresMembershipAndPendingInvite(t *testing.T) {
 
 func TestListInvitesRejectsUnknownOrganization(t *testing.T) {
 	svc, _, _, _, _ := inviteFixture(t)
-	if _, err := svc.ListInvites(context.Background(), "missing"); !errors.Is(err, domain.ErrOrgNotFound) {
+	if _, err := svc.ListInvites(context.Background(), "missing", "inviter"); !errors.Is(err, domain.ErrNotMember) {
 		t.Fatalf("err = %v, want ErrOrgNotFound", err)
+	}
+}
+
+func TestInviteWritesRequireOrgAdministration(t *testing.T) {
+	svc, orgs, _, notifier, org := inviteFixture(t)
+	ctx := context.Background()
+	orgs.seedMembership(domain.Membership{OrgID: org.ID, UserID: "member", Status: domain.MembershipActive})
+	orgs.seedMembership(domain.Membership{OrgID: org.ID, UserID: "admin", Status: domain.MembershipActive, Role: domain.RoleAdmin})
+	svc.users.(inviteUsers).byID["admin"] = domain.User{ID: "admin", Email: "admin@example.com", Status: domain.UserActive, EmailVerified: true}
+
+	if _, err := svc.InviteMember(ctx, org.ID, "member", "new@example.com"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("member invite err = %v, want ErrForbidden", err)
+	}
+	if notifier.inviteCalls != 0 {
+		t.Fatalf("forbidden invite sent %d notifications", notifier.inviteCalls)
+	}
+	if _, err := svc.ListInvites(ctx, org.ID, "member"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("member list err = %v, want ErrForbidden", err)
+	}
+	invite, err := svc.InviteMember(ctx, org.ID, "admin", "new@example.com")
+	if err != nil {
+		t.Fatalf("admin invite: %v", err)
+	}
+	if err := svc.RevokeInvite(ctx, org.ID, invite.ID, "member"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("member revoke err = %v, want ErrForbidden", err)
+	}
+	if err := svc.RevokeInvite(ctx, org.ID, invite.ID, "admin"); err != nil {
+		t.Fatalf("admin revoke: %v", err)
 	}
 }

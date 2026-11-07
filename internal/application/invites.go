@@ -15,8 +15,8 @@ import (
 const defaultInviteLocale = "fa"
 
 // InviteMember creates a pending invitation and sends it through
-// orbit-notifications. Only an active member of the organization may invite,
-// and only the token hash is stored. Re-inviting an address that already has a
+// orbit-notifications. Only an active owner or admin of the organization may
+// invite, and only the token hash is stored. Re-inviting an address that already has a
 // pending invitation revokes the old one and rotates the token.
 func (s *Service) InviteMember(ctx context.Context, orgID, inviterID, email string) (domain.Invite, error) {
 	orgID = strings.TrimSpace(orgID)
@@ -31,12 +31,8 @@ func (s *Service) InviteMember(ctx context.Context, orgID, inviterID, email stri
 	if s.invites == nil {
 		return domain.Invite{}, fmt.Errorf("invite store is not configured")
 	}
-	active, err := s.IsActiveMember(ctx, orgID, inviterID)
-	if err != nil {
+	if err := s.authorizeMembership(ctx, orgID, inviterID, domain.ActionInvite, "", ""); err != nil {
 		return domain.Invite{}, err
-	}
-	if !active {
-		return domain.Invite{}, domain.ErrNotMember
 	}
 	org, err := s.orgs.GetOrg(ctx, orgID)
 	if err != nil {
@@ -138,8 +134,8 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, token string) (domai
 	return invite, nil
 }
 
-// RevokeInvite revokes one pending invitation. Only an active member of the
-// organization may revoke; an unknown or already consumed invite is
+// RevokeInvite revokes one pending invitation. Only an active owner or admin of
+// the organization may revoke; an unknown or already consumed invite is
 // ErrInviteNotFound.
 func (s *Service) RevokeInvite(ctx context.Context, orgID, inviteID, callerID string) error {
 	orgID = strings.TrimSpace(orgID)
@@ -151,22 +147,21 @@ func (s *Service) RevokeInvite(ctx context.Context, orgID, inviteID, callerID st
 	if s.invites == nil {
 		return fmt.Errorf("invite store is not configured")
 	}
-	active, err := s.IsActiveMember(ctx, orgID, callerID)
-	if err != nil {
+	if err := s.authorizeMembership(ctx, orgID, callerID, domain.ActionRevokeInvite, "", ""); err != nil {
 		return err
-	}
-	if !active {
-		return domain.ErrNotMember
 	}
 	return s.invites.RevokeInvite(ctx, orgID, inviteID)
 }
 
-// ListInvites returns every invitation of orgID. The token hash is never
-// returned.
-func (s *Service) ListInvites(ctx context.Context, orgID string) ([]domain.Invite, error) {
-	orgID = strings.TrimSpace(orgID)
-	if orgID == "" {
-		return nil, fmt.Errorf("org_id required")
+// ListInvites returns every invitation of orgID to an owner or admin. The token
+// hash is never returned.
+func (s *Service) ListInvites(ctx context.Context, orgID, callerID string) ([]domain.Invite, error) {
+	orgID, callerID = strings.TrimSpace(orgID), strings.TrimSpace(callerID)
+	if orgID == "" || callerID == "" {
+		return nil, fmt.Errorf("org_id and caller_id required")
+	}
+	if err := s.authorizeMembership(ctx, orgID, callerID, domain.ActionListInvites, "", ""); err != nil {
+		return nil, err
 	}
 	if s.invites == nil {
 		return nil, fmt.Errorf("invite store is not configured")

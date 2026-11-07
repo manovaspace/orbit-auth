@@ -39,8 +39,8 @@ func TestOrganizationCreateWritesCreatorMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if membership.Status != domain.MembershipActive {
-		t.Fatalf("creator status = %q, want active", membership.Status)
+	if membership.Status != domain.MembershipActive || membership.Role != domain.RoleOwner {
+		t.Fatalf("creator = %q/%q, want active owner", membership.Status, membership.Role)
 	}
 	active := activeMemberCount(t, ctx, db, org.ID)
 	if active != 1 {
@@ -103,10 +103,10 @@ func TestOrganizationMembershipLifecycleAndListing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, invited.ID, domain.MembershipInvited); err != nil {
+	if err := store.AddMember(ctx, org.ID, invited.ID, domain.MembershipInvited, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +130,7 @@ func TestOrganizationMembershipLifecycleAndListing(t *testing.T) {
 		t.Fatalf("active members = %d, want 2", active)
 	}
 
-	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 	membership, err := store.GetMembership(ctx, org.ID, member.ID)
@@ -148,7 +148,7 @@ func TestOrganizationMembershipLifecycleAndListing(t *testing.T) {
 		t.Fatalf("suspended member list = %+v, want empty", list)
 	}
 
-	if err := store.RemoveMember(ctx, org.ID, invited.ID); err != nil {
+	if err := store.RemoveMember(ctx, org.ID, invited.ID, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.GetMembership(ctx, org.ID, invited.ID); !errors.Is(err, domain.ErrNotMember) {
@@ -177,13 +177,13 @@ func TestOrganizationListMembersReturnsStatuses(t *testing.T) {
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, invited.ID, domain.MembershipInvited); err != nil {
+	if err := store.AddMember(ctx, org.ID, invited.ID, domain.MembershipInvited, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -230,14 +230,14 @@ func TestAddMemberDoesNotReactivateSuspendedMember(t *testing.T) {
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
 	membership, err := store.GetMembership(ctx, org.ID, member.ID)
@@ -269,7 +269,7 @@ func TestConcurrentSuspendLeavesOneActiveMember(t *testing.T) {
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleOwner); err != nil {
 		t.Fatal(err)
 	}
 
@@ -281,7 +281,7 @@ func TestConcurrentSuspendLeavesOneActiveMember(t *testing.T) {
 		go func(id string) {
 			defer wg.Done()
 			<-start
-			errs <- store.UpdateMemberStatus(ctx, org.ID, id, domain.MembershipSuspended)
+			errs <- store.UpdateMemberStatus(ctx, org.ID, id, domain.MembershipSuspended, domain.MembershipActor{})
 		}(userID)
 	}
 	close(start)
