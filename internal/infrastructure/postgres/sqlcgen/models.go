@@ -53,6 +53,7 @@ type OrganizationMembership struct {
 	Status    string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	Role      string
 }
 
 type OtpChallenge struct {

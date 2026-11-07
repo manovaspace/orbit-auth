@@ -163,13 +163,13 @@ func TestRefreshDropsOrgAfterSuspensionOrRemoval(t *testing.T) {
 		breakMembership func(t *testing.T, orgs *fakeOrgStore, orgID string)
 	}{
 		{name: "suspended", breakMembership: func(t *testing.T, orgs *fakeOrgStore, orgID string) {
-			orgs.seedMembership(domain.Membership{OrgID: orgID, UserID: "u2", Status: domain.MembershipActive})
+			orgs.seedMembership(domain.Membership{OrgID: orgID, UserID: "u2", Status: domain.MembershipActive, Role: domain.RoleOwner})
 			if err := orgs.UpdateMemberStatus(ctx, orgID, "u1", domain.MembershipSuspended); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "removed", breakMembership: func(t *testing.T, orgs *fakeOrgStore, orgID string) {
-			orgs.seedMembership(domain.Membership{OrgID: orgID, UserID: "u2", Status: domain.MembershipActive})
+			orgs.seedMembership(domain.Membership{OrgID: orgID, UserID: "u2", Status: domain.MembershipActive, Role: domain.RoleOwner})
 			if err := orgs.RemoveMember(ctx, orgID, "u1"); err != nil {
 				t.Fatal(err)
 			}

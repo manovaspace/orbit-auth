@@ -61,15 +61,21 @@ type APITokenStore interface {
 // OrgStore persists organizations and their memberships. Every membership
 // operation is scoped by both organization and user.
 type OrgStore interface {
-	// CreateOrg writes the organization and the creator's active membership in
-	// the same transaction.
+	// CreateOrg writes the organization and the creator's active owner
+	// membership in the same transaction.
 	CreateOrg(ctx context.Context, org Organization, creatorID string) error
 	GetOrg(ctx context.Context, orgID string) (Organization, error)
 	ListOrgsForUser(ctx context.Context, userID string) ([]Organization, error)
 	// ListMembers returns every membership of orgID with its lifecycle status.
 	ListMembers(ctx context.Context, orgID string) ([]Membership, error)
-	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus) error
+	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus, role MembershipRole) error
 	UpdateMemberStatus(ctx context.Context, orgID, userID string, status MembershipStatus) error
+	// UpdateMemberRole changes a member's administration tier. It returns
+	// ErrLastOwner when the change would leave no active owner, and records
+	// actorID in auth.membership.role_changed.
+	UpdateMemberRole(ctx context.Context, orgID, userID string, role MembershipRole, actorID string) error
+	// UpdateMemberStatus and RemoveMember also return ErrLastOwner when the
+	// member is the last active owner.
 	RemoveMember(ctx context.Context, orgID, userID string) error
 	GetMembership(ctx context.Context, orgID, userID string) (Membership, error)
 }

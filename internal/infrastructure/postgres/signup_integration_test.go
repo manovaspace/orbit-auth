@@ -201,8 +201,8 @@ func TestSignupUserCreatesOrganizationAndOwnerAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if membership.Status != domain.MembershipActive {
-		t.Fatalf("membership = %q, want active", membership.Status)
+	if membership.Status != domain.MembershipActive || membership.Role != domain.RoleOwner {
+		t.Fatalf("membership = %q/%q, want active owner", membership.Status, membership.Role)
 	}
 
 	// A failure after the user insert rolls the account back with the

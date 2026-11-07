@@ -95,7 +95,7 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 			return false, fmt.Errorf("postgres: add signup invite member: %w", err)
 		}
 		if err := emitEvents(ctx, sink,
-			domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, occurredAt),
+			domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, domain.RoleMember, occurredAt),
 		); err != nil {
 			return false, err
 		}
@@ -118,12 +118,13 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 			OrgID:  orgID,
 			UserID: userID,
 			Status: string(domain.MembershipActive),
+			Role:   string(domain.RoleOwner),
 		}); err != nil {
 			return false, fmt.Errorf("postgres: add signup organization owner: %w", err)
 		}
 		if err := emitEvents(ctx, sink,
 			domain.NewOrgCreatedEvent(org.ID, org.Name, occurredAt),
-			domain.NewMembershipAddedEvent(org.ID, user.ID, domain.MembershipActive, occurredAt),
+			domain.NewMembershipAddedEvent(org.ID, user.ID, domain.MembershipActive, domain.RoleOwner, occurredAt),
 		); err != nil {
 			return false, err
 		}
@@ -231,7 +232,7 @@ func (s *Store) ReissuePendingSignup(ctx context.Context, user domain.User, chal
 			return "", false, fmt.Errorf("postgres: add signup invite member: %w", err)
 		}
 		if err := emitEvents(ctx, newOutboxSink(tx),
-			domain.NewMembershipAddedEvent(invite.OrgID, userID, domain.MembershipActive, acceptedAt),
+			domain.NewMembershipAddedEvent(invite.OrgID, userID, domain.MembershipActive, domain.RoleMember, acceptedAt),
 		); err != nil {
 			return "", false, err
 		}

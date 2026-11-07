@@ -154,8 +154,13 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`) in the sam
 | `auth.membership.added` | `1` | `AddMember`, invite acceptance, creator membership |
 | `auth.membership.removed` | `1` | `RemoveMember` |
 | `auth.membership.suspended` | `1` | `SuspendMember` |
+| `auth.membership.role_changed` | `1` | `SetMemberRole` |
 
-Subjects use the bus's three-segment `{domain}.{entity}.{action}` form; the event version is the envelope `metadata.version` value (`"1"`), not a subject suffix. Payloads carry ids, the organization name for `org.created`, the role-free membership status and `occurred_at`, and never carry emails, tokens or secrets. Delivery is at-least-once; consumers are idempotent on the envelope `id`.
+Subjects use the bus's three-segment `{domain}.{entity}.{action}` form; the event version is the envelope `metadata.version` value (`"1"`), not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: `owner`, `admin` or `member`, never a product role) on `membership.added` and `occurred_at`, and never carry emails, tokens or secrets. Delivery is at-least-once; consumers are idempotent on the envelope `id`.
+
+## Organization administration
+
+Each membership has an administration tier: `owner`, `admin` or `member`. Orbit Auth enforces it on `AddMember`, `RemoveMember`, `SuspendMember`, `SetMemberRole`, `InviteMember`, `RevokeInvite` and `ListInvites`: the caller must be an active owner or admin, an admin acts only on plain members, and only an owner grants `owner` or `admin`. Any active member may remove themselves. An organization always keeps one active owner. The tier is not a product role; products keep their own roles and permissions.
 
 ## Reusable authorization policy
 

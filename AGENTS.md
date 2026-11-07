@@ -60,6 +60,15 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 - **Demo mode guard:** `DEMO_MODE=true` is permitted only when `DEPLOYMENT_ENVIRONMENT=dev`. `cmd/auth` fails closed before the service starts if demo mode is enabled elsewhere.
 - **Migration adoption:** `migrate up` maps the old `schema_migrations` rows to goose versions without running SQL and without touching `schema_migrations`. Do not drop that table in this release.
 
+## Organization administration
+
+Memberships carry an administration tier `role` (`owner`, `admin`, `member`; migration 010). It decides who may change memberships and invitations in orbit-auth itself; products keep their own roles and permissions (ADR-045).
+
+- The rule is one pure function, `domain.AuthorizeMembershipAction`. The caller must be an active owner or admin; an admin acts only on plain members; only an owner grants `owner` or `admin`; any active member may remove themselves.
+- Every write RPC (`AddMember`, `RemoveMember`, `SuspendMember`, `SetMemberRole`, `InviteMember`, `RevokeInvite`) and `ListInvites` is authorized in `internal/application`. A caller who is not an active member gets `NotFound` (existence is not revealed); a member without authority gets `PermissionDenied`.
+- The store keeps at least one active owner (`ErrLastOwner` → `FailedPrecondition`) under the organization row lock, so concurrent demotions cannot orphan an organization. The creator of an organization (`CreateOrg`, sign-up with `org_name`) is its first owner; invited and added members start as `member`.
+- Migration 010 backfilled the earliest active member of each organization as its owner.
+
 ## Feature Flags & Demo Mode
 
 - **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
@@ -76,8 +85,9 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 
 - `auth.membership.added` — `AddMember`, invite acceptance, or the creator membership
 - `auth.membership.removed` — `RemoveMember`
 - `auth.membership.suspended` — `SuspendMember`
+- `auth.membership.role_changed` — `SetMemberRole` (carries `role`, `previous_role` and `actor_id`)
 
-Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version is envelope metadata `version="1"`, not a subject suffix. Payloads carry ids, the organization name for `org.created`, the role-free membership status and `occurred_at`; they never carry emails, tokens or secrets.
+Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version is envelope metadata `version="1"`, not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: owner, admin or member, never a product role) on `membership.added` and `occurred_at`; they never carry emails, tokens or secrets.
 
 `BUS_TRANSPORT` selects the transport: `inproc` (default; relayed and logged, no subscribers), `nats` with `BUS_NATS_URL`, or `redis` with `BUS_REDIS_URL`. The relay runs in `cmd/auth` for the life of the process and stops on graceful shutdown; publish failures are logged with `slog` and retried, never crashing the gRPC server.
 

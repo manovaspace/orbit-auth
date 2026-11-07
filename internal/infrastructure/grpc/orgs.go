@@ -21,14 +21,15 @@ type OrgService interface {
 	CreateOrg(ctx context.Context, creatorID, name string) (domain.Organization, error)
 	ListOrgsForUser(ctx context.Context, userID string) ([]domain.Organization, error)
 	ListMembers(ctx context.Context, orgID string) ([]domain.Membership, error)
-	AddMember(ctx context.Context, orgID, userID string) error
-	SuspendMember(ctx context.Context, orgID, userID string) error
-	RemoveMember(ctx context.Context, orgID, userID string) error
+	AddMember(ctx context.Context, orgID, callerID, userID string) error
+	SuspendMember(ctx context.Context, orgID, callerID, userID string) error
+	RemoveMember(ctx context.Context, orgID, callerID, userID string) error
+	SetMemberRole(ctx context.Context, orgID, callerID, userID string, role domain.MembershipRole) (domain.Membership, error)
 	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
 	InviteMember(ctx context.Context, orgID, inviterID, email string) (domain.Invite, error)
 	AcceptInvite(ctx context.Context, userID, token string) (domain.Invite, error)
 	RevokeInvite(ctx context.Context, orgID, inviteID, callerID string) error
-	ListInvites(ctx context.Context, orgID string) ([]domain.Invite, error)
+	ListInvites(ctx context.Context, orgID, callerID string) ([]domain.Invite, error)
 	SelectOrg(ctx context.Context, userID, refreshToken, orgID string) (access, refresh string, expires time.Time, err error)
 }
 
@@ -92,7 +93,11 @@ func (s *OrgServer) AddMember(ctx context.Context, req *authv1.AddMemberRequest)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.svc.AddMember(ctx, orgID, userID); err != nil {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.AddMember(ctx, orgID, callerID, userID); err != nil {
 		return nil, orgError(err)
 	}
 	return &authv1.AddMemberResponse{}, nil
@@ -103,7 +108,11 @@ func (s *OrgServer) RemoveMember(ctx context.Context, req *authv1.RemoveMemberRe
 	if err != nil {
 		return nil, err
 	}
-	if err := s.svc.RemoveMember(ctx, orgID, userID); err != nil {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.RemoveMember(ctx, orgID, callerID, userID); err != nil {
 		return nil, orgError(err)
 	}
 	return &authv1.RemoveMemberResponse{}, nil
@@ -114,15 +123,40 @@ func (s *OrgServer) SuspendMember(ctx context.Context, req *authv1.SuspendMember
 	if err != nil {
 		return nil, err
 	}
-	if err := s.svc.SuspendMember(ctx, orgID, userID); err != nil {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.SuspendMember(ctx, orgID, callerID, userID); err != nil {
 		return nil, orgError(err)
 	}
 	return &authv1.SuspendMemberResponse{}, nil
 }
 
-// InviteMember is membership-gated only. Products and the gateway add their
-// own admin check; orbit-auth does not decide who administers an organization
-// inside a product.
+// SetMemberRole changes a member's organization administration tier. The
+// application layer decides who may grant which tier.
+func (s *OrgServer) SetMemberRole(ctx context.Context, req *authv1.SetMemberRoleRequest) (*authv1.SetMemberRoleResponse, error) {
+	orgID, userID, err := s.requireActiveMember(ctx, req.GetOrgId(), req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	role, err := domain.ParseMembershipRole(strings.TrimSpace(req.GetRole()))
+	if err != nil {
+		return nil, orgError(err)
+	}
+	membership, err := s.svc.SetMemberRole(ctx, orgID, callerID, userID, role)
+	if err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.SetMemberRoleResponse{Membership: membershipProto(membership)}, nil
+}
+
+// InviteMember creates an invitation. The application layer requires the
+// caller to be an active owner or admin of the organization.
 func (s *OrgServer) InviteMember(ctx context.Context, req *authv1.InviteMemberRequest) (*authv1.InviteMemberResponse, error) {
 	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
 	if err != nil {
@@ -178,7 +212,11 @@ func (s *OrgServer) ListInvites(ctx context.Context, req *authv1.ListInvitesRequ
 	if err != nil {
 		return nil, err
 	}
-	invites, err := s.svc.ListInvites(ctx, orgID)
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	invites, err := s.svc.ListInvites(ctx, orgID, callerID)
 	if err != nil {
 		return nil, orgError(err)
 	}
@@ -257,8 +295,12 @@ func isUUID(value string) bool {
 
 func orgError(err error) error {
 	switch {
-	case errors.Is(err, domain.ErrLastActiveMember):
+	case errors.Is(err, domain.ErrForbidden):
+		return status.Error(codes.PermissionDenied, err.Error())
+	case errors.Is(err, domain.ErrLastActiveMember), errors.Is(err, domain.ErrLastOwner):
 		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, domain.ErrInvalidRole):
+		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domain.ErrUserNotFound):
 		return status.Error(codes.NotFound, "user not found")
 	case errors.Is(err, domain.ErrOrgNotFound), errors.Is(err, domain.ErrNotMember):
@@ -291,6 +333,7 @@ func membershipProto(membership domain.Membership) *authv1.Membership {
 		OrgId:     membership.OrgID,
 		UserId:    membership.UserID,
 		Status:    string(membership.Status),
+		Role:      string(membership.Role),
 		CreatedAt: membership.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: membership.UpdatedAt.Format(time.RFC3339),
 	}

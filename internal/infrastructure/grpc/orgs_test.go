@@ -40,16 +40,26 @@ type fakeOrgService struct {
 	activeErr   error
 
 	addOrgID  string
+	addCaller string
 	addUserID string
 	addErr    error
 
 	removeOrgID  string
+	removeCaller string
 	removeUserID string
 	removeErr    error
 
 	suspendOrgID  string
+	suspendCaller string
 	suspendUserID string
 	suspendErr    error
+
+	roleOrgID  string
+	roleCaller string
+	roleUserID string
+	roleValue  domain.MembershipRole
+	roleResult domain.Membership
+	roleErr    error
 
 	selectCalls   []selectCall
 	selectAccess  string
@@ -73,9 +83,10 @@ type fakeOrgService struct {
 	revokeInviteCaller string
 	revokeInviteErr    error
 
-	listInvitesOrgID string
-	invites          []domain.Invite
-	listInvitesErr   error
+	listInvitesOrgID  string
+	listInvitesCaller string
+	invites           []domain.Invite
+	listInvitesErr    error
 }
 
 type selectCall struct {
@@ -104,19 +115,24 @@ func (f *fakeOrgService) ListMembers(_ context.Context, orgID string) ([]domain.
 	return f.members, f.listMembersErr
 }
 
-func (f *fakeOrgService) AddMember(_ context.Context, orgID, userID string) error {
-	f.addOrgID, f.addUserID = orgID, userID
+func (f *fakeOrgService) AddMember(_ context.Context, orgID, callerID, userID string) error {
+	f.addOrgID, f.addCaller, f.addUserID = orgID, callerID, userID
 	return f.addErr
 }
 
-func (f *fakeOrgService) RemoveMember(_ context.Context, orgID, userID string) error {
-	f.removeOrgID, f.removeUserID = orgID, userID
+func (f *fakeOrgService) RemoveMember(_ context.Context, orgID, callerID, userID string) error {
+	f.removeOrgID, f.removeCaller, f.removeUserID = orgID, callerID, userID
 	return f.removeErr
 }
 
-func (f *fakeOrgService) SuspendMember(_ context.Context, orgID, userID string) error {
-	f.suspendOrgID, f.suspendUserID = orgID, userID
+func (f *fakeOrgService) SuspendMember(_ context.Context, orgID, callerID, userID string) error {
+	f.suspendOrgID, f.suspendCaller, f.suspendUserID = orgID, callerID, userID
 	return f.suspendErr
+}
+
+func (f *fakeOrgService) SetMemberRole(_ context.Context, orgID, callerID, userID string, role domain.MembershipRole) (domain.Membership, error) {
+	f.roleOrgID, f.roleCaller, f.roleUserID, f.roleValue = orgID, callerID, userID, role
+	return f.roleResult, f.roleErr
 }
 
 func (f *fakeOrgService) IsActiveMember(_ context.Context, orgID, userID string) (bool, error) {
@@ -144,8 +160,8 @@ func (f *fakeOrgService) RevokeInvite(_ context.Context, orgID, inviteID, caller
 	return f.revokeInviteErr
 }
 
-func (f *fakeOrgService) ListInvites(_ context.Context, orgID string) ([]domain.Invite, error) {
-	f.listInvitesOrgID = orgID
+func (f *fakeOrgService) ListInvites(_ context.Context, orgID, callerID string) ([]domain.Invite, error) {
+	f.listInvitesOrgID, f.listInvitesCaller = orgID, callerID
 	return f.invites, f.listInvitesErr
 }
 
@@ -680,5 +696,103 @@ func TestOrgServiceInviteInvalidInput(t *testing.T) {
 	assertCode(t, err, codes.InvalidArgument, "invalid invite_id")
 	if app.inviteOrgID != "" || app.revokeInviteID != "" {
 		t.Fatal("invalid input reached the use case")
+	}
+}
+
+func TestOrgServiceWritesPassTheCallerAndMapAuthorizationErrors(t *testing.T) {
+	orgID, userID := uuid.NewString(), uuid.NewString()
+	calls := map[string]func(srv *OrgServer, ctx context.Context) error{
+		"add": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.AddMember(ctx, &authv1.AddMemberRequest{OrgId: orgID, UserId: userID})
+			return err
+		},
+		"remove": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.RemoveMember(ctx, &authv1.RemoveMemberRequest{OrgId: orgID, UserId: userID})
+			return err
+		},
+		"suspend": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.SuspendMember(ctx, &authv1.SuspendMemberRequest{OrgId: orgID, UserId: userID})
+			return err
+		},
+		"role": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.SetMemberRole(ctx, &authv1.SetMemberRoleRequest{OrgId: orgID, UserId: userID, Role: "admin"})
+			return err
+		},
+		"invite": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: orgID, Email: "a@example.com"})
+			return err
+		},
+		"revoke": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.RevokeInvite(ctx, &authv1.RevokeInviteRequest{OrgId: orgID, InviteId: uuid.NewString()})
+			return err
+		},
+		"list invites": func(srv *OrgServer, ctx context.Context) error {
+			_, err := srv.ListInvites(ctx, &authv1.ListInvitesRequest{OrgId: orgID})
+			return err
+		},
+	}
+	setErr := func(app *fakeOrgService, err error) {
+		app.addErr, app.removeErr, app.suspendErr, app.roleErr = err, err, err, err
+		app.inviteErr, app.revokeInviteErr, app.listInvitesErr = err, err, err
+	}
+	for name, call := range calls {
+		t.Run(name+" forbidden", func(t *testing.T) {
+			app := &fakeOrgService{active: true}
+			setErr(app, domain.ErrForbidden)
+			err := call(NewOrg(app), authenticatedOrgContext("caller-1"))
+			assertCode(t, err, codes.PermissionDenied, domain.ErrForbidden.Error())
+		})
+		t.Run(name+" last owner", func(t *testing.T) {
+			app := &fakeOrgService{active: true}
+			setErr(app, domain.ErrLastOwner)
+			err := call(NewOrg(app), authenticatedOrgContext("caller-1"))
+			assertCode(t, err, codes.FailedPrecondition, domain.ErrLastOwner.Error())
+		})
+		t.Run(name+" non-member", func(t *testing.T) {
+			app := &fakeOrgService{active: false}
+			err := call(NewOrg(app), authenticatedOrgContext("caller-1"))
+			assertCode(t, err, codes.NotFound, "organization not found")
+		})
+		t.Run(name+" unauthenticated", func(t *testing.T) {
+			err := call(NewOrg(&fakeOrgService{active: true}), context.Background())
+			assertCode(t, err, codes.Unauthenticated, "authentication required")
+		})
+	}
+}
+
+func TestOrgServiceSetMemberRole(t *testing.T) {
+	orgID, userID := uuid.NewString(), uuid.NewString()
+	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	app := &fakeOrgService{active: true, roleResult: domain.Membership{
+		OrgID: orgID, UserID: userID, Status: domain.MembershipActive, Role: domain.RoleAdmin, CreatedAt: now, UpdatedAt: now,
+	}}
+	srv := NewOrg(app)
+
+	resp, err := srv.SetMemberRole(authenticatedOrgContext("caller-1"), &authv1.SetMemberRoleRequest{OrgId: orgID, UserId: userID, Role: " admin "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.roleCaller != "caller-1" || app.roleOrgID != orgID || app.roleUserID != userID || app.roleValue != domain.RoleAdmin {
+		t.Fatalf("service call = %+v", app)
+	}
+	if resp.GetMembership().GetRole() != "admin" || resp.GetMembership().GetStatus() != "active" {
+		t.Fatalf("response = %+v", resp.GetMembership())
+	}
+
+	_, err = srv.SetMemberRole(authenticatedOrgContext("caller-1"), &authv1.SetMemberRoleRequest{OrgId: orgID, UserId: userID, Role: "root"})
+	assertCode(t, err, codes.InvalidArgument, domain.ErrInvalidRole.Error())
+}
+
+func TestOrgServiceMembersCarryRole(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{active: true, members: []domain.Membership{
+		{OrgID: orgID, UserID: uuid.NewString(), Status: domain.MembershipActive, Role: domain.RoleOwner},
+	}}
+	resp, err := NewOrg(app).ListMembers(authenticatedOrgContext("caller-1"), &authv1.ListMembersRequest{OrgId: orgID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetMembers()[0].GetRole() != "owner" {
+		t.Fatalf("role = %q, want owner", resp.GetMembers()[0].GetRole())
 	}
 }

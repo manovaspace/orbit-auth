@@ -13,11 +13,12 @@ import (
 )
 
 const addOrganizationMembership = `-- name: AddOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status)
+INSERT INTO organization_memberships (org_id, user_id, status, role)
 VALUES (
     $1::uuid,
     $2::uuid,
-    $3::text
+    $3::text,
+    $4::text
 )
 ON CONFLICT (org_id, user_id) DO NOTHING
 `
@@ -26,10 +27,16 @@ type AddOrganizationMembershipParams struct {
 	OrgID  uuid.UUID
 	UserID uuid.UUID
 	Status string
+	Role   string
 }
 
 func (q *Queries) AddOrganizationMembership(ctx context.Context, arg AddOrganizationMembershipParams) error {
-	_, err := q.db.Exec(ctx, addOrganizationMembership, arg.OrgID, arg.UserID, arg.Status)
+	_, err := q.db.Exec(ctx, addOrganizationMembership,
+		arg.OrgID,
+		arg.UserID,
+		arg.Status,
+		arg.Role,
+	)
 	return err
 }
 
@@ -42,6 +49,21 @@ WHERE org_id = $1::uuid
 
 func (q *Queries) CountActiveOrganizationMembers(ctx context.Context, orgID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveOrganizationMembers, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countActiveOrganizationOwners = `-- name: CountActiveOrganizationOwners :one
+SELECT count(*)::bigint AS count
+FROM organization_memberships
+WHERE org_id = $1::uuid
+  AND status = 'active'
+  AND role = 'owner'
+`
+
+func (q *Queries) CountActiveOrganizationOwners(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveOrganizationOwners, orgID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -134,6 +156,7 @@ const getOrganizationMembership = `-- name: GetOrganizationMembership :one
 SELECT org_id::text AS org_id,
        user_id::text AS user_id,
        status,
+       role,
        created_at,
        updated_at
 FROM organization_memberships
@@ -150,6 +173,7 @@ type GetOrganizationMembershipRow struct {
 	OrgID     string
 	UserID    string
 	Status    string
+	Role      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 }
@@ -161,6 +185,7 @@ func (q *Queries) GetOrganizationMembership(ctx context.Context, arg GetOrganiza
 		&i.OrgID,
 		&i.UserID,
 		&i.Status,
+		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -171,6 +196,7 @@ const listOrganizationMembers = `-- name: ListOrganizationMembers :many
 SELECT org_id::text AS org_id,
        user_id::text AS user_id,
        status,
+       role,
        created_at,
        updated_at
 FROM organization_memberships
@@ -182,6 +208,7 @@ type ListOrganizationMembersRow struct {
 	OrgID     string
 	UserID    string
 	Status    string
+	Role      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 }
@@ -199,6 +226,7 @@ func (q *Queries) ListOrganizationMembers(ctx context.Context, orgID uuid.UUID) 
 			&i.OrgID,
 			&i.UserID,
 			&i.Status,
+			&i.Role,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -265,6 +293,25 @@ func (q *Queries) LockOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const updateOrganizationMembershipRole = `-- name: UpdateOrganizationMembershipRole :exec
+UPDATE organization_memberships
+SET role = $1::text,
+    updated_at = NOW()
+WHERE org_id = $2::uuid
+  AND user_id = $3::uuid
+`
+
+type UpdateOrganizationMembershipRoleParams struct {
+	Role   string
+	OrgID  uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) UpdateOrganizationMembershipRole(ctx context.Context, arg UpdateOrganizationMembershipRoleParams) error {
+	_, err := q.db.Exec(ctx, updateOrganizationMembershipRole, arg.Role, arg.OrgID, arg.UserID)
+	return err
 }
 
 const updateOrganizationMembershipStatus = `-- name: UpdateOrganizationMembershipStatus :exec
