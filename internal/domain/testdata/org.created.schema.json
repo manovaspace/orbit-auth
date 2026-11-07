@@ -2,6 +2,7 @@
 	"fields": {
 		"name": "string",
 		"occurred_at": "string",
-		"org_id": "string"
+		"org_id": "string",
+		"slug": "string"
 	}
 }

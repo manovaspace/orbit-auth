@@ -23,6 +23,9 @@ const (
 	ActionInvite        MembershipAction = "invite"
 	ActionRevokeInvite  MembershipAction = "revoke_invite"
 	ActionListInvites   MembershipAction = "list_invites"
+	// ActionSetSlug changes the organization's slug, and with it the address of
+	// its tenant host. Only an owner may.
+	ActionSetSlug MembershipAction = "set_slug"
 )
 
 // AuthorizeMembershipAction decides whether caller may perform action. target
@@ -36,7 +39,7 @@ const (
 //  1. The caller must be an active owner or admin.
 //  2. A target who is an owner can be changed only by an owner.
 //  3. Granting a role needs a valid role; granting owner or admin needs an
-//     owner.
+//     owner. Changing the slug needs an owner.
 //  4. An admin can change only plain members.
 //
 // Every refusal is ErrForbidden except an unknown role, which is
@@ -50,6 +53,9 @@ func AuthorizeMembershipAction(caller Membership, action MembershipAction, targe
 		return nil
 	}
 	if caller.Role != RoleOwner && caller.Role != RoleAdmin {
+		return ErrForbidden
+	}
+	if action == ActionSetSlug && caller.Role != RoleOwner {
 		return ErrForbidden
 	}
 	if action == ActionSetRole {

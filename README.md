@@ -155,12 +155,17 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`) in the sam
 | `auth.membership.removed` | `1` | `RemoveMember` |
 | `auth.membership.suspended` | `1` | `SuspendMember` |
 | `auth.membership.role_changed` | `1` | `SetMemberRole` |
+| `auth.org.slug_changed` | `1` | `SetOrgSlug` |
 
 Subjects use the bus's three-segment `{domain}.{entity}.{action}` form; the event version is the envelope `metadata.version` value (`"1"`), not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: `owner`, `admin` or `member`, never a product role) on `membership.added` and `occurred_at`, and never carry emails, tokens or secrets. Delivery is at-least-once; consumers are idempotent on the envelope `id`.
 
 ## Organization administration
 
 Each membership has an administration tier: `owner`, `admin` or `member`. Orbit Auth enforces it on `AddMember`, `RemoveMember`, `SuspendMember`, `SetMemberRole`, `InviteMember`, `RevokeInvite` and `ListInvites`: the caller must be an active owner or admin, an admin acts only on plain members, and only an owner grants `owner` or `admin`. Any active member may remove themselves. An organization always keeps one active owner. The tier is not a product role; products keep their own roles and permissions.
+
+## Organization slugs
+
+Each organization has a unique `slug` (3 to 30 lowercase letters, digits and single hyphens), the label of its tenant host. `CreateOrg` accepts an optional `slug` and derives one from the name otherwise; an owner can rename it with `SetOrgSlug`. A retired slug stays reserved for its organization and keeps resolving, so a rename never lets someone else take over an old host. `TenantService.ResolveTenant` resolves a slug to the organization id, name and current slug without authentication, for the edge to call before sign-in.
 
 ## Reusable authorization policy
 

@@ -13,6 +13,12 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )
 
+// testOrg builds an organization with a valid, unique slug.
+func testOrg(name string, now time.Time) domain.Organization {
+	id := uuid.NewString()
+	return domain.Organization{ID: id, Name: name, Slug: domain.FallbackSlug(id), CreatedAt: now, UpdatedAt: now}
+}
+
 // ownerFixture creates an organization owned by "owner" with one extra account
 // per role: admin and member.
 func ownerFixture(t *testing.T) (*Store, domain.Organization, map[string]string) {
@@ -28,7 +34,7 @@ func ownerFixture(t *testing.T) (*Store, domain.Organization, map[string]string)
 		ids[name] = user.ID
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, ids["owner"]); err != nil {
 		t.Fatal(err)
 	}

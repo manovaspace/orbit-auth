@@ -65,6 +65,18 @@ type OrgStore interface {
 	// membership in the same transaction.
 	CreateOrg(ctx context.Context, org Organization, creatorID string) error
 	GetOrg(ctx context.Context, orgID string) (Organization, error)
+	// SlugAvailable reports whether no organization holds or has held slug.
+	SlugAvailable(ctx context.Context, slug string) (bool, error)
+	// SetOrgSlug makes slug the organization's current slug and retires the
+	// old one (it stays reserved for this organization and still resolves).
+	// It reruns the policy for the actor under the organization lock, returns
+	// ErrSlugTaken when another organization holds or has held the slug, and
+	// writes auth.org.slug_changed. Setting the current slug is a no-op.
+	SetOrgSlug(ctx context.Context, orgID, slug string, by MembershipActor) error
+	// ResolveSlug finds the organization that holds or once held slug. The
+	// returned organization carries its current slug, so a caller can redirect
+	// from a retired one. An unknown slug is ErrSlugNotFound.
+	ResolveSlug(ctx context.Context, slug string) (Organization, error)
 	ListOrgsForUser(ctx context.Context, userID string) ([]Organization, error)
 	// ListMembers returns every membership of orgID with its lifecycle status.
 	ListMembers(ctx context.Context, orgID string) ([]Membership, error)

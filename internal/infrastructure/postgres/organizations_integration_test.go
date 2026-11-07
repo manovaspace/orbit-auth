@@ -22,7 +22,7 @@ func TestOrganizationCreateWritesCreatorMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, creator.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestOrganizationCreateRollsBackWithoutCreator(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC()
-	org := domain.Organization{ID: uuid.NewString(), Name: "Orphan", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Orphan", now)
 	if err := store.CreateOrg(ctx, org, uuid.NewString()); err == nil {
 		t.Fatal("organization with a missing creator was created")
 	}
@@ -98,7 +98,7 @@ func TestOrganizationMembershipLifecycleAndListing(t *testing.T) {
 	}
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestOrganizationListMembersReturnsStatuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestAddMemberDoesNotReactivateSuspendedMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestConcurrentSuspendLeavesOneActiveMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}

@@ -78,9 +78,15 @@ func (s *Service) RegisterWithEmail(ctx context.Context, email, password, displa
 		user.Status = domain.UserActive
 		user.EmailVerified = true
 	} else if name := strings.TrimSpace(orgName); name != "" {
+		orgID := s.ids.NewID()
+		slug, err := s.allocateSlug(ctx, "", name, orgID)
+		if err != nil {
+			return err
+		}
 		org = &domain.Organization{
-			ID:        s.ids.NewID(),
+			ID:        orgID,
 			Name:      name,
+			Slug:      slug,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}

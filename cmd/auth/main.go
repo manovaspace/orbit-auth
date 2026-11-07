@@ -162,6 +162,7 @@ func main() {
 	gs := googlegrpc.NewServer(serverOptions(signer)...)
 	authv1.RegisterAuthServiceServer(gs, grpchandlers.New(svc))
 	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
+	authv1.RegisterTenantServiceServer(gs, grpchandlers.NewTenant(svc))
 	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
 
 	health := httpapi.New(flagService)

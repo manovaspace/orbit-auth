@@ -65,8 +65,11 @@ var (
 
 // Organization is a tenant. Users reach it through memberships.
 type Organization struct {
-	ID        string
-	Name      string
+	ID   string
+	Name string
+	// Slug is the organization's current host label, unique across all
+	// organizations and across time.
+	Slug      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

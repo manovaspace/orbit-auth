@@ -18,6 +18,9 @@ const (
 	// SubjectMembershipRoleChanged is published when a member's
 	// administration tier changes (owner, admin or member).
 	SubjectMembershipRoleChanged = "auth.membership.role_changed"
+	// SubjectOrgSlugChanged is published when an owner renames the slug of an
+	// organization, which changes the address of its tenant host.
+	SubjectOrgSlugChanged = "auth.org.slug_changed"
 )
 
 // EventSource is the envelope metadata source of every event this service
@@ -41,7 +44,18 @@ type UserCreatedPayload struct {
 type OrgCreatedPayload struct {
 	OrgID      string    `json:"org_id"`
 	Name       string    `json:"name"`
+	Slug       string    `json:"slug"`
 	OccurredAt time.Time `json:"occurred_at"`
+}
+
+// OrgSlugChangedPayload is the body of auth.org.slug_changed. ActorID is the
+// owner who made the change.
+type OrgSlugChangedPayload struct {
+	OrgID        string    `json:"org_id"`
+	Slug         string    `json:"slug"`
+	PreviousSlug string    `json:"previous_slug"`
+	ActorID      string    `json:"actor_id"`
+	OccurredAt   time.Time `json:"occurred_at"`
 }
 
 // MembershipAddedPayload is the body of auth.membership.added. Status is the
@@ -109,10 +123,10 @@ func NewUserCreatedEvent(userID string, at time.Time) Event {
 }
 
 // NewOrgCreatedEvent builds auth.org.created.
-func NewOrgCreatedEvent(orgID, name string, at time.Time) Event {
+func NewOrgCreatedEvent(orgID, name, slug string, at time.Time) Event {
 	return Event{
 		Subject:    SubjectOrgCreated,
-		Payload:    OrgCreatedPayload{OrgID: orgID, Name: name, OccurredAt: at},
+		Payload:    OrgCreatedPayload{OrgID: orgID, Name: name, Slug: slug, OccurredAt: at},
 		OccurredAt: at,
 	}
 }
@@ -151,6 +165,15 @@ func NewMembershipRoleChangedEvent(orgID, userID string, role, previous Membersh
 		Payload: MembershipRoleChangedPayload{
 			OrgID: orgID, UserID: userID, Role: role, PreviousRole: previous, ActorID: actorID, OccurredAt: at,
 		},
+		OccurredAt: at,
+	}
+}
+
+// NewOrgSlugChangedEvent builds auth.org.slug_changed.
+func NewOrgSlugChangedEvent(orgID, slug, previous, actorID string, at time.Time) Event {
+	return Event{
+		Subject:    SubjectOrgSlugChanged,
+		Payload:    OrgSlugChangedPayload{OrgID: orgID, Slug: slug, PreviousSlug: previous, ActorID: actorID, OccurredAt: at},
 		OccurredAt: at,
 	}
 }

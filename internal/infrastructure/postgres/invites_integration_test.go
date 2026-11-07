@@ -25,7 +25,7 @@ func createInviteFixture(t *testing.T) (*Store, *domain.Organization, domain.Use
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	org := domain.Organization{ID: uuid.NewString(), Name: "Acme", CreatedAt: now, UpdatedAt: now}
+	org := testOrg("Acme", now)
 	if err := store.CreateOrg(ctx, org, inviter.ID); err != nil {
 		t.Fatal(err)
 	}

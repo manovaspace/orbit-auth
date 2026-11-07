@@ -18,7 +18,9 @@ import (
 
 // OrgService is the port the gRPC adapter needs from the application layer.
 type OrgService interface {
-	CreateOrg(ctx context.Context, creatorID, name string) (domain.Organization, error)
+	CreateOrg(ctx context.Context, creatorID, name, slug string) (domain.Organization, error)
+	SetOrgSlug(ctx context.Context, orgID, callerID, slug string) (domain.Organization, error)
+	ResolveOrg(ctx context.Context, slug string) (domain.Organization, error)
 	ListOrgsForUser(ctx context.Context, userID string) ([]domain.Organization, error)
 	ListMembers(ctx context.Context, orgID string) ([]domain.Membership, error)
 	AddMember(ctx context.Context, orgID, callerID, userID string) error
@@ -49,7 +51,7 @@ func (s *OrgServer) CreateOrg(ctx context.Context, req *authv1.CreateOrgRequest)
 	if err != nil {
 		return nil, err
 	}
-	org, err := s.svc.CreateOrg(ctx, callerID, req.GetName())
+	org, err := s.svc.CreateOrg(ctx, callerID, req.GetName(), req.GetSlug())
 	if err != nil {
 		return nil, orgError(err)
 	}
@@ -131,6 +133,57 @@ func (s *OrgServer) SuspendMember(ctx context.Context, req *authv1.SuspendMember
 		return nil, orgError(err)
 	}
 	return &authv1.SuspendMemberResponse{}, nil
+}
+
+// SetOrgSlug renames the organization's slug. The application layer requires
+// the caller to be an owner.
+func (s *OrgServer) SetOrgSlug(ctx context.Context, req *authv1.SetOrgSlugRequest) (*authv1.SetOrgSlugResponse, error) {
+	orgID, _, err := s.requireActiveMember(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, err
+	}
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	org, err := s.svc.SetOrgSlug(ctx, orgID, callerID, req.GetSlug())
+	if err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.SetOrgSlugResponse{Organization: organizationProto(org)}, nil
+}
+
+// TenantServer implements the public TenantService. It carries no caller: the
+// edge asks it before sign-in.
+type TenantServer struct {
+	authv1.UnimplementedTenantServiceServer
+	svc OrgService
+}
+
+func NewTenant(svc OrgService) *TenantServer {
+	return &TenantServer{svc: svc}
+}
+
+// ResolveTenant answers the organization id, name and current slug for a tenant
+// host label, and whether the label is a retired one. Unknown and invalid
+// labels are the same NotFound, so the endpoint does not reveal which slugs
+// exist beyond what resolving a host reveals anyway.
+func (s *TenantServer) ResolveTenant(ctx context.Context, req *authv1.ResolveTenantRequest) (*authv1.ResolveTenantResponse, error) {
+	org, err := s.svc.ResolveOrg(ctx, req.GetSlug())
+	if err != nil {
+		if errors.Is(err, domain.ErrSlugNotFound) {
+			return nil, status.Error(codes.NotFound, "tenant not found")
+		}
+		slog.Error("resolve tenant failed", "error", err)
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+	requested := strings.ToLower(strings.TrimSpace(req.GetSlug()))
+	return &authv1.ResolveTenantResponse{
+		OrgId:   org.ID,
+		Name:    org.Name,
+		Slug:    org.Slug,
+		Retired: requested != org.Slug,
+	}, nil
 }
 
 // SetMemberRole changes a member's organization administration tier. The
@@ -299,8 +352,10 @@ func orgError(err error) error {
 		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, domain.ErrLastActiveMember), errors.Is(err, domain.ErrLastOwner):
 		return status.Error(codes.FailedPrecondition, err.Error())
-	case errors.Is(err, domain.ErrInvalidRole):
+	case errors.Is(err, domain.ErrInvalidRole), errors.Is(err, domain.ErrInvalidSlug):
 		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, domain.ErrSlugTaken):
+		return status.Error(codes.AlreadyExists, err.Error())
 	case errors.Is(err, domain.ErrUserNotFound):
 		return status.Error(codes.NotFound, "user not found")
 	case errors.Is(err, domain.ErrOrgNotFound), errors.Is(err, domain.ErrNotMember):
@@ -323,6 +378,7 @@ func organizationProto(org domain.Organization) *authv1.Organization {
 	return &authv1.Organization{
 		Id:        org.ID,
 		Name:      org.Name,
+		Slug:      org.Slug,
 		CreatedAt: org.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: org.UpdatedAt.Format(time.RFC3339),
 	}

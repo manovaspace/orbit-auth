@@ -74,8 +74,8 @@ func insertLegacyData(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		 VALUES ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'refresh-hash', NOW() + INTERVAL '30 days')`,
 		`INSERT INTO api_tokens (id, user_id, name, prefix, token_hash, scopes)
 		 VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'deploy', 'abcdefgh', 'token-hash', ARRAY['read'])`,
-		`INSERT INTO organizations (id, name)
-		 VALUES ('55555555-5555-5555-5555-555555555555', 'Legacy Org')`,
+		`INSERT INTO organizations (id, name, slug)
+		 VALUES ('55555555-5555-5555-5555-555555555555', 'Legacy Org', 'legacy-org')`,
 		`INSERT INTO organization_memberships (org_id, user_id, status)
 		 VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', 'active')`,
 	}
@@ -101,8 +101,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 10 {
-		t.Fatalf("applied %d migrations, want 10", len(results))
+	if len(results) != 11 {
+		t.Fatalf("applied %d migrations, want 11", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "outbox_events", "feature_flags", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
@@ -112,8 +112,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
 		t.Fatal("users.email_verified_at was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 10 || target != 10 {
-		t.Fatalf("version = %d/%d, err=%v, want 10/10", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 11 || target != 11 {
+		t.Fatalf("version = %d/%d, err=%v, want 11/11", current, target, err)
 	}
 }
 
@@ -155,10 +155,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 10 || target != 10 {
-		t.Fatalf("version = %d/%d, err=%v, want 10/10", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 11 || target != 11 {
+		t.Fatalf("version = %d/%d, err=%v, want 11/11", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -211,7 +211,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -228,8 +228,12 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// Roll 010, 009, 008 and 007 back so the next insert represents an account
-	// created before self-serve sign-up existed and before the outbox table.
+	// Roll 011, 010, 009, 008 and 007 back so the next insert represents an
+	// account created before self-serve sign-up existed and before the outbox
+	// table.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 011: %v", err)
+	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 010: %v", err)
 	}
@@ -249,7 +253,7 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	}
 
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 007 to 010: %v", err)
+		t.Fatalf("reapply 007 to 011: %v", err)
 	}
 	var verified, created *time.Time
 	if err := db.Pool.QueryRow(ctx,
@@ -290,6 +294,20 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	result, err := m.Down(ctx)
 	if err != nil {
 		t.Fatalf("down: %v", err)
+	}
+	if result.Source.Version != 11 {
+		t.Fatalf("rolled back version %d, want 11", result.Source.Version)
+	}
+	if columnExists(t, ctx, db.Pool, db.Schema, "organizations", "slug") || tableExists(t, ctx, db.Pool, db.Schema, "organization_slugs") {
+		t.Fatal("down left the organization slugs in place")
+	}
+	if !columnExists(t, ctx, db.Pool, db.Schema, "organization_memberships", "role") {
+		t.Fatal("down of 011 removed organization_memberships.role from 010")
+	}
+
+	result, err = m.Down(ctx)
+	if err != nil {
+		t.Fatalf("down 010: %v", err)
 	}
 	if result.Source.Version != 10 {
 		t.Fatalf("rolled back version %d, want 10", result.Source.Version)
@@ -565,6 +583,9 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 011: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 010: %v", err)
 	}
 
@@ -573,9 +594,9 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 		u2   = "a0000000-0000-0000-0000-000000000002"
 		u3   = "a0000000-0000-0000-0000-000000000003"
 		u4   = "a0000000-0000-0000-0000-000000000004"
-		orgA = "b0000000-0000-0000-0000-00000000000a"
-		orgB = "b0000000-0000-0000-0000-00000000000b"
-		orgC = "b0000000-0000-0000-0000-00000000000c"
+		orgA = "b1000000-0000-0000-0000-00000000000a"
+		orgB = "b2000000-0000-0000-0000-00000000000b"
+		orgC = "b3000000-0000-0000-0000-00000000000c"
 	)
 	for i, id := range []string{u1, u2, u3, u4} {
 		if _, err := db.Pool.Exec(ctx,
@@ -609,7 +630,7 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 	}
 
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 010: %v", err)
+		t.Fatalf("reapply 010 and 011: %v", err)
 	}
 	want := map[[2]string]string{
 		{orgA, u1}: "owner",
@@ -631,5 +652,61 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 	if _, err := db.Pool.Exec(ctx,
 		`UPDATE organization_memberships SET role = 'root' WHERE org_id = $1 AND user_id = $2`, orgA, u2); err == nil {
 		t.Fatal("role check constraint accepted an unknown role")
+	}
+}
+
+func TestOrganizationSlugBackfill(t *testing.T) {
+	db := testutil.OpenPostgres(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	m, err := Open(db.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Close() }()
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 011: %v", err)
+	}
+
+	orgs := []struct{ id, name, created, want string }{
+		{"c0000000-0000-0000-0000-000000000001", "Fryto", "2026-01-01T00:00:00Z", "fryto"},
+		{"c0000000-0000-0000-0000-000000000002", "fryto", "2026-01-02T00:00:00Z", "org-c00000000000"},
+		{"c0000000-0000-0000-0000-000000000003", "Acme Café & Co", "2026-01-03T00:00:00Z", "acme-caf-co"},
+		{"d0000000-0000-0000-0000-000000000004", "فرایتو", "2026-01-04T00:00:00Z", "org-d00000000000"},
+		{"e0000000-0000-0000-0000-000000000005", "Admin", "2026-01-05T00:00:00Z", "org-e00000000000"},
+		{"f0000000-0000-0000-0000-000000000006", "9 Lives", "2026-01-06T00:00:00Z", "org-f00000000000"},
+	}
+	for _, org := range orgs {
+		if _, err := db.Pool.Exec(ctx,
+			`INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)`, org.id, org.name, org.created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatalf("reapply 011: %v", err)
+	}
+	for _, org := range orgs {
+		var slug string
+		if err := db.Pool.QueryRow(ctx, `SELECT slug FROM organizations WHERE id = $1`, org.id).Scan(&slug); err != nil {
+			t.Fatal(err)
+		}
+		if slug != org.want {
+			t.Fatalf("%q got slug %q, want %q", org.name, slug, org.want)
+		}
+		var registered int
+		if err := db.Pool.QueryRow(ctx,
+			`SELECT count(*) FROM organization_slugs WHERE org_id = $1 AND slug = $2 AND retired_at IS NULL`, org.id, slug).Scan(&registered); err != nil || registered != 1 {
+			t.Fatalf("%q registry rows = %d, %v; want 1", org.name, registered, err)
+		}
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE organizations SET slug = 'Bad_Slug' WHERE id = $1`, orgs[0].id); err == nil {
+		t.Fatal("format check accepted an invalid slug")
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE organizations SET slug = 'acme-caf-co' WHERE id = $1`, orgs[0].id); err == nil {
+		t.Fatal("unique index accepted a duplicate slug")
 	}
 }
