@@ -171,7 +171,7 @@ func TestInviteAcceptRefusesSuspendedMember(t *testing.T) {
 	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "suspended-token")

@@ -184,7 +184,7 @@ func (s *Store) AddMember(ctx context.Context, orgID, userID string, status doma
 // UpdateMemberStatus changes one existing membership. The organization row is
 // locked for the transaction so concurrent demotions cannot remove the last
 // active member.
-func (s *Store) UpdateMemberStatus(ctx context.Context, orgID, userID string, status domain.MembershipStatus) error {
+func (s *Store) UpdateMemberStatus(ctx context.Context, orgID, userID string, status domain.MembershipStatus, by domain.MembershipActor) error {
 	org, user, err := membershipIDs(orgID, userID)
 	if err != nil {
 		return err
@@ -201,6 +201,9 @@ func (s *Store) UpdateMemberStatus(ctx context.Context, orgID, userID string, st
 	}
 	current, err := getMembership(ctx, queries, org, user)
 	if err != nil {
+		return err
+	}
+	if err := authorizeUnderLock(ctx, queries, org, by, &current, ""); err != nil {
 		return err
 	}
 	if status != domain.MembershipActive && current.Status == domain.MembershipActive {
@@ -237,7 +240,7 @@ func (s *Store) UpdateMemberStatus(ctx context.Context, orgID, userID string, st
 
 // RemoveMember deletes one membership. The organization row is locked for the
 // transaction so concurrent removals cannot remove the last active member.
-func (s *Store) RemoveMember(ctx context.Context, orgID, userID string) error {
+func (s *Store) RemoveMember(ctx context.Context, orgID, userID string, by domain.MembershipActor) error {
 	org, user, err := membershipIDs(orgID, userID)
 	if err != nil {
 		return err
@@ -254,6 +257,9 @@ func (s *Store) RemoveMember(ctx context.Context, orgID, userID string) error {
 	}
 	current, err := getMembership(ctx, queries, org, user)
 	if err != nil {
+		return err
+	}
+	if err := authorizeUnderLock(ctx, queries, org, by, &current, ""); err != nil {
 		return err
 	}
 	if current.Status == domain.MembershipActive {
@@ -311,6 +317,9 @@ func (s *Store) UpdateMemberRole(ctx context.Context, orgID, userID string, role
 	if err != nil {
 		return err
 	}
+	if err := authorizeUnderLock(ctx, queries, org, domain.MembershipActor{CallerID: actorID, Action: domain.ActionSetRole}, &current, role); err != nil {
+		return err
+	}
 	if current.Role == role {
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("postgres: commit unchanged membership role: %w", err)
@@ -338,6 +347,26 @@ func (s *Store) UpdateMemberRole(ctx context.Context, orgID, userID string, role
 		return fmt.Errorf("postgres: commit membership role: %w", err)
 	}
 	return nil
+}
+
+// authorizeUnderLock reruns the membership policy with the caller's and the
+// target's current rows. The caller must hold the organization lock, so neither
+// row can change between this read and the write that follows. A zero actor is
+// a system change and is not checked. The caller's own removal of themselves is
+// allowed by the policy.
+func authorizeUnderLock(ctx context.Context, queries *sqlcgen.Queries, orgID uuid.UUID, by domain.MembershipActor, target *domain.Membership, newRole domain.MembershipRole) error {
+	if by.CallerID == "" {
+		return nil
+	}
+	callerID, err := uuid.Parse(by.CallerID)
+	if err != nil {
+		return fmt.Errorf("postgres: caller id %q: %w", by.CallerID, err)
+	}
+	caller, err := getMembership(ctx, queries, orgID, callerID)
+	if err != nil {
+		return err
+	}
+	return domain.AuthorizeMembershipAction(caller, by.Action, target, newRole)
 }
 
 // requireAnotherActiveOwner refuses a change to current that would leave the

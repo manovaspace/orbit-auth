@@ -69,14 +69,16 @@ type OrgStore interface {
 	// ListMembers returns every membership of orgID with its lifecycle status.
 	ListMembers(ctx context.Context, orgID string) ([]Membership, error)
 	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus, role MembershipRole) error
-	UpdateMemberStatus(ctx context.Context, orgID, userID string, status MembershipStatus) error
+	UpdateMemberStatus(ctx context.Context, orgID, userID string, status MembershipStatus, by MembershipActor) error
 	// UpdateMemberRole changes a member's administration tier. It returns
 	// ErrLastOwner when the change would leave no active owner, and records
 	// actorID in auth.membership.role_changed.
 	UpdateMemberRole(ctx context.Context, orgID, userID string, role MembershipRole, actorID string) error
 	// UpdateMemberStatus and RemoveMember also return ErrLastOwner when the
-	// member is the last active owner.
-	RemoveMember(ctx context.Context, orgID, userID string) error
+	// member is the last active owner. With a non-zero actor they run
+	// AuthorizeMembershipAction again under the organization lock and return
+	// ErrForbidden when the actor no longer has the authority.
+	RemoveMember(ctx context.Context, orgID, userID string, by MembershipActor) error
 	GetMembership(ctx context.Context, orgID, userID string) (Membership, error)
 }
 

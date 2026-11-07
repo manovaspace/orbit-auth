@@ -108,7 +108,7 @@ func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status
 	return nil
 }
 
-func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID string, status domain.MembershipStatus) error {
+func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID string, status domain.MembershipStatus, _ domain.MembershipActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	membership, ok := f.memberships[orgID][userID]
@@ -129,7 +129,7 @@ func (f *fakeOrgStore) UpdateMemberStatus(_ context.Context, orgID, userID strin
 	return nil
 }
 
-func (f *fakeOrgStore) RemoveMember(_ context.Context, orgID, userID string) error {
+func (f *fakeOrgStore) RemoveMember(_ context.Context, orgID, userID string, _ domain.MembershipActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	membership, ok := f.memberships[orgID][userID]

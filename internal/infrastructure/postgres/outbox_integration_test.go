@@ -238,10 +238,10 @@ func TestLifecycleEventSubjectsInOneTransaction(t *testing.T) {
 	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RemoveMember(ctx, org.ID, member.ID); err != nil {
+	if err := store.RemoveMember(ctx, org.ID, member.ID, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 

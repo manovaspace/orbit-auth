@@ -98,7 +98,8 @@ func (s *Service) SuspendMember(ctx context.Context, orgID, callerID, userID str
 	if membership.Status != domain.MembershipActive {
 		return nil
 	}
-	return s.orgs.UpdateMemberStatus(ctx, orgID, userID, domain.MembershipSuspended)
+	return s.orgs.UpdateMemberStatus(ctx, orgID, userID, domain.MembershipSuspended,
+		domain.MembershipActor{CallerID: callerID, Action: domain.ActionSuspendMember})
 }
 
 // RemoveMember deletes one membership. Removing the last active membership or
@@ -118,7 +119,8 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, callerID, userID stri
 	if _, err := s.orgs.GetMembership(ctx, orgID, userID); err != nil {
 		return err
 	}
-	return s.orgs.RemoveMember(ctx, orgID, userID)
+	return s.orgs.RemoveMember(ctx, orgID, userID,
+		domain.MembershipActor{CallerID: callerID, Action: domain.ActionRemoveMember})
 }
 
 // SetMemberRole changes userID's administration tier and returns the updated

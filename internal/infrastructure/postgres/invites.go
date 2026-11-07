@@ -186,8 +186,15 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 	}); err != nil {
 		return fmt.Errorf("postgres: add invited member: %w", err)
 	}
+	// An owner or admin who accepts an invitation sent to their own address is
+	// already an active member and keeps their role, so report the stored role
+	// rather than assuming a new plain member.
+	joined, err := getMembership(ctx, queries, org, user)
+	if err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewMembershipAddedEvent(orgID, userID, domain.MembershipActive, domain.RoleMember, acceptedAt),
+		domain.NewMembershipAddedEvent(orgID, userID, domain.MembershipActive, joined.Role, acceptedAt),
 	); err != nil {
 		return err
 	}

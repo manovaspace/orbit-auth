@@ -69,10 +69,10 @@ func TestLastActiveOwnerCannotBeRemovedSuspendedOrDemoted(t *testing.T) {
 	store, org, ids := ownerFixture(t)
 	ctx := context.Background()
 
-	if err := store.RemoveMember(ctx, org.ID, ids["owner"]); !errors.Is(err, domain.ErrLastOwner) {
+	if err := store.RemoveMember(ctx, org.ID, ids["owner"], domain.MembershipActor{}); !errors.Is(err, domain.ErrLastOwner) {
 		t.Fatalf("remove last owner err = %v, want ErrLastOwner", err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, ids["owner"], domain.MembershipSuspended); !errors.Is(err, domain.ErrLastOwner) {
+	if err := store.UpdateMemberStatus(ctx, org.ID, ids["owner"], domain.MembershipSuspended, domain.MembershipActor{}); !errors.Is(err, domain.ErrLastOwner) {
 		t.Fatalf("suspend last owner err = %v, want ErrLastOwner", err)
 	}
 	if err := store.UpdateMemberRole(ctx, org.ID, ids["owner"], domain.RoleAdmin, ids["owner"]); !errors.Is(err, domain.ErrLastOwner) {
@@ -102,11 +102,11 @@ func TestSuspendedOwnerDoesNotCountAsAnOwner(t *testing.T) {
 	if err := store.UpdateMemberRole(ctx, org.ID, ids["admin"], domain.RoleOwner, ids["owner"]); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateMemberStatus(ctx, org.ID, ids["admin"], domain.MembershipSuspended); err != nil {
+	if err := store.UpdateMemberStatus(ctx, org.ID, ids["admin"], domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 	// admin is a suspended owner; the only active owner may not leave.
-	if err := store.UpdateMemberStatus(ctx, org.ID, ids["owner"], domain.MembershipSuspended); !errors.Is(err, domain.ErrLastOwner) {
+	if err := store.UpdateMemberStatus(ctx, org.ID, ids["owner"], domain.MembershipSuspended, domain.MembershipActor{}); !errors.Is(err, domain.ErrLastOwner) {
 		t.Fatalf("suspend err = %v, want ErrLastOwner", err)
 	}
 }
@@ -133,19 +133,22 @@ func TestConcurrentOwnerDemotionsLeaveOneOwner(t *testing.T) {
 	wg.Wait()
 	close(errs)
 
-	successes, lastOwner := 0, 0
+	// The loser is refused either because the winner already demoted it (it no
+	// longer has the authority) or because it would orphan the organization;
+	// which one depends on lock order, and both keep one owner.
+	successes, refused := 0, 0
 	for err := range errs {
 		switch {
 		case err == nil:
 			successes++
-		case errors.Is(err, domain.ErrLastOwner):
-			lastOwner++
+		case errors.Is(err, domain.ErrForbidden), errors.Is(err, domain.ErrLastOwner):
+			refused++
 		default:
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
-	if successes != 1 || lastOwner != 1 {
-		t.Fatalf("successes = %d, ErrLastOwner = %d; want 1 and 1", successes, lastOwner)
+	if successes != 1 || refused != 1 {
+		t.Fatalf("successes = %d, refused = %d; want 1 and 1", successes, refused)
 	}
 	var owners int
 	if err := store.pool.QueryRow(ctx,
@@ -213,5 +216,87 @@ func TestAddMemberEventCarriesRole(t *testing.T) {
 	}
 	if payload.OrgID != org.ID || payload.Role != domain.RoleAdmin {
 		t.Fatalf("payload = %+v, want role admin", payload)
+	}
+}
+
+// TestStoreRechecksTheActorUnderTheLock proves the store does not trust the
+// application's earlier read: an actor demoted after authorization, or a
+// target promoted after it, is refused when the write runs.
+func TestStoreRechecksTheActorUnderTheLock(t *testing.T) {
+	store, org, ids := ownerFixture(t)
+	ctx := context.Background()
+	remove := func(caller, target string) error {
+		return store.RemoveMember(ctx, org.ID, target, domain.MembershipActor{CallerID: caller, Action: domain.ActionRemoveMember})
+	}
+	suspend := func(caller, target string) error {
+		return store.UpdateMemberStatus(ctx, org.ID, target, domain.MembershipSuspended,
+			domain.MembershipActor{CallerID: caller, Action: domain.ActionSuspendMember})
+	}
+
+	// The admin is demoted after the application authorized their removal of
+	// the plain member.
+	if err := store.UpdateMemberRole(ctx, org.ID, ids["admin"], domain.RoleMember, ids["owner"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := remove(ids["admin"], ids["member"]); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("demoted admin removal err = %v, want ErrForbidden", err)
+	}
+	if err := suspend(ids["admin"], ids["member"]); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("demoted admin suspension err = %v, want ErrForbidden", err)
+	}
+	if m, err := store.GetMembership(ctx, org.ID, ids["member"]); err != nil || m.Status != domain.MembershipActive {
+		t.Fatalf("member after refused writes = %+v, %v", m, err)
+	}
+
+	// The target is promoted after the application saw them as a plain member.
+	if err := store.UpdateMemberRole(ctx, org.ID, ids["admin"], domain.RoleAdmin, ids["owner"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateMemberRole(ctx, org.ID, ids["member"], domain.RoleAdmin, ids["owner"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := remove(ids["admin"], ids["member"]); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("admin removing a promoted admin err = %v, want ErrForbidden", err)
+	}
+	// An admin cannot change roles at all.
+	if err := store.UpdateMemberRole(ctx, org.ID, ids["member"], domain.RoleMember, ids["admin"]); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("admin role change err = %v, want ErrForbidden", err)
+	}
+	// An owner still can, and a member can leave.
+	if err := remove(ids["owner"], ids["member"]); err != nil {
+		t.Fatalf("owner removal: %v", err)
+	}
+	if err := remove(ids["admin"], ids["admin"]); err != nil {
+		t.Fatalf("admin leaving: %v", err)
+	}
+}
+
+func TestAcceptingAnInviteKeepsTheStoredRoleInTheEvent(t *testing.T) {
+	store, org, inviter, _ := createInviteFixture(t)
+	ctx := context.Background()
+
+	invite := pendingInvite(org.ID, inviter.ID, "owner@example.com", "owner-own-invite")
+	if err := store.CreateInvite(ctx, invite); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, inviter.ID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	var raw []byte
+	if err := store.pool.QueryRow(ctx, `
+		SELECT envelope -> 'payload' FROM outbox_events
+		WHERE subject = $1 AND envelope -> 'payload' ->> 'user_id' = $2
+		ORDER BY id DESC LIMIT 1`, domain.SubjectMembershipAdded, inviter.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var payload domain.MembershipAddedPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Role != domain.RoleOwner {
+		t.Fatalf("event role = %q, want the owner's stored role", payload.Role)
+	}
+	if m, err := store.GetMembership(ctx, org.ID, inviter.ID); err != nil || m.Role != domain.RoleOwner {
+		t.Fatalf("membership after accepting = %+v, %v", m, err)
 	}
 }

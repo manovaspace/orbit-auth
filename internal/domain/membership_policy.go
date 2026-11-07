@@ -1,6 +1,17 @@
 package domain
 
 // MembershipAction names an organization-administration operation that
+// MembershipActor says who makes a membership change, so the store can run
+// the policy again under the organization lock and close the gap between the
+// application's read and its write (a caller demoted or a target promoted in
+// between). The zero value is a system change and skips the check.
+type MembershipActor struct {
+	// CallerID is the acting member.
+	CallerID string
+	// Action is the operation being performed.
+	Action MembershipAction
+}
+
 // AuthorizeMembershipAction decides.
 type MembershipAction string
 
