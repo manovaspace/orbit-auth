@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0](https://github.com/manovaspace/orbit-auth/compare/v0.8.1...v0.9.0) (2026-11-08)
+
+
+### Features
+
+* **invites:** invite members by phone number with an invited tier ([23ecd5f](https://github.com/manovaspace/orbit-auth/commit/23ecd5f001acda6b3699d26a3c84b64fcf22c976))
+* **invites:** invite members by phone number with an invited tier ([5b23a88](https://github.com/manovaspace/orbit-auth/commit/5b23a88eadded186e0732cc4cd0056053c39169c))
+* **invites:** phone invite RPCs, invite preview and sign-up on accept ([5f37882](https://github.com/manovaspace/orbit-auth/commit/5f37882a29136bbcf1a0be7d264bbfd01dd79d9a))
+* **invites:** phone invite RPCs, invite preview and sign-up on accept ([63f4ef6](https://github.com/manovaspace/orbit-auth/commit/63f4ef6db9480677950019082ec9a9ac27ba48bd)), closes [#93](https://github.com/manovaspace/orbit-auth/issues/93)
+
 ## [0.8.1](https://github.com/manovaspace/orbit-auth/compare/v0.8.0...v0.8.1) (2026-11-08)
 
 
