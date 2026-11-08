@@ -115,9 +115,10 @@ type InviteStore interface {
 	// RevokeInvite revokes one pending invite or returns ErrInviteNotFound.
 	RevokeInvite(ctx context.Context, orgID, inviteID string) error
 	// AcceptInvite marks one pending invite accepted and makes the user an
-	// active member in the same transaction. It returns ErrInviteNotFound when
+	// active member with role in the same transaction. A user who is already an
+	// active member keeps their current role. It returns ErrInviteNotFound when
 	// the invite is no longer pending.
-	AcceptInvite(ctx context.Context, inviteID, orgID, userID string, acceptedAt time.Time) error
+	AcceptInvite(ctx context.Context, inviteID, orgID, userID string, role MembershipRole, acceptedAt time.Time) error
 }
 
 // FeatureFlagStore reads the platform feature flags.

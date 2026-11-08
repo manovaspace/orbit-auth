@@ -128,7 +128,7 @@ func (s *signupStore) CreateSignupUser(ctx context.Context, user domain.User, or
 	s.createdAt[user.ID] = acceptedAt
 
 	if invite != nil {
-		if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, user.ID, acceptedAt); err != nil {
+		if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, user.ID, invite.Role, acceptedAt); err != nil {
 			delete(s.users, user.ID)
 			delete(s.emails, user.Email)
 			delete(s.createdAt, user.ID)
@@ -172,7 +172,7 @@ func (s *signupStore) ReissuePendingSignup(ctx context.Context, user domain.User
 		}
 	}
 	if invite != nil {
-		if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, id, acceptedAt); err != nil {
+		if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, id, invite.Role, acceptedAt); err != nil {
 			return "", false, err
 		}
 		existing.Status = domain.UserActive
@@ -650,6 +650,7 @@ func TestRegisterWithEmailInviteCreatesVerifiedMember(t *testing.T) {
 		ID:        "invite-1",
 		OrgID:     org.ID,
 		Email:     "new@example.com",
+		Role:      domain.RoleMember,
 		TokenHash: domain.HashInviteToken("invite-token"),
 		InviterID: "inviter",
 		Status:    domain.InvitePending,
@@ -711,6 +712,7 @@ func TestRegisterWithEmailInviteEmailMustMatch(t *testing.T) {
 		ID:        "invite-1",
 		OrgID:     org.ID,
 		Email:     "other@example.com",
+		Role:      domain.RoleMember,
 		TokenHash: domain.HashInviteToken("invite-token"),
 		InviterID: "inviter",
 		Status:    domain.InvitePending,

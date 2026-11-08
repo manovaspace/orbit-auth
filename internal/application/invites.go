@@ -14,43 +14,57 @@ import (
 // Persian by default.
 const defaultInviteLocale = "fa"
 
-// InviteMember creates a pending invitation and sends it through
-// orbit-notifications. Only an active owner or admin of the organization may
-// invite, and only the token hash is stored. Re-inviting an address that already has a
-// pending invitation revokes the old one and rotates the token.
-func (s *Service) InviteMember(ctx context.Context, orgID, inviterID, email string) (domain.Invite, error) {
+// The channel an organization invitation was delivered on, logged with
+// organization_invite_created. Phone invitations send nothing yet.
+const (
+	inviteChannelEmail = "email"
+	inviteChannelPhone = "phone"
+)
+
+// InviteMember creates a pending invitation to exactly one target, an email
+// address or an E.164 phone number, with the organization tier role. The
+// inviter must be an active owner or admin, and an admin may invite only as a
+// member: granting owner or admin needs an owner (the same policy as
+// SetMemberRole). Only the token hash is stored. The raw token is returned once,
+// as the second value, so the caller can build a shareable link. Email
+// invitations send org_invite through orbit-notifications; phone invitations
+// send nothing yet. Re-inviting the same recipient revokes the old pending
+// invitation and rotates the token.
+func (s *Service) InviteMember(ctx context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole) (domain.Invite, string, error) {
 	orgID = strings.TrimSpace(orgID)
 	inviterID = strings.TrimSpace(inviterID)
 	if orgID == "" || inviterID == "" {
-		return domain.Invite{}, fmt.Errorf("org_id and inviter_id required")
+		return domain.Invite{}, "", fmt.Errorf("org_id and inviter_id required")
 	}
-	email = domain.NormalizeEmail(email)
-	if !domain.IsEmail(email) {
-		return domain.Invite{}, domain.ErrInvalidEmail
+	target, err := domain.NormalizeInviteTarget(target)
+	if err != nil {
+		return domain.Invite{}, "", err
 	}
 	if s.invites == nil {
-		return domain.Invite{}, fmt.Errorf("invite store is not configured")
+		return domain.Invite{}, "", fmt.Errorf("invite store is not configured")
 	}
-	if err := s.authorizeMembership(ctx, orgID, inviterID, domain.ActionInvite, "", ""); err != nil {
-		return domain.Invite{}, err
+	if err := s.authorizeMembership(ctx, orgID, inviterID, domain.ActionInvite, "", role); err != nil {
+		return domain.Invite{}, "", err
 	}
 	org, err := s.orgs.GetOrg(ctx, orgID)
 	if err != nil {
-		return domain.Invite{}, err
+		return domain.Invite{}, "", err
 	}
 	inviter, err := s.users.FindByID(ctx, inviterID)
 	if err != nil {
-		return domain.Invite{}, err
+		return domain.Invite{}, "", err
 	}
 	token, err := s.secrets.NewSecret()
 	if err != nil {
-		return domain.Invite{}, err
+		return domain.Invite{}, "", err
 	}
 	now := s.clock.Now()
 	invite := domain.Invite{
 		ID:        s.ids.NewID(),
 		OrgID:     orgID,
-		Email:     email,
+		Email:     target.Email,
+		Phone:     target.Phone,
+		Role:      role,
 		TokenHash: domain.HashInviteToken(token),
 		InviterID: inviterID,
 		Status:    domain.InvitePending,
@@ -58,10 +72,17 @@ func (s *Service) InviteMember(ctx context.Context, orgID, inviterID, email stri
 		CreatedAt: now,
 	}
 	if err := s.invites.CreateInvite(ctx, invite); err != nil {
-		return domain.Invite{}, err
+		return domain.Invite{}, "", err
+	}
+	if target.Phone != "" {
+		// No SMS channel exists yet. The token is returned to the inviter, who
+		// shares it themselves.
+		s.logger("organization_invite_created", "org_id", orgID, "invite_id", invite.ID, "inviter_id", inviterID, "channel", inviteChannelPhone)
+		invite.TokenHash = ""
+		return invite, token, nil
 	}
 	notification := domain.InviteNotification{
-		Recipient:     email,
+		Recipient:     target.Email,
 		OrgName:       org.Name,
 		InviterName:   inviter.DisplayName,
 		AcceptToken:   token,
@@ -76,13 +97,51 @@ func (s *Service) InviteMember(ctx context.Context, orgID, inviterID, email stri
 		// A pending invite nobody received is unusable, so revoke it. If the
 		// revoke also fails, both failures are reported.
 		if revokeErr := s.invites.RevokeInvite(ctx, orgID, invite.ID); revokeErr != nil {
-			return domain.Invite{}, fmt.Errorf("send invite: %w (revoke failed: %v)", err, revokeErr)
+			return domain.Invite{}, "", fmt.Errorf("send invite: %w (revoke failed: %v)", err, revokeErr)
 		}
-		return domain.Invite{}, err
+		return domain.Invite{}, "", err
 	}
-	s.logger("organization_invite_created", "org_id", orgID, "invite_id", invite.ID, "inviter_id", inviterID)
+	s.logger("organization_invite_created", "org_id", orgID, "invite_id", invite.ID, "inviter_id", inviterID, "channel", inviteChannelEmail)
 	invite.TokenHash = ""
-	return invite, nil
+	return invite, token, nil
+}
+
+// GetInvitePreview resolves an invitation token to what the holder may see
+// before accepting: the organization, the invited tier and the expiry. It never
+// returns the recipient's email address or phone number. Any token that is not
+// a pending, unexpired invitation to an existing organization is
+// ErrInvalidInvite.
+func (s *Service) GetInvitePreview(ctx context.Context, token string) (domain.InvitePreview, error) {
+	token = strings.TrimSpace(token)
+	if token == "" || s.invites == nil {
+		return domain.InvitePreview{}, domain.ErrInvalidInvite
+	}
+	invite, err := s.invites.FindInviteByTokenHash(ctx, domain.HashInviteToken(token))
+	if err != nil {
+		if errors.Is(err, domain.ErrInviteNotFound) {
+			return domain.InvitePreview{}, domain.ErrInvalidInvite
+		}
+		return domain.InvitePreview{}, err
+	}
+	now := s.clock.Now()
+	if invite.Status != domain.InvitePending || !now.Before(invite.ExpiresAt) {
+		return domain.InvitePreview{}, domain.ErrInvalidInvite
+	}
+	org, err := s.orgs.GetOrg(ctx, invite.OrgID)
+	if err != nil {
+		if errors.Is(err, domain.ErrOrgNotFound) {
+			return domain.InvitePreview{}, domain.ErrInvalidInvite
+		}
+		return domain.InvitePreview{}, err
+	}
+	return domain.InvitePreview{
+		OrgID:     org.ID,
+		OrgName:   org.Name,
+		OrgSlug:   org.Slug,
+		Role:      invite.Role,
+		Status:    invite.Status,
+		ExpiresAt: invite.ExpiresAt,
+	}, nil
 }
 
 // AcceptInvite consumes one invitation token for the authenticated user. The
@@ -118,10 +177,10 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, token string) (domai
 		}
 		return domain.Invite{}, err
 	}
-	if !inviteRecipientMatches(user, invite.Email) {
+	if !inviteRecipientMatches(user, invite) {
 		return domain.Invite{}, domain.ErrInvalidInvite
 	}
-	if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, userID, now); err != nil {
+	if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, userID, invite.Role, now); err != nil {
 		if errors.Is(err, domain.ErrInviteNotFound) {
 			return domain.Invite{}, domain.ErrInvalidInvite
 		}
@@ -180,13 +239,21 @@ func (s *Service) ListInvites(ctx context.Context, orgID, callerID string) ([]do
 }
 
 // inviteRecipientMatches decides whether an authenticated account may accept an
-// invitation. The account must be active and its email must have been proven:
-// email OTP, an admin/demo seed, a backfilled pre-sign-up account or a
-// completed sign-up all set email_verified_at. A signup_pending account is not
-// active and therefore cannot accept an invitation.
-func inviteRecipientMatches(user domain.User, inviteEmail string) bool {
+// invitation. The account must be active. An email invitation needs the account
+// email to match and to have been proven: email OTP, an admin/demo seed, a
+// backfilled pre-sign-up account or a completed sign-up all set
+// email_verified_at. A phone invitation needs the account mobile number to equal
+// the invited E.164 number. A signup_pending account is not active and therefore
+// cannot accept an invitation.
+func inviteRecipientMatches(user domain.User, invite domain.Invite) bool {
+	if user.Status != domain.UserActive {
+		return false
+	}
+	if invite.Phone != "" {
+		mobile := strings.TrimSpace(user.Mobile)
+		return mobile != "" && mobile == invite.Phone
+	}
 	return user.Email != "" &&
 		user.EmailVerified &&
-		user.Status == domain.UserActive &&
-		strings.EqualFold(user.Email, inviteEmail)
+		strings.EqualFold(user.Email, invite.Email)
 }

@@ -101,8 +101,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 11 {
-		t.Fatalf("applied %d migrations, want 11", len(results))
+	if len(results) != 12 {
+		t.Fatalf("applied %d migrations, want 12", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "outbox_events", "feature_flags", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
@@ -112,8 +112,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
 		t.Fatal("users.email_verified_at was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 11 || target != 11 {
-		t.Fatalf("version = %d/%d, err=%v, want 11/11", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 12 || target != 12 {
+		t.Fatalf("version = %d/%d, err=%v, want 12/12", current, target, err)
 	}
 }
 
@@ -155,10 +155,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 11 || target != 11 {
-		t.Fatalf("version = %d/%d, err=%v, want 11/11", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 12 || target != 12 {
+		t.Fatalf("version = %d/%d, err=%v, want 12/12", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -211,7 +211,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -228,9 +228,12 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// Roll 011, 010, 009, 008 and 007 back so the next insert represents an
+	// Roll 012, 011, 010, 009, 008 and 007 back so the next insert represents an
 	// account created before self-serve sign-up existed and before the outbox
 	// table.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 012: %v", err)
+	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 011: %v", err)
 	}
@@ -292,6 +295,14 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := m.Down(ctx)
+	if err != nil {
+		t.Fatalf("down 012: %v", err)
+	}
+	if result.Source.Version != 12 {
+		t.Fatalf("rolled back version %d, want 12", result.Source.Version)
+	}
+
+	result, err = m.Down(ctx)
 	if err != nil {
 		t.Fatalf("down: %v", err)
 	}
@@ -583,6 +594,9 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 012: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 011: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
@@ -667,6 +681,9 @@ func TestOrganizationSlugBackfill(t *testing.T) {
 	defer func() { _ = m.Close() }()
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 012: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 011: %v", err)

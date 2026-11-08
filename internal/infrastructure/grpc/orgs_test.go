@@ -81,6 +81,7 @@ type fakeOrgService struct {
 	inviteOrgID   string
 	inviteInviter string
 	inviteEmail   string
+	inviteRole    domain.MembershipRole
 	inviteResult  domain.Invite
 	inviteErr     error
 
@@ -166,9 +167,9 @@ func (f *fakeOrgService) SelectOrg(_ context.Context, userID, refreshToken, orgI
 	return f.selectAccess, f.selectRefresh, f.selectExpires, f.selectErr
 }
 
-func (f *fakeOrgService) InviteMember(_ context.Context, orgID, inviterID, email string) (domain.Invite, error) {
-	f.inviteOrgID, f.inviteInviter, f.inviteEmail = orgID, inviterID, email
-	return f.inviteResult, f.inviteErr
+func (f *fakeOrgService) InviteMember(_ context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole) (domain.Invite, string, error) {
+	f.inviteOrgID, f.inviteInviter, f.inviteEmail, f.inviteRole = orgID, inviterID, target.Email, role
+	return f.inviteResult, "", f.inviteErr
 }
 
 func (f *fakeOrgService) AcceptInvite(_ context.Context, userID, token string) (domain.Invite, error) {
@@ -608,8 +609,8 @@ func TestOrgServiceInviteMemberGatesOnMembershipAndUsesTokenCaller(t *testing.T)
 	if len(app.activeCalls) != 1 || app.activeCalls[0] != (activeCall{orgID: orgID, userID: "caller-1"}) {
 		t.Fatalf("active calls = %+v", app.activeCalls)
 	}
-	if app.inviteOrgID != orgID || app.inviteInviter != "caller-1" || app.inviteEmail != "member@example.com" {
-		t.Fatalf("invite = %q %q %q", app.inviteOrgID, app.inviteInviter, app.inviteEmail)
+	if app.inviteOrgID != orgID || app.inviteInviter != "caller-1" || app.inviteEmail != "member@example.com" || app.inviteRole != domain.RoleMember {
+		t.Fatalf("invite = %q %q %q %q", app.inviteOrgID, app.inviteInviter, app.inviteEmail, app.inviteRole)
 	}
 	got := resp.GetInvite()
 	if got.GetId() != app.inviteResult.ID || got.GetEmail() != "member@example.com" ||
