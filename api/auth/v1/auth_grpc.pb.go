@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_RequestOTP_FullMethodName        = "/auth.v1.AuthService/RequestOTP"
-	AuthService_VerifyOTP_FullMethodName         = "/auth.v1.AuthService/VerifyOTP"
-	AuthService_LoginWithPassword_FullMethodName = "/auth.v1.AuthService/LoginWithPassword"
-	AuthService_RefreshToken_FullMethodName      = "/auth.v1.AuthService/RefreshToken"
-	AuthService_CreateApiToken_FullMethodName    = "/auth.v1.AuthService/CreateApiToken"
-	AuthService_ListApiTokens_FullMethodName     = "/auth.v1.AuthService/ListApiTokens"
-	AuthService_RevokeApiToken_FullMethodName    = "/auth.v1.AuthService/RevokeApiToken"
-	AuthService_ValidateApiToken_FullMethodName  = "/auth.v1.AuthService/ValidateApiToken"
+	AuthService_RequestOTP_FullMethodName         = "/auth.v1.AuthService/RequestOTP"
+	AuthService_VerifyOTP_FullMethodName          = "/auth.v1.AuthService/VerifyOTP"
+	AuthService_LoginWithPassword_FullMethodName  = "/auth.v1.AuthService/LoginWithPassword"
+	AuthService_RefreshToken_FullMethodName       = "/auth.v1.AuthService/RefreshToken"
+	AuthService_RevokeRefreshToken_FullMethodName = "/auth.v1.AuthService/RevokeRefreshToken"
+	AuthService_CreateApiToken_FullMethodName     = "/auth.v1.AuthService/CreateApiToken"
+	AuthService_ListApiTokens_FullMethodName      = "/auth.v1.AuthService/ListApiTokens"
+	AuthService_RevokeApiToken_FullMethodName     = "/auth.v1.AuthService/RevokeApiToken"
+	AuthService_ValidateApiToken_FullMethodName   = "/auth.v1.AuthService/ValidateApiToken"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -37,6 +38,8 @@ type AuthServiceClient interface {
 	VerifyOTP(ctx context.Context, in *VerifyOTPRequest, opts ...grpc.CallOption) (*VerifyOTPResponse, error)
 	LoginWithPassword(ctx context.Context, in *LoginWithPasswordRequest, opts ...grpc.CallOption) (*TokenResponse, error)
 	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*TokenResponse, error)
+	// Idempotent: always succeeds for unknown, revoked or expired tokens.
+	RevokeRefreshToken(ctx context.Context, in *RevokeRefreshTokenRequest, opts ...grpc.CallOption) (*RevokeRefreshTokenResponse, error)
 	CreateApiToken(ctx context.Context, in *CreateApiTokenRequest, opts ...grpc.CallOption) (*CreateApiTokenResponse, error)
 	ListApiTokens(ctx context.Context, in *ListApiTokensRequest, opts ...grpc.CallOption) (*ListApiTokensResponse, error)
 	RevokeApiToken(ctx context.Context, in *RevokeApiTokenRequest, opts ...grpc.CallOption) (*RevokeApiTokenResponse, error)
@@ -91,6 +94,16 @@ func (c *authServiceClient) RefreshToken(ctx context.Context, in *RefreshTokenRe
 	return out, nil
 }
 
+func (c *authServiceClient) RevokeRefreshToken(ctx context.Context, in *RevokeRefreshTokenRequest, opts ...grpc.CallOption) (*RevokeRefreshTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeRefreshTokenResponse)
+	err := c.cc.Invoke(ctx, AuthService_RevokeRefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *authServiceClient) CreateApiToken(ctx context.Context, in *CreateApiTokenRequest, opts ...grpc.CallOption) (*CreateApiTokenResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateApiTokenResponse)
@@ -139,6 +152,8 @@ type AuthServiceServer interface {
 	VerifyOTP(context.Context, *VerifyOTPRequest) (*VerifyOTPResponse, error)
 	LoginWithPassword(context.Context, *LoginWithPasswordRequest) (*TokenResponse, error)
 	RefreshToken(context.Context, *RefreshTokenRequest) (*TokenResponse, error)
+	// Idempotent: always succeeds for unknown, revoked or expired tokens.
+	RevokeRefreshToken(context.Context, *RevokeRefreshTokenRequest) (*RevokeRefreshTokenResponse, error)
 	CreateApiToken(context.Context, *CreateApiTokenRequest) (*CreateApiTokenResponse, error)
 	ListApiTokens(context.Context, *ListApiTokensRequest) (*ListApiTokensResponse, error)
 	RevokeApiToken(context.Context, *RevokeApiTokenRequest) (*RevokeApiTokenResponse, error)
@@ -164,6 +179,9 @@ func (UnimplementedAuthServiceServer) LoginWithPassword(context.Context, *LoginW
 }
 func (UnimplementedAuthServiceServer) RefreshToken(context.Context, *RefreshTokenRequest) (*TokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RefreshToken not implemented")
+}
+func (UnimplementedAuthServiceServer) RevokeRefreshToken(context.Context, *RevokeRefreshTokenRequest) (*RevokeRefreshTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeRefreshToken not implemented")
 }
 func (UnimplementedAuthServiceServer) CreateApiToken(context.Context, *CreateApiTokenRequest) (*CreateApiTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateApiToken not implemented")
@@ -270,6 +288,24 @@ func _AuthService_RefreshToken_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_RevokeRefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeRefreshTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).RevokeRefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_RevokeRefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).RevokeRefreshToken(ctx, req.(*RevokeRefreshTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AuthService_CreateApiToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateApiTokenRequest)
 	if err := dec(in); err != nil {
@@ -364,6 +400,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RefreshToken",
 			Handler:    _AuthService_RefreshToken_Handler,
+		},
+		{
+			MethodName: "RevokeRefreshToken",
+			Handler:    _AuthService_RevokeRefreshToken_Handler,
 		},
 		{
 			MethodName: "CreateApiToken",

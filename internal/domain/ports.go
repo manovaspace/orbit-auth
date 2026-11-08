@@ -2,8 +2,13 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+// ErrRefreshTokenNotFound is returned by RefreshTokenStore.Consume for a
+// missing, revoked or expired token.
+var ErrRefreshTokenNotFound = errors.New("refresh token not found")
 
 // OTPStore persists one-time challenges.
 type OTPStore interface {
@@ -47,6 +52,10 @@ type SignupStore interface {
 type RefreshTokenStore interface {
 	Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error
 	FindValid(ctx context.Context, tokenHash string) (userID, orgID string, err error)
+	// Consume atomically revokes a valid token and returns its owner, so two
+	// concurrent redemptions of one token cannot both succeed. A missing,
+	// revoked or expired token returns ErrRefreshTokenNotFound.
+	Consume(ctx context.Context, tokenHash string) (userID, orgID string, err error)
 	Revoke(ctx context.Context, tokenHash string) error
 }
 

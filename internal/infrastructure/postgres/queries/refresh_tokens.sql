@@ -18,3 +18,8 @@ WHERE token_hash = sqlc.arg('token_hash')
 
 -- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = sqlc.arg('token_hash');
+
+-- name: ConsumeRefreshToken :one
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE token_hash = sqlc.arg('token_hash') AND revoked_at IS NULL AND expires_at > NOW()
+RETURNING user_id::text AS user_id, COALESCE(org_id::text, '')::text AS org_id;

@@ -328,3 +328,42 @@ func TestStoreRejectsInvalidUUIDs(t *testing.T) {
 		t.Fatal("invalid user id was accepted")
 	}
 }
+
+func TestConsumeRefreshTokenRedeemsOnce(t *testing.T) {
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+
+	user, err := store.FindOrCreateByEmail(ctx, "consume@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Store(ctx, user.ID, "", "consume-live", time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	userID, orgID, err := store.Consume(ctx, "consume-live")
+	if err != nil || userID != user.ID || orgID != "" {
+		t.Fatalf("consume = %q, %q, %v", userID, orgID, err)
+	}
+	if _, _, err := store.Consume(ctx, "consume-live"); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
+		t.Fatalf("second consume err = %v, want ErrRefreshTokenNotFound", err)
+	}
+	if _, _, err := store.FindValid(ctx, "consume-live"); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("consumed token still valid: %v", err)
+	}
+}
+
+func TestConsumeRefreshTokenRejectsExpired(t *testing.T) {
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+
+	user, err := store.FindOrCreateByEmail(ctx, "expired@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Store(ctx, user.ID, "", "consume-expired", time.Now().UTC().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Consume(ctx, "consume-expired"); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
+		t.Fatalf("expired consume err = %v, want ErrRefreshTokenNotFound", err)
+	}
+}

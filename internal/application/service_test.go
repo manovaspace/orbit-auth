@@ -176,6 +176,18 @@ func (f *fakeRefreshStore) FindValid(_ context.Context, tokenHash string) (strin
 	return token.userID, token.orgID, nil
 }
 
+// Consume checks and deletes under one lock, so one token redeems once.
+func (f *fakeRefreshStore) Consume(_ context.Context, tokenHash string) (string, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	token, ok := f.tokens[tokenHash]
+	if !ok {
+		return "", "", domain.ErrRefreshTokenNotFound
+	}
+	delete(f.tokens, tokenHash)
+	return token.userID, token.orgID, nil
+}
+
 func (f *fakeRefreshStore) Revoke(_ context.Context, tokenHash string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -548,4 +560,130 @@ func TestRefresh_RevokedOrNonExistent(t *testing.T) {
 			t.Fatal("expected error for revoked refresh token")
 		}
 	})
+}
+
+func TestRefreshConsumesTokenOnce(t *testing.T) {
+	refreshStore := newFakeRefreshStore()
+	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
+	token := "single-use-refresh-token"
+	if err := refreshStore.Store(context.Background(), "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := svc.Refresh(context.Background(), token); err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+	if _, _, _, err := svc.Refresh(context.Background(), token); !errors.Is(err, ErrInvalidRefresh) {
+		t.Fatalf("second refresh err = %v, want ErrInvalidRefresh", err)
+	}
+}
+
+func TestRefreshConcurrentRedemptionSucceedsOnce(t *testing.T) {
+	refreshStore := newFakeRefreshStore()
+	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
+	token := "replayed-refresh-token"
+	if err := refreshStore.Store(context.Background(), "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	const workers = 20
+	var (
+		wg        sync.WaitGroup
+		start     = make(chan struct{})
+		mu        sync.Mutex
+		successes int
+	)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _, _, err := svc.Refresh(context.Background(), token)
+			if err == nil {
+				mu.Lock()
+				successes++
+				mu.Unlock()
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if successes != 1 {
+		t.Fatalf("successful refreshes = %d, want exactly 1", successes)
+	}
+}
+
+func TestRevokeRefreshInvalidatesToken(t *testing.T) {
+	refreshStore := newFakeRefreshStore()
+	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
+	token := "logout-refresh-token"
+	if err := refreshStore.Store(context.Background(), "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RevokeRefresh(context.Background(), token); err != nil {
+		t.Fatalf("RevokeRefresh: %v", err)
+	}
+	if _, _, _, err := svc.Refresh(context.Background(), token); !errors.Is(err, ErrInvalidRefresh) {
+		t.Fatalf("refresh after revoke err = %v, want ErrInvalidRefresh", err)
+	}
+}
+
+func TestRevokeRefreshIsIdempotent(t *testing.T) {
+	refreshStore := newFakeRefreshStore()
+	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
+	ctx := context.Background()
+
+	if err := svc.RevokeRefresh(ctx, "never-issued-token"); err != nil {
+		t.Fatalf("unknown token: %v", err)
+	}
+	for _, blank := range []string{"", "   "} {
+		if err := svc.RevokeRefresh(ctx, blank); err != nil {
+			t.Fatalf("blank token %q: %v", blank, err)
+		}
+	}
+
+	token := "revoked-twice-token"
+	if err := refreshStore.Store(ctx, "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RevokeRefresh(ctx, token); err != nil {
+		t.Fatalf("first revoke: %v", err)
+	}
+	if err := svc.RevokeRefresh(ctx, token); err != nil {
+		t.Fatalf("second revoke: %v", err)
+	}
+}
+
+// consumeFailStore fails every Consume with a store error.
+type consumeFailStore struct {
+	*fakeRefreshStore
+}
+
+func (consumeFailStore) Consume(context.Context, string) (string, string, error) {
+	return "", "", errors.New("database unavailable")
+}
+
+func TestRevokeRefreshReturnsStoreErrors(t *testing.T) {
+	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, consumeFailStore{newFakeRefreshStore()}, &fakeNotifier{}, fakeFlags{})
+	if err := svc.RevokeRefresh(context.Background(), "some-token"); err == nil {
+		t.Fatal("expected store error to be returned")
+	}
+}
+
+func TestSelectOrgOtherUsersTokenIsNotConsumed(t *testing.T) {
+	ctx := context.Background()
+	orgs := newFakeOrgStore()
+	orgID := orgWithMember(t, orgs, "u1")
+	refresh := newFakeRefreshStore()
+	svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
+
+	token := "owned-by-u2-refresh"
+	if err := refresh.Store(ctx, "u2", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := svc.SelectOrg(ctx, "u1", token, orgID); !errors.Is(err, ErrInvalidRefresh) {
+		t.Fatalf("SelectOrg err = %v, want ErrInvalidRefresh", err)
+	}
+	if _, _, _, err := svc.Refresh(ctx, token); err != nil {
+		t.Fatalf("owner refresh after foreign SelectOrg: %v", err)
+	}
 }
