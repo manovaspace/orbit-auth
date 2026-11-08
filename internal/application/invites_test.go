@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -12,8 +13,8 @@ import (
 )
 
 // fakeInviteStore models the Postgres adapter: it keeps the same rows, replaces
-// a pending invite for the same organization and email, and never returns a
-// token hash from a listing.
+// a pending invite for the same organization and recipient (email or phone),
+// and never returns a token hash from a listing.
 type fakeInviteStore struct {
 	mu        sync.Mutex
 	invites   map[string]domain.Invite
@@ -36,8 +37,10 @@ func (f *fakeInviteStore) CreateInvite(_ context.Context, invite domain.Invite) 
 		return f.createErr
 	}
 	for id, existing := range f.invites {
+		samePhone := invite.Phone != "" && existing.Phone == invite.Phone
+		sameEmail := invite.Phone == "" && strings.EqualFold(existing.Email, invite.Email)
 		if existing.OrgID == invite.OrgID &&
-			strings.EqualFold(existing.Email, invite.Email) &&
+			(samePhone || sameEmail) &&
 			existing.Status == domain.InvitePending {
 			existing.Status = domain.InviteRevoked
 			f.invites[id] = existing
@@ -93,7 +96,7 @@ func (f *fakeInviteStore) RevokeInvite(_ context.Context, orgID, inviteID string
 	return nil
 }
 
-func (f *fakeInviteStore) AcceptInvite(_ context.Context, inviteID, orgID, userID string, acceptedAt time.Time) error {
+func (f *fakeInviteStore) AcceptInvite(_ context.Context, inviteID, orgID, userID string, role domain.MembershipRole, acceptedAt time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.acceptErr != nil {
@@ -119,7 +122,7 @@ func (f *fakeInviteStore) AcceptInvite(_ context.Context, inviteID, orgID, userI
 		existing, ok := f.orgs.memberships[orgID][userID]
 		if !ok || existing.Status == domain.MembershipInvited {
 			f.orgs.memberships[orgID][userID] = domain.Membership{
-				OrgID: orgID, UserID: userID, Status: domain.MembershipActive,
+				OrgID: orgID, UserID: userID, Status: domain.MembershipActive, Role: role,
 				CreatedAt: acceptedAt, UpdatedAt: acceptedAt,
 			}
 		}
@@ -229,7 +232,7 @@ func TestInviteMemberStoresOnlyTheTokenHash(t *testing.T) {
 	svc, _, invites, notifier, org := inviteFixture(t)
 	ctx := context.Background()
 
-	invite, err := svc.InviteMember(ctx, org.ID, "inviter", "  Member@Example.com ")
+	invite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "  Member@Example.com "}, domain.RoleMember)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,12 +287,12 @@ func TestInviteMemberRotatesAPendingInvite(t *testing.T) {
 	svc, _, invites, notifier, org := inviteFixture(t)
 	ctx := context.Background()
 
-	first, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com")
+	first, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 	if err != nil {
 		t.Fatal(err)
 	}
 	firstToken := notifier.invite.AcceptToken
-	second, err := svc.InviteMember(ctx, org.ID, "inviter", "MEMBER@example.com")
+	second, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "MEMBER@example.com"}, domain.RoleMember)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +320,7 @@ func TestInviteMemberRotatesAPendingInvite(t *testing.T) {
 func TestInviteMemberRequiresAnActiveMember(t *testing.T) {
 	svc, _, invites, notifier, org := inviteFixture(t)
 
-	_, err := svc.InviteMember(context.Background(), org.ID, "stranger", "member@example.com")
+	_, _, err := svc.InviteMember(context.Background(), org.ID, "stranger", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 	if !errors.Is(err, domain.ErrNotMember) {
 		t.Fatalf("err = %v, want ErrNotMember", err)
 	}
@@ -329,7 +332,7 @@ func TestInviteMemberRequiresAnActiveMember(t *testing.T) {
 func TestInviteMemberRejectsInvalidEmail(t *testing.T) {
 	svc, _, invites, notifier, org := inviteFixture(t)
 
-	_, err := svc.InviteMember(context.Background(), org.ID, "inviter", "not-an-email")
+	_, _, err := svc.InviteMember(context.Background(), org.ID, "inviter", domain.InviteTarget{Email: "not-an-email"}, domain.RoleMember)
 	if !errors.Is(err, domain.ErrInvalidEmail) {
 		t.Fatalf("err = %v, want ErrInvalidEmail", err)
 	}
@@ -342,7 +345,7 @@ func TestInviteSendFailureRevokesThePendingInvite(t *testing.T) {
 	svc, _, invites, notifier, org := inviteFixture(t)
 	notifier.inviteErr = errors.New("notifications unavailable")
 
-	_, err := svc.InviteMember(context.Background(), org.ID, "inviter", "member@example.com")
+	_, _, err := svc.InviteMember(context.Background(), org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 	if err == nil {
 		t.Fatal("expected the notification failure")
 	}
@@ -360,7 +363,7 @@ func TestAcceptInviteMakesTheUserAnActiveMember(t *testing.T) {
 	svc, orgs, invites, notifier, org := inviteFixture(t)
 	ctx := context.Background()
 
-	invite, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com")
+	invite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +399,7 @@ func TestAcceptInviteRefusesSuspendedMembership(t *testing.T) {
 		OrgID: org.ID, UserID: "member", Status: domain.MembershipSuspended,
 	})
 
-	invite, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com")
+	invite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +421,7 @@ func TestAcceptInviteRefusesSuspendedMembership(t *testing.T) {
 func TestAcceptInviteUsesCaseInsensitiveEmail(t *testing.T) {
 	svc, orgs, _, notifier, org := inviteFixture(t)
 	ctx := context.Background()
-	if _, err := svc.InviteMember(ctx, org.ID, "inviter", "MEMBER@example.com"); err != nil {
+	if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "MEMBER@example.com"}, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
 	orgs.memberships[org.ID] = map[string]domain.Membership{} // the user is not a member yet
@@ -433,7 +436,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 
 	t.Run("expired", func(t *testing.T) {
 		svc, _, invites, notifier, org := inviteFixture(t)
-		invite, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com")
+		invite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -445,7 +448,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 
 	t.Run("revoked", func(t *testing.T) {
 		svc, _, _, notifier, org := inviteFixture(t)
-		if _, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com"); err != nil {
+		if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember); err != nil {
 			t.Fatal(err)
 		}
 		if err := svc.RevokeInvite(ctx, org.ID, notifier.invite.CorrelationID, "inviter"); err != nil {
@@ -458,7 +461,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 
 	t.Run("wrong account email", func(t *testing.T) {
 		svc, _, invites, notifier, org := inviteFixture(t)
-		invite, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com")
+		invite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -478,7 +481,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 
 	t.Run("account without a verified email", func(t *testing.T) {
 		svc, _, _, notifier, org := inviteFixture(t)
-		if _, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com"); err != nil {
+		if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember); err != nil {
 			t.Fatal(err)
 		}
 		svc.users = inviteUsers{
@@ -494,7 +497,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 
 	t.Run("active account with an unverified email", func(t *testing.T) {
 		svc, _, _, notifier, org := inviteFixture(t)
-		if _, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com"); err != nil {
+		if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember); err != nil {
 			t.Fatal(err)
 		}
 		svc.users = inviteUsers{
@@ -510,7 +513,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 
 	t.Run("disabled account", func(t *testing.T) {
 		svc, _, _, notifier, org := inviteFixture(t)
-		if _, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com"); err != nil {
+		if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember); err != nil {
 			t.Fatal(err)
 		}
 		svc.users = inviteUsers{
@@ -535,7 +538,7 @@ func TestAcceptInviteRejectsASingleGenericFailure(t *testing.T) {
 func TestRevokeInviteRequiresMembershipAndPendingInvite(t *testing.T) {
 	svc, _, _, notifier, org := inviteFixture(t)
 	ctx := context.Background()
-	if _, err := svc.InviteMember(ctx, org.ID, "inviter", "member@example.com"); err != nil {
+	if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember); err != nil {
 		t.Fatal(err)
 	}
 	inviteID := notifier.invite.CorrelationID
@@ -565,7 +568,7 @@ func TestInviteWritesRequireOrgAdministration(t *testing.T) {
 	orgs.seedMembership(domain.Membership{OrgID: org.ID, UserID: "admin", Status: domain.MembershipActive, Role: domain.RoleAdmin})
 	svc.users.(inviteUsers).byID["admin"] = domain.User{ID: "admin", Email: "admin@example.com", Status: domain.UserActive, EmailVerified: true}
 
-	if _, err := svc.InviteMember(ctx, org.ID, "member", "new@example.com"); !errors.Is(err, domain.ErrForbidden) {
+	if _, _, err := svc.InviteMember(ctx, org.ID, "member", domain.InviteTarget{Email: "new@example.com"}, domain.RoleMember); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("member invite err = %v, want ErrForbidden", err)
 	}
 	if notifier.inviteCalls != 0 {
@@ -574,7 +577,7 @@ func TestInviteWritesRequireOrgAdministration(t *testing.T) {
 	if _, err := svc.ListInvites(ctx, org.ID, "member"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("member list err = %v, want ErrForbidden", err)
 	}
-	invite, err := svc.InviteMember(ctx, org.ID, "admin", "new@example.com")
+	invite, _, err := svc.InviteMember(ctx, org.ID, "admin", domain.InviteTarget{Email: "new@example.com"}, domain.RoleMember)
 	if err != nil {
 		t.Fatalf("admin invite: %v", err)
 	}
@@ -584,4 +587,261 @@ func TestInviteWritesRequireOrgAdministration(t *testing.T) {
 	if err := svc.RevokeInvite(ctx, org.ID, invite.ID, "admin"); err != nil {
 		t.Fatalf("admin revoke: %v", err)
 	}
+}
+
+const testMobile = "+989121234567"
+
+func TestInviteMemberPhoneReturnsTokenAndSendsNothing(t *testing.T) {
+	svc, _, invites, notifier, org := inviteFixture(t)
+	ctx := context.Background()
+
+	invite, token, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: " " + testMobile + " "}, domain.RoleMember)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token == "" {
+		t.Fatal("no raw token returned to the inviter")
+	}
+	if invite.Phone != testMobile || invite.Email != "" {
+		t.Fatalf("invite targets = email %q phone %q", invite.Email, invite.Phone)
+	}
+	if invite.TokenHash != "" {
+		t.Fatal("InviteMember returned a token hash")
+	}
+	if notifier.inviteCalls != 0 {
+		t.Fatalf("phone invite sent %d notifications, want none", notifier.inviteCalls)
+	}
+	stored := invites.get(t, invite.ID)
+	if stored.TokenHash != domain.HashInviteToken(token) || stored.TokenHash == token {
+		t.Fatal("stored hash does not match the returned token, or the token was stored")
+	}
+	if stored.Role != domain.RoleMember || stored.Phone != testMobile {
+		t.Fatalf("stored invite = %+v", stored)
+	}
+}
+
+func TestInviteMemberRotatesAPendingPhoneInvite(t *testing.T) {
+	svc, _, invites, _, org := inviteFixture(t)
+	ctx := context.Background()
+
+	first, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleMember)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := invites.get(t, first.ID); got.Status != domain.InviteRevoked {
+		t.Fatalf("first status = %q, want revoked", got.Status)
+	}
+	if got := invites.get(t, second.ID); got.Status != domain.InvitePending || got.Role != domain.RoleAdmin {
+		t.Fatalf("second invite = %+v, want pending admin", got)
+	}
+	if invites.pendingCount(org.ID) != 1 {
+		t.Fatalf("pending invites = %d, want 1", invites.pendingCount(org.ID))
+	}
+}
+
+func TestInviteMemberRejectsInvalidTargets(t *testing.T) {
+	cases := []struct {
+		name   string
+		target domain.InviteTarget
+		want   error
+	}{
+		{"national format phone", domain.InviteTarget{Phone: "09121234567"}, domain.ErrInvalidPhone},
+		{"phone without plus", domain.InviteTarget{Phone: "989121234567"}, domain.ErrInvalidPhone},
+		{"both email and phone", domain.InviteTarget{Email: "member@example.com", Phone: testMobile}, domain.ErrInvalidInviteTarget},
+		{"neither email nor phone", domain.InviteTarget{}, domain.ErrInvalidEmail},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, invites, notifier, org := inviteFixture(t)
+			_, _, err := svc.InviteMember(context.Background(), org.ID, "inviter", tc.target, domain.RoleMember)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			if invites.pendingCount(org.ID) != 0 || notifier.inviteCalls != 0 {
+				t.Fatal("an invalid target created an invitation")
+			}
+		})
+	}
+}
+
+func TestInviteMemberRoleAuthority(t *testing.T) {
+	svc, orgs, invites, notifier, org := inviteFixture(t)
+	ctx := context.Background()
+	orgs.seedMembership(domain.Membership{OrgID: org.ID, UserID: "member", Status: domain.MembershipActive, Role: domain.RoleMember})
+	orgs.seedMembership(domain.Membership{OrgID: org.ID, UserID: "admin", Status: domain.MembershipActive, Role: domain.RoleAdmin})
+	byID := svc.users.(inviteUsers).byID
+	byID["admin"] = domain.User{ID: "admin", Email: "admin@example.com", Status: domain.UserActive, EmailVerified: true}
+
+	target := domain.InviteTarget{Email: "new@example.com"}
+	for _, tc := range []struct {
+		name    string
+		inviter string
+		role    domain.MembershipRole
+		want    error
+	}{
+		{"member cannot invite admin", "member", domain.RoleAdmin, domain.ErrForbidden},
+		{"admin cannot invite admin", "admin", domain.RoleAdmin, domain.ErrForbidden},
+		{"admin cannot invite owner", "admin", domain.RoleOwner, domain.ErrForbidden},
+		{"unknown role is refused", "inviter", "root", domain.ErrInvalidRole},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := svc.InviteMember(ctx, org.ID, tc.inviter, target, tc.role)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+		})
+	}
+	if notifier.inviteCalls != 0 || invites.pendingCount(org.ID) != 0 {
+		t.Fatalf("refused invites created %d notifications and %d pending invites", notifier.inviteCalls, invites.pendingCount(org.ID))
+	}
+
+	if _, _, err := svc.InviteMember(ctx, org.ID, "admin", domain.InviteTarget{Email: "plain@example.com"}, domain.RoleMember); err != nil {
+		t.Fatalf("admin invites member: %v", err)
+	}
+	adminInvite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "boss@example.com"}, domain.RoleAdmin)
+	if err != nil {
+		t.Fatalf("owner invites admin: %v", err)
+	}
+	if adminInvite.Role != domain.RoleAdmin {
+		t.Fatalf("role = %q, want admin", adminInvite.Role)
+	}
+	if _, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "co@example.com"}, domain.RoleOwner); err != nil {
+		t.Fatalf("owner invites owner: %v", err)
+	}
+}
+
+func TestAcceptPhoneInviteByMatchingMobile(t *testing.T) {
+	svc, orgs, _, _, org := inviteFixture(t)
+	ctx := context.Background()
+
+	invite, token, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.users = inviteUsers{
+		fakeUsers: &fakeUsers{},
+		byID: map[string]domain.User{
+			"phone-user": {ID: "phone-user", Mobile: testMobile, Status: domain.UserActive},
+		},
+	}
+	accepted, err := svc.AcceptInvite(ctx, "phone-user", token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.ID != invite.ID || accepted.Status != domain.InviteAccepted {
+		t.Fatalf("accepted = %+v", accepted)
+	}
+	membership, err := orgs.GetMembership(ctx, org.ID, "phone-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.Status != domain.MembershipActive || membership.Role != domain.RoleAdmin {
+		t.Fatalf("membership = %+v, want active admin", membership)
+	}
+}
+
+func TestAcceptPhoneInviteRefusesOtherAccountsGenerically(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		user domain.User
+	}{
+		{"different mobile", domain.User{ID: "u", Mobile: "+989129999999", Status: domain.UserActive}},
+		{"no mobile", domain.User{ID: "u", Email: "member@example.com", EmailVerified: true, Status: domain.UserActive}},
+		{"signup pending with matching mobile", domain.User{ID: "u", Mobile: testMobile, Status: domain.UserSignupPending}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, orgs, invites, _, org := inviteFixture(t)
+			invite, token, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleMember)
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc.users = inviteUsers{fakeUsers: &fakeUsers{}, byID: map[string]domain.User{"u": tc.user}}
+			if _, err := svc.AcceptInvite(ctx, "u", token); !errors.Is(err, domain.ErrInvalidInvite) {
+				t.Fatalf("err = %v, want ErrInvalidInvite", err)
+			}
+			if got := invites.get(t, invite.ID); got.Status != domain.InvitePending {
+				t.Fatalf("refused acceptance changed the invite to %q", got.Status)
+			}
+			if _, err := orgs.GetMembership(ctx, org.ID, "u"); !errors.Is(err, domain.ErrNotMember) {
+				t.Fatalf("membership err = %v, want ErrNotMember", err)
+			}
+		})
+	}
+}
+
+func TestGetInvitePreviewHidesTheRecipient(t *testing.T) {
+	svc, _, _, _, org := inviteFixture(t)
+	ctx := context.Background()
+
+	_, phoneToken, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := svc.GetInvitePreview(ctx, phoneToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.OrgID != org.ID || preview.OrgName != "Acme" || preview.OrgSlug != org.Slug ||
+		preview.Role != domain.RoleAdmin || preview.Status != domain.InvitePending {
+		t.Fatalf("preview = %+v", preview)
+	}
+	wantExpiry := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	if !preview.ExpiresAt.Equal(wantExpiry) {
+		t.Fatalf("expires_at = %v, want %v", preview.ExpiresAt, wantExpiry)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", preview), testMobile) {
+		t.Fatal("preview leaked the recipient phone number")
+	}
+
+	_, emailToken, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emailPreview, err := svc.GetInvitePreview(ctx, emailToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", emailPreview), "member@example.com") {
+		t.Fatal("preview leaked the recipient email address")
+	}
+}
+
+func TestGetInvitePreviewRefusesUnusableTokensGenerically(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("unknown token", func(t *testing.T) {
+		svc, _, _, _, _ := inviteFixture(t)
+		if _, err := svc.GetInvitePreview(ctx, "not-a-token"); !errors.Is(err, domain.ErrInvalidInvite) {
+			t.Fatalf("err = %v, want ErrInvalidInvite", err)
+		}
+	})
+	t.Run("expired", func(t *testing.T) {
+		svc, _, invites, _, org := inviteFixture(t)
+		invite, token, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleMember)
+		if err != nil {
+			t.Fatal(err)
+		}
+		invites.setExpiry(t, invite.ID, time.Date(2026, 11, 2, 11, 59, 0, 0, time.UTC))
+		if _, err := svc.GetInvitePreview(ctx, token); !errors.Is(err, domain.ErrInvalidInvite) {
+			t.Fatalf("err = %v, want ErrInvalidInvite", err)
+		}
+	})
+	t.Run("revoked", func(t *testing.T) {
+		svc, _, _, _, org := inviteFixture(t)
+		invite, token, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Phone: testMobile}, domain.RoleMember)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.RevokeInvite(ctx, org.ID, invite.ID, "inviter"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.GetInvitePreview(ctx, token); !errors.Is(err, domain.ErrInvalidInvite) {
+			t.Fatalf("err = %v, want ErrInvalidInvite", err)
+		}
+	})
 }

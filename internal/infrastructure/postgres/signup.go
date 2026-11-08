@@ -91,11 +91,12 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 		if err := queries.AddActiveOrganizationMembership(ctx, sqlcgen.AddActiveOrganizationMembershipParams{
 			OrgID:  orgID,
 			UserID: userID,
+			Role:   string(invite.Role),
 		}); err != nil {
 			return false, fmt.Errorf("postgres: add signup invite member: %w", err)
 		}
 		if err := emitEvents(ctx, sink,
-			domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, domain.RoleMember, occurredAt),
+			domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, invite.Role, occurredAt),
 		); err != nil {
 			return false, err
 		}
@@ -209,11 +210,12 @@ func (s *Store) ReissuePendingSignup(ctx context.Context, user domain.User, chal
 		if err := queries.AddActiveOrganizationMembership(ctx, sqlcgen.AddActiveOrganizationMembershipParams{
 			OrgID:  orgID,
 			UserID: userUUID,
+			Role:   string(invite.Role),
 		}); err != nil {
 			return "", false, fmt.Errorf("postgres: add signup invite member: %w", err)
 		}
 		if err := emitEvents(ctx, newOutboxSink(tx),
-			domain.NewMembershipAddedEvent(invite.OrgID, userID, domain.MembershipActive, domain.RoleMember, acceptedAt),
+			domain.NewMembershipAddedEvent(invite.OrgID, userID, domain.MembershipActive, invite.Role, acceptedAt),
 		); err != nil {
 			return "", false, err
 		}

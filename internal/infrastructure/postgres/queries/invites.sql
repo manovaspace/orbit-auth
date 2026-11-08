@@ -5,14 +5,23 @@ WHERE org_id = sqlc.arg('org_id')::uuid
   AND lower(email) = lower(sqlc.arg('email')::text)
   AND status = 'pending';
 
+-- name: RevokePendingOrganizationInvitesForPhone :exec
+UPDATE organization_invites
+SET status = 'revoked'
+WHERE org_id = sqlc.arg('org_id')::uuid
+  AND phone = sqlc.arg('phone')::text
+  AND status = 'pending';
+
 -- name: CreateOrganizationInvite :exec
 INSERT INTO organization_invites (
-    id, org_id, email, token_hash, inviter_id, status, expires_at, created_at
+    id, org_id, email, phone, role, token_hash, inviter_id, status, expires_at, created_at
 )
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.arg('org_id')::uuid,
-    sqlc.arg('email')::text,
+    sqlc.narg('email')::text,
+    sqlc.narg('phone')::text,
+    sqlc.arg('role')::text,
     sqlc.arg('token_hash')::text,
     sqlc.arg('inviter_id')::uuid,
     sqlc.arg('status')::text,
@@ -24,6 +33,8 @@ VALUES (
 SELECT id::text AS id,
        org_id::text AS org_id,
        email,
+       phone,
+       role,
        token_hash,
        inviter_id::text AS inviter_id,
        status,
@@ -37,6 +48,8 @@ WHERE token_hash = sqlc.arg('token_hash')::text;
 SELECT id::text AS id,
        org_id::text AS org_id,
        email,
+       phone,
+       role,
        inviter_id::text AS inviter_id,
        status,
        expires_at,
@@ -62,13 +75,15 @@ WHERE id = sqlc.arg('id')::uuid
   AND status = 'pending';
 
 -- name: AddActiveOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status)
+INSERT INTO organization_memberships (org_id, user_id, status, role)
 VALUES (
     sqlc.arg('org_id')::uuid,
     sqlc.arg('user_id')::uuid,
-    'active'
+    'active',
+    sqlc.arg('role')::text
 )
 ON CONFLICT (org_id, user_id) DO UPDATE SET
     status = 'active',
+    role = EXCLUDED.role,
     updated_at = NOW()
 WHERE organization_memberships.status = 'invited';

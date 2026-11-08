@@ -39,13 +39,15 @@ type Organization struct {
 type OrganizationInvite struct {
 	ID         uuid.UUID
 	OrgID      uuid.UUID
-	Email      string
+	Email      *string
 	TokenHash  string
 	InviterID  uuid.UUID
 	Status     string
 	ExpiresAt  pgtype.Timestamptz
 	AcceptedAt pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
+	Phone      *string
+	Role       string
 }
 
 type OrganizationMembership struct {

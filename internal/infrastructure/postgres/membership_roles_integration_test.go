@@ -285,7 +285,7 @@ func TestAcceptingAnInviteKeepsTheStoredRoleInTheEvent(t *testing.T) {
 	if err := store.CreateInvite(ctx, invite); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AcceptInvite(ctx, invite.ID, org.ID, inviter.ID, time.Now().UTC()); err != nil {
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, inviter.ID, domain.RoleMember, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	var raw []byte

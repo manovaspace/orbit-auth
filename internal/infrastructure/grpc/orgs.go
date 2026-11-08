@@ -28,7 +28,7 @@ type OrgService interface {
 	RemoveMember(ctx context.Context, orgID, callerID, userID string) error
 	SetMemberRole(ctx context.Context, orgID, callerID, userID string, role domain.MembershipRole) (domain.Membership, error)
 	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
-	InviteMember(ctx context.Context, orgID, inviterID, email string) (domain.Invite, error)
+	InviteMember(ctx context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole) (domain.Invite, string, error)
 	AcceptInvite(ctx context.Context, userID, token string) (domain.Invite, error)
 	RevokeInvite(ctx context.Context, orgID, inviteID, callerID string) error
 	ListInvites(ctx context.Context, orgID, callerID string) ([]domain.Invite, error)
@@ -219,7 +219,9 @@ func (s *OrgServer) InviteMember(ctx context.Context, req *authv1.InviteMemberRe
 	if err != nil {
 		return nil, err
 	}
-	invite, err := s.svc.InviteMember(ctx, orgID, callerID, req.GetEmail())
+	// The RPC is email-only and always invites into the member tier. The raw
+	// token is not returned here; the product link arrives in a later slice.
+	invite, _, err := s.svc.InviteMember(ctx, orgID, callerID, domain.InviteTarget{Email: req.GetEmail()}, domain.RoleMember)
 	if err != nil {
 		return nil, orgError(err)
 	}

@@ -38,12 +38,21 @@ func pendingInvite(orgID, inviterID, email, token string) domain.Invite {
 		ID:        uuid.NewString(),
 		OrgID:     orgID,
 		Email:     email,
+		Role:      domain.RoleMember,
 		TokenHash: domain.HashInviteToken(token),
 		InviterID: inviterID,
 		Status:    domain.InvitePending,
 		ExpiresAt: now.Add(domain.InviteTTL),
 		CreatedAt: now,
 	}
+}
+
+func pendingPhoneInvite(orgID, inviterID, phone string, role domain.MembershipRole, token string) domain.Invite {
+	invite := pendingInvite(orgID, inviterID, "", token)
+	invite.Email = ""
+	invite.Phone = phone
+	invite.Role = role
+	return invite
 }
 
 func TestInviteCreateFindListAndHashOnly(t *testing.T) {
@@ -136,7 +145,7 @@ func TestInviteAcceptIsSingleUseAndMakesAnActiveMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	acceptedAt := time.Now().UTC().Truncate(time.Microsecond)
-	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, acceptedAt); err != nil {
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, acceptedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,7 +165,7 @@ func TestInviteAcceptIsSingleUseAndMakesAnActiveMember(t *testing.T) {
 	}
 
 	// Single use: the conditional update no longer matches.
-	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, acceptedAt); !errors.Is(err, domain.ErrInviteNotFound) {
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, acceptedAt); !errors.Is(err, domain.ErrInviteNotFound) {
 		t.Fatalf("second accept err = %v, want ErrInviteNotFound", err)
 	}
 	if err := store.RevokeInvite(ctx, org.ID, invite.ID); !errors.Is(err, domain.ErrInviteNotFound) {
@@ -178,7 +187,7 @@ func TestInviteAcceptRefusesSuspendedMember(t *testing.T) {
 	if err := store.CreateInvite(ctx, invite); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, time.Now().UTC()); !errors.Is(err, domain.ErrInvalidInvite) {
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); !errors.Is(err, domain.ErrInvalidInvite) {
 		t.Fatalf("accept err = %v, want ErrInvalidInvite", err)
 	}
 
@@ -209,7 +218,7 @@ func TestInviteAcceptKeepsAnActiveMemberActive(t *testing.T) {
 	if err := store.CreateInvite(ctx, invite); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, time.Now().UTC()); err != nil {
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -240,7 +249,7 @@ func TestInviteAcceptActivatesAnInvitedMember(t *testing.T) {
 	if err := store.CreateInvite(ctx, invite); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, time.Now().UTC()); err != nil {
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	membership, err := store.GetMembership(ctx, org.ID, member.ID)
@@ -291,7 +300,131 @@ func TestInviteStoreRejectsInvalidUUIDs(t *testing.T) {
 	if _, err := store.ListInvites(ctx, "bad"); err == nil {
 		t.Fatal("invalid organization id was accepted")
 	}
-	if err := store.AcceptInvite(ctx, uuid.NewString(), uuid.NewString(), "bad", time.Now()); err == nil {
+	if err := store.AcceptInvite(ctx, uuid.NewString(), uuid.NewString(), "bad", domain.RoleMember, time.Now()); err == nil {
 		t.Fatal("invalid user id was accepted")
+	}
+}
+
+func TestInvitePhonePendingUniqueness(t *testing.T) {
+	store, org, inviter, _ := createInviteFixture(t)
+	ctx := context.Background()
+
+	first := pendingPhoneInvite(org.ID, inviter.ID, "+989121234567", domain.RoleMember, "phone-first")
+	if err := store.CreateInvite(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second := pendingPhoneInvite(org.ID, inviter.ID, "+989121234567", domain.RoleAdmin, "phone-second")
+	if err := store.CreateInvite(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	old, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("phone-first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.Status != domain.InviteRevoked {
+		t.Fatalf("old phone invite status = %q, want revoked", old.Status)
+	}
+	current, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("phone-second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Phone != "+989121234567" || current.Email != "" || current.Role != domain.RoleAdmin || current.Status != domain.InvitePending {
+		t.Fatalf("current phone invite = %+v", current)
+	}
+
+	// The partial unique index refuses a second pending row for the same phone
+	// even when written around the application's revoke step.
+	_, err = store.pool.Exec(ctx, `
+		INSERT INTO organization_invites (id, org_id, phone, token_hash, inviter_id, status, expires_at)
+		VALUES ($1::uuid, $2::uuid, '+989121234567', 'raw-hash-direct', $3::uuid, 'pending', NOW() + INTERVAL '1 day')`,
+		uuid.NewString(), org.ID, inviter.ID)
+	if err == nil {
+		t.Fatal("a second pending invite for the same phone was stored")
+	}
+}
+
+func TestInviteStoresExactlyOneTarget(t *testing.T) {
+	store, org, inviter, _ := createInviteFixture(t)
+	ctx := context.Background()
+
+	insert := func(email, phone any) error {
+		_, err := store.pool.Exec(ctx, `
+			INSERT INTO organization_invites (id, org_id, email, phone, token_hash, inviter_id, status, expires_at)
+			VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::uuid, 'pending', NOW() + INTERVAL '1 day')`,
+			uuid.NewString(), org.ID, email, phone, uuid.NewString(), inviter.ID)
+		return err
+	}
+	if err := insert(nil, nil); err == nil {
+		t.Fatal("an invite with neither email nor phone was stored")
+	}
+	if err := insert("both@example.com", "+989121234567"); err == nil {
+		t.Fatal("an invite with both email and phone was stored")
+	}
+	if err := insert("only@example.com", nil); err != nil {
+		t.Fatalf("email-only invite refused: %v", err)
+	}
+	if err := insert(nil, "+989121234567"); err != nil {
+		t.Fatalf("phone-only invite refused: %v", err)
+	}
+}
+
+func TestInviteRejectsAnUnknownRole(t *testing.T) {
+	store, org, inviter, _ := createInviteFixture(t)
+	ctx := context.Background()
+
+	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "bad-role-token")
+	invite.Role = "root"
+	if err := store.CreateInvite(ctx, invite); err == nil {
+		t.Fatal("an invite with an unknown role was stored")
+	}
+}
+
+func TestInviteAcceptGrantsTheInvitedRole(t *testing.T) {
+	store, org, inviter, member := createInviteFixture(t)
+	ctx := context.Background()
+
+	invite := pendingPhoneInvite(org.ID, inviter.ID, "+989121234567", domain.RoleAdmin, "role-token")
+	if err := store.CreateInvite(ctx, invite); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleAdmin, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	membership, err := store.GetMembership(ctx, org.ID, member.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.Status != domain.MembershipActive || membership.Role != domain.RoleAdmin {
+		t.Fatalf("membership = %+v, want active admin", membership)
+	}
+	found, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("role-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.Role != domain.RoleAdmin {
+		t.Fatalf("stored invite role = %q, want admin", found.Role)
+	}
+}
+
+func TestInviteAcceptKeepsAnExistingRole(t *testing.T) {
+	store, org, inviter, member := createInviteFixture(t)
+	ctx := context.Background()
+
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "keep-role-token")
+	if err := store.CreateInvite(ctx, invite); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	membership, err := store.GetMembership(ctx, org.ID, member.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.Role != domain.RoleAdmin {
+		t.Fatalf("role = %q, want the existing admin kept", membership.Role)
 	}
 }

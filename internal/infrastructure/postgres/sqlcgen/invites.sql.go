@@ -36,14 +36,16 @@ func (q *Queries) AcceptOrganizationInvite(ctx context.Context, arg AcceptOrgani
 }
 
 const addActiveOrganizationMembership = `-- name: AddActiveOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status)
+INSERT INTO organization_memberships (org_id, user_id, status, role)
 VALUES (
     $1::uuid,
     $2::uuid,
-    'active'
+    'active',
+    $3::text
 )
 ON CONFLICT (org_id, user_id) DO UPDATE SET
     status = 'active',
+    role = EXCLUDED.role,
     updated_at = NOW()
 WHERE organization_memberships.status = 'invited'
 `
@@ -51,33 +53,38 @@ WHERE organization_memberships.status = 'invited'
 type AddActiveOrganizationMembershipParams struct {
 	OrgID  uuid.UUID
 	UserID uuid.UUID
+	Role   string
 }
 
 func (q *Queries) AddActiveOrganizationMembership(ctx context.Context, arg AddActiveOrganizationMembershipParams) error {
-	_, err := q.db.Exec(ctx, addActiveOrganizationMembership, arg.OrgID, arg.UserID)
+	_, err := q.db.Exec(ctx, addActiveOrganizationMembership, arg.OrgID, arg.UserID, arg.Role)
 	return err
 }
 
 const createOrganizationInvite = `-- name: CreateOrganizationInvite :exec
 INSERT INTO organization_invites (
-    id, org_id, email, token_hash, inviter_id, status, expires_at, created_at
+    id, org_id, email, phone, role, token_hash, inviter_id, status, expires_at, created_at
 )
 VALUES (
     $1::uuid,
     $2::uuid,
     $3::text,
     $4::text,
-    $5::uuid,
+    $5::text,
     $6::text,
-    $7::timestamptz,
-    $8::timestamptz
+    $7::uuid,
+    $8::text,
+    $9::timestamptz,
+    $10::timestamptz
 )
 `
 
 type CreateOrganizationInviteParams struct {
 	ID        uuid.UUID
 	OrgID     uuid.UUID
-	Email     string
+	Email     *string
+	Phone     *string
+	Role      string
 	TokenHash string
 	InviterID uuid.UUID
 	Status    string
@@ -90,6 +97,8 @@ func (q *Queries) CreateOrganizationInvite(ctx context.Context, arg CreateOrgani
 		arg.ID,
 		arg.OrgID,
 		arg.Email,
+		arg.Phone,
+		arg.Role,
 		arg.TokenHash,
 		arg.InviterID,
 		arg.Status,
@@ -103,6 +112,8 @@ const findOrganizationInviteByTokenHash = `-- name: FindOrganizationInviteByToke
 SELECT id::text AS id,
        org_id::text AS org_id,
        email,
+       phone,
+       role,
        token_hash,
        inviter_id::text AS inviter_id,
        status,
@@ -116,7 +127,9 @@ WHERE token_hash = $1::text
 type FindOrganizationInviteByTokenHashRow struct {
 	ID         string
 	OrgID      string
-	Email      string
+	Email      *string
+	Phone      *string
+	Role       string
 	TokenHash  string
 	InviterID  string
 	Status     string
@@ -132,6 +145,8 @@ func (q *Queries) FindOrganizationInviteByTokenHash(ctx context.Context, tokenHa
 		&i.ID,
 		&i.OrgID,
 		&i.Email,
+		&i.Phone,
+		&i.Role,
 		&i.TokenHash,
 		&i.InviterID,
 		&i.Status,
@@ -146,6 +161,8 @@ const listOrganizationInvites = `-- name: ListOrganizationInvites :many
 SELECT id::text AS id,
        org_id::text AS org_id,
        email,
+       phone,
+       role,
        inviter_id::text AS inviter_id,
        status,
        expires_at,
@@ -159,7 +176,9 @@ ORDER BY created_at DESC, id
 type ListOrganizationInvitesRow struct {
 	ID         string
 	OrgID      string
-	Email      string
+	Email      *string
+	Phone      *string
+	Role       string
 	InviterID  string
 	Status     string
 	ExpiresAt  pgtype.Timestamptz
@@ -180,6 +199,8 @@ func (q *Queries) ListOrganizationInvites(ctx context.Context, orgID uuid.UUID) 
 			&i.ID,
 			&i.OrgID,
 			&i.Email,
+			&i.Phone,
+			&i.Role,
 			&i.InviterID,
 			&i.Status,
 			&i.ExpiresAt,
@@ -232,5 +253,23 @@ type RevokePendingOrganizationInvitesForEmailParams struct {
 
 func (q *Queries) RevokePendingOrganizationInvitesForEmail(ctx context.Context, arg RevokePendingOrganizationInvitesForEmailParams) error {
 	_, err := q.db.Exec(ctx, revokePendingOrganizationInvitesForEmail, arg.OrgID, arg.Email)
+	return err
+}
+
+const revokePendingOrganizationInvitesForPhone = `-- name: RevokePendingOrganizationInvitesForPhone :exec
+UPDATE organization_invites
+SET status = 'revoked'
+WHERE org_id = $1::uuid
+  AND phone = $2::text
+  AND status = 'pending'
+`
+
+type RevokePendingOrganizationInvitesForPhoneParams struct {
+	OrgID uuid.UUID
+	Phone string
+}
+
+func (q *Queries) RevokePendingOrganizationInvitesForPhone(ctx context.Context, arg RevokePendingOrganizationInvitesForPhoneParams) error {
+	_, err := q.db.Exec(ctx, revokePendingOrganizationInvitesForPhone, arg.OrgID, arg.Phone)
 	return err
 }
