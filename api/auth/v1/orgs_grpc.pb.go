@@ -64,9 +64,11 @@ type OrgServiceClient interface {
 	SetOrgSlug(ctx context.Context, in *SetOrgSlugRequest, opts ...grpc.CallOption) (*SetOrgSlugResponse, error)
 	// SetMemberRole changes a member's organization administration tier.
 	SetMemberRole(ctx context.Context, in *SetMemberRoleRequest, opts ...grpc.CallOption) (*SetMemberRoleResponse, error)
-	// InviteMember creates a pending invitation and sends the org_invite email
-	// through orbit-notifications. The caller must be an active owner or admin.
-	// Re-inviting an address with a pending invite rotates that invite.
+	// InviteMember creates a pending invitation to an email address (sent as the
+	// org_invite email through orbit-notifications) or to a phone number (no
+	// message is sent yet; the response carries the token for the inviter to
+	// share). The caller must be an active owner or admin. Re-inviting the same
+	// recipient rotates the pending invite.
 	InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*InviteMemberResponse, error)
 	// AcceptInvite consumes one invitation token. It works for any authenticated
 	// user, not only an existing member: the account email must match the invite
@@ -252,9 +254,11 @@ type OrgServiceServer interface {
 	SetOrgSlug(context.Context, *SetOrgSlugRequest) (*SetOrgSlugResponse, error)
 	// SetMemberRole changes a member's organization administration tier.
 	SetMemberRole(context.Context, *SetMemberRoleRequest) (*SetMemberRoleResponse, error)
-	// InviteMember creates a pending invitation and sends the org_invite email
-	// through orbit-notifications. The caller must be an active owner or admin.
-	// Re-inviting an address with a pending invite rotates that invite.
+	// InviteMember creates a pending invitation to an email address (sent as the
+	// org_invite email through orbit-notifications) or to a phone number (no
+	// message is sent yet; the response carries the token for the inviter to
+	// share). The caller must be an active owner or admin. Re-inviting the same
+	// recipient rotates the pending invite.
 	InviteMember(context.Context, *InviteMemberRequest) (*InviteMemberResponse, error)
 	// AcceptInvite consumes one invitation token. It works for any authenticated
 	// user, not only an existing member: the account email must match the invite
@@ -632,6 +636,172 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SelectOrg",
 			Handler:    _OrgService_SelectOrg_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "auth/v1/orgs.proto",
+}
+
+const (
+	InviteService_GetInvitePreview_FullMethodName       = "/auth.v1.InviteService/GetInvitePreview"
+	InviteService_AcceptInviteWithSignup_FullMethodName = "/auth.v1.InviteService/AcceptInviteWithSignup"
+)
+
+// InviteServiceClient is the client API for InviteService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// InviteService is public, like TenantService: the invitee has no session yet
+// when they open an invitation link. Both RPCs take only the invitation token.
+// Every failure of a token is the same NotFound.
+type InviteServiceClient interface {
+	// GetInvitePreview shows what an invitation grants before the holder signs
+	// in: the organization, its tier and the expiry. It never returns the
+	// recipient's email address or phone number.
+	GetInvitePreview(ctx context.Context, in *GetInvitePreviewRequest, opts ...grpc.CallOption) (*InvitePreview, error)
+	// AcceptInviteWithSignup creates the account for a phone invitation, sets
+	// its password and display name, joins the organization with the invited
+	// tier and returns the new user. The account's mobile number is the invited
+	// number and is not verified: no OTP proved it. If an account already uses
+	// the number, the call is AlreadyExists and the person must sign in and call
+	// AcceptInvite instead. Email invitations are not accepted here.
+	AcceptInviteWithSignup(ctx context.Context, in *AcceptInviteWithSignupRequest, opts ...grpc.CallOption) (*AcceptInviteWithSignupResponse, error)
+}
+
+type inviteServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewInviteServiceClient(cc grpc.ClientConnInterface) InviteServiceClient {
+	return &inviteServiceClient{cc}
+}
+
+func (c *inviteServiceClient) GetInvitePreview(ctx context.Context, in *GetInvitePreviewRequest, opts ...grpc.CallOption) (*InvitePreview, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InvitePreview)
+	err := c.cc.Invoke(ctx, InviteService_GetInvitePreview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *inviteServiceClient) AcceptInviteWithSignup(ctx context.Context, in *AcceptInviteWithSignupRequest, opts ...grpc.CallOption) (*AcceptInviteWithSignupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AcceptInviteWithSignupResponse)
+	err := c.cc.Invoke(ctx, InviteService_AcceptInviteWithSignup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// InviteServiceServer is the server API for InviteService service.
+// All implementations must embed UnimplementedInviteServiceServer
+// for forward compatibility.
+//
+// InviteService is public, like TenantService: the invitee has no session yet
+// when they open an invitation link. Both RPCs take only the invitation token.
+// Every failure of a token is the same NotFound.
+type InviteServiceServer interface {
+	// GetInvitePreview shows what an invitation grants before the holder signs
+	// in: the organization, its tier and the expiry. It never returns the
+	// recipient's email address or phone number.
+	GetInvitePreview(context.Context, *GetInvitePreviewRequest) (*InvitePreview, error)
+	// AcceptInviteWithSignup creates the account for a phone invitation, sets
+	// its password and display name, joins the organization with the invited
+	// tier and returns the new user. The account's mobile number is the invited
+	// number and is not verified: no OTP proved it. If an account already uses
+	// the number, the call is AlreadyExists and the person must sign in and call
+	// AcceptInvite instead. Email invitations are not accepted here.
+	AcceptInviteWithSignup(context.Context, *AcceptInviteWithSignupRequest) (*AcceptInviteWithSignupResponse, error)
+	mustEmbedUnimplementedInviteServiceServer()
+}
+
+// UnimplementedInviteServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedInviteServiceServer struct{}
+
+func (UnimplementedInviteServiceServer) GetInvitePreview(context.Context, *GetInvitePreviewRequest) (*InvitePreview, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInvitePreview not implemented")
+}
+func (UnimplementedInviteServiceServer) AcceptInviteWithSignup(context.Context, *AcceptInviteWithSignupRequest) (*AcceptInviteWithSignupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AcceptInviteWithSignup not implemented")
+}
+func (UnimplementedInviteServiceServer) mustEmbedUnimplementedInviteServiceServer() {}
+func (UnimplementedInviteServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeInviteServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to InviteServiceServer will
+// result in compilation errors.
+type UnsafeInviteServiceServer interface {
+	mustEmbedUnimplementedInviteServiceServer()
+}
+
+func RegisterInviteServiceServer(s grpc.ServiceRegistrar, srv InviteServiceServer) {
+	// If the following call panics, it indicates UnimplementedInviteServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&InviteService_ServiceDesc, srv)
+}
+
+func _InviteService_GetInvitePreview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInvitePreviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InviteServiceServer).GetInvitePreview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InviteService_GetInvitePreview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InviteServiceServer).GetInvitePreview(ctx, req.(*GetInvitePreviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InviteService_AcceptInviteWithSignup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcceptInviteWithSignupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InviteServiceServer).AcceptInviteWithSignup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InviteService_AcceptInviteWithSignup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InviteServiceServer).AcceptInviteWithSignup(ctx, req.(*AcceptInviteWithSignupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// InviteService_ServiceDesc is the grpc.ServiceDesc for InviteService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var InviteService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "auth.v1.InviteService",
+	HandlerType: (*InviteServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetInvitePreview",
+			Handler:    _InviteService_GetInvitePreview_Handler,
+		},
+		{
+			MethodName: "AcceptInviteWithSignup",
+			Handler:    _InviteService_AcceptInviteWithSignup_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

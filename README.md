@@ -130,6 +130,7 @@ must never be edited by hand.
 | `MIGRATE_ON_START` | `true` | Apply embedded goose migrations on start |
 | `AUTH_AUTO_SELECT_SINGLE_ORG` | `true` | Add the `org` claim when the user has one active membership |
 | `AUTH_SIGNUP` | `off` | `open` enables self-serve sign-up |
+| `AUTH_INVITE_SIGNUP` | `on` | `off` or `false` disables invite sign-up (`InviteService.AcceptInviteWithSignup`); independent of `AUTH_SIGNUP` |
 | `DEMO_MODE` | `false` | Dev-only demo account seeding |
 | `BUS_TRANSPORT` | `inproc` | Lifecycle event transport: `inproc`, `nats` or `redis` |
 | `BUS_NATS_URL` | unset | NATS endpoint when `BUS_TRANSPORT=nats` |
@@ -142,6 +143,7 @@ must never be edited by hand.
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. `SelectOrg` switches organization and rotates the refresh token.
 - **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically, so a token can be redeemed once even under concurrent requests. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
 - **Self-serve sign-up:** `AUTH_SIGNUP=open` enables `SignupService.RegisterWithEmail` and `SignupService.VerifySignup`; the default `off` rejects both with `FailedPrecondition` before anything is written. A new email account stays `signup_pending` until `VerifySignup` receives both the `signup_verify` OTP and the pending account password. A retry for a still-pending address replaces its credentials and reissues the code (at most once per 60 seconds); an active account is left untouched. Admin and demo accounts are verified from the start, and a valid `invite_token` verifies the address without an OTP.
+- **Phone invitations:** `OrgService.InviteMember` invites one recipient, an email address or an E.164 phone number, with an organization tier (`role`, default `member`). A phone invitation returns its raw token once, in that response, for the inviter to share. The public `InviteService` lets the invitee preview it (`GetInvitePreview`) and, when no account uses the number yet, create the account with a password (`AcceptInviteWithSignup`; password at least 8 characters; refused only when `AUTH_INVITE_SIGNUP` is `off` or `false`, which is on by default). An account created that way has an unverified mobile (`mobile_verified_at` NULL) until a mobile OTP for the number succeeds; sign-in is not gated on it.
 - **Lifecycle events:** `BUS_TRANSPORT` selects the message bus (`inproc` default, `nats` with `BUS_NATS_URL`, `redis` with `BUS_REDIS_URL`). See [Events](#events).
 
 ## Events
@@ -150,9 +152,9 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`) in the sam
 
 | Subject | Metadata version | Trigger |
 | --- | --- | --- |
-| `auth.user.created` | `1` | OTP first login, sign-up, invite-sign-up, demo seed |
+| `auth.user.created` | `1` | OTP first login, sign-up, invite-sign-up (email or phone), demo seed |
 | `auth.org.created` | `1` | `CreateOrg`, sign-up with `org_name` |
-| `auth.membership.added` | `1` | `AddMember`, invite acceptance, creator membership |
+| `auth.membership.added` | `1` | `AddMember`, invite acceptance (including phone invite sign-up), creator membership |
 | `auth.membership.removed` | `1` | `RemoveMember` |
 | `auth.membership.suspended` | `1` | `SuspendMember` |
 | `auth.membership.role_changed` | `1` | `SetMemberRole` |

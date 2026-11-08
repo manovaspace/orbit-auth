@@ -219,13 +219,96 @@ func (s *OrgServer) InviteMember(ctx context.Context, req *authv1.InviteMemberRe
 	if err != nil {
 		return nil, err
 	}
-	// The RPC is email-only and always invites into the member tier. The raw
-	// token is not returned here; the product link arrives in a later slice.
-	invite, _, err := s.svc.InviteMember(ctx, orgID, callerID, domain.InviteTarget{Email: req.GetEmail()}, domain.RoleMember)
+	role := domain.RoleMember
+	if raw := strings.TrimSpace(req.GetRole()); raw != "" {
+		role, err = domain.ParseMembershipRole(raw)
+		if err != nil {
+			return nil, orgError(err)
+		}
+	}
+	target := domain.InviteTarget{Email: req.GetEmail(), Phone: req.GetPhone()}
+	invite, token, err := s.svc.InviteMember(ctx, orgID, callerID, target, role)
 	if err != nil {
 		return nil, orgError(err)
 	}
-	return &authv1.InviteMemberResponse{Invite: inviteProto(invite)}, nil
+	// The raw token is returned only for a phone invitation, which has no email
+	// to carry it. For an email invitation the token travels only in the
+	// org_invite email. Handing it to the inviter would let the inviter register
+	// the invited address without proving control of the mailbox.
+	out := &authv1.InviteMemberResponse{Invite: inviteProto(invite)}
+	if invite.Phone != "" {
+		out.Token = token
+	}
+	return out, nil
+}
+
+// InviteServer implements the public InviteService. The invitee has no session
+// yet, so the calls carry no caller: the invitation token is the only selector.
+type InviteServer struct {
+	authv1.UnimplementedInviteServiceServer
+	svc InviteService
+}
+
+// InviteService is the port the public invite adapter needs from the
+// application layer.
+type InviteService interface {
+	GetInvitePreview(ctx context.Context, token string) (domain.InvitePreview, error)
+	AcceptInviteWithSignup(ctx context.Context, token, password, displayName string) (userID, orgID string, err error)
+}
+
+func NewInvite(svc InviteService) *InviteServer {
+	return &InviteServer{svc: svc}
+}
+
+// GetInvitePreview shows what the token grants. It never returns the recipient.
+// Every token that is not a pending, unexpired invitation is the same NotFound.
+func (s *InviteServer) GetInvitePreview(ctx context.Context, req *authv1.GetInvitePreviewRequest) (*authv1.InvitePreview, error) {
+	preview, err := s.svc.GetInvitePreview(ctx, req.GetToken())
+	if err != nil {
+		return nil, inviteTokenError(err)
+	}
+	return &authv1.InvitePreview{
+		OrgId:     preview.OrgID,
+		OrgName:   preview.OrgName,
+		OrgSlug:   preview.OrgSlug,
+		Role:      string(preview.Role),
+		ExpiresAt: preview.ExpiresAt.Format(time.RFC3339),
+	}, nil
+}
+
+// AcceptInviteWithSignup creates the account for a phone invitation. An account
+// that already uses the number is AlreadyExists: that person must sign in and
+// accept with AcceptInvite.
+func (s *InviteServer) AcceptInviteWithSignup(ctx context.Context, req *authv1.AcceptInviteWithSignupRequest) (*authv1.AcceptInviteWithSignupResponse, error) {
+	userID, orgID, err := s.svc.AcceptInviteWithSignup(ctx, req.GetToken(), req.GetPassword(), req.GetDisplayName())
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInviteSignupDisabled):
+			return nil, status.Error(codes.FailedPrecondition, "invite sign-up is disabled")
+		case errors.Is(err, application.ErrAccountExists):
+			return nil, status.Error(codes.AlreadyExists, "account exists: sign in to accept the invitation")
+		case errors.Is(err, application.ErrPasswordRequired):
+			return nil, status.Error(codes.InvalidArgument, application.ErrPasswordRequired.Error())
+		case errors.Is(err, application.ErrPasswordTooShort):
+			return nil, status.Error(codes.InvalidArgument, application.ErrPasswordTooShort.Error())
+		case errors.Is(err, domain.ErrInvalidInvite):
+			return nil, inviteTokenError(err)
+		default:
+			slog.Error("invite sign-up failed", "error", err)
+			return nil, status.Error(codes.Internal, "internal error")
+		}
+	}
+	return &authv1.AcceptInviteWithSignupResponse{UserId: userID, OrgId: orgID}, nil
+}
+
+// inviteTokenError is the generic NotFound for an invitation token that cannot
+// be used. The reason is not revealed.
+func inviteTokenError(err error) error {
+	if errors.Is(err, domain.ErrInvalidInvite) || errors.Is(err, domain.ErrInviteNotFound) {
+		return status.Error(codes.NotFound, "invite not found")
+	}
+	slog.Error("invite operation failed", "error", err)
+	return status.Error(codes.Internal, "internal error")
 }
 
 // AcceptInvite works for any authenticated user, including one who is not yet a
@@ -368,6 +451,10 @@ func orgError(err error) error {
 		return status.Error(codes.InvalidArgument, domain.ErrInvalidInvite.Error())
 	case errors.Is(err, domain.ErrInvalidEmail):
 		return status.Error(codes.InvalidArgument, domain.ErrInvalidEmail.Error())
+	case errors.Is(err, domain.ErrInvalidPhone):
+		return status.Error(codes.InvalidArgument, domain.ErrInvalidPhone.Error())
+	case errors.Is(err, domain.ErrInvalidInviteTarget):
+		return status.Error(codes.InvalidArgument, domain.ErrInvalidInviteTarget.Error())
 	case errors.Is(err, domain.ErrInviteNotFound):
 		return status.Error(codes.NotFound, "invite not found")
 	default:
@@ -408,6 +495,8 @@ func inviteProto(invite domain.Invite) *authv1.Invite {
 		Status:    string(invite.Status),
 		ExpiresAt: invite.ExpiresAt.Format(time.RFC3339),
 		CreatedAt: invite.CreatedAt.Format(time.RFC3339),
+		Phone:     invite.Phone,
+		Role:      string(invite.Role),
 	}
 	if invite.AcceptedAt != nil {
 		out.AcceptedAt = invite.AcceptedAt.Format(time.RFC3339)

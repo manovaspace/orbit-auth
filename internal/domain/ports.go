@@ -28,6 +28,9 @@ type UserStore interface {
 	FindByID(ctx context.Context, userID string) (User, error)
 	UpdateLastLogin(ctx context.Context, userID string) error
 	UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error
+	// MarkMobileVerified records that a mobile OTP for userID succeeded. An
+	// existing verification time is kept.
+	MarkMobileVerified(ctx context.Context, userID string, verifiedAt time.Time) error
 }
 
 // SignupStore persists self-serve sign-up accounts. CreateSignupUser writes
@@ -44,6 +47,14 @@ type SignupStore interface {
 	ReissuePendingSignup(ctx context.Context, user User, challenge *OTPChallenge, invite *Invite, acceptedAt time.Time) (userID string, reissued bool, err error)
 	VerifySignup(ctx context.Context, userID string, verifiedAt time.Time) error
 	PurgeUnverifiedSignups(ctx context.Context, before time.Time) (int64, error)
+	// CreatePhoneInviteSignup writes an active account for the invite's phone
+	// number with user.Mobile and password hash, and in the same transaction
+	// emits user.created, accepts the invitation and adds the membership with
+	// the invited role. The mobile number is not marked verified. It returns
+	// created=false when the number already belongs to an account, and
+	// ErrInviteNotFound when the invitation is no longer pending. Either way
+	// nothing is written.
+	CreatePhoneInviteSignup(ctx context.Context, user User, invite Invite, acceptedAt time.Time) (created bool, err error)
 }
 
 // RefreshTokenStore persists refresh tokens by their hash. A stored token

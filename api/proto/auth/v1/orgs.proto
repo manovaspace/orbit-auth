@@ -32,9 +32,11 @@ service OrgService {
   rpc SetOrgSlug(SetOrgSlugRequest) returns (SetOrgSlugResponse);
   // SetMemberRole changes a member's organization administration tier.
   rpc SetMemberRole(SetMemberRoleRequest) returns (SetMemberRoleResponse);
-  // InviteMember creates a pending invitation and sends the org_invite email
-  // through orbit-notifications. The caller must be an active owner or admin.
-  // Re-inviting an address with a pending invite rotates that invite.
+  // InviteMember creates a pending invitation to an email address (sent as the
+  // org_invite email through orbit-notifications) or to a phone number (no
+  // message is sent yet; the response carries the token for the inviter to
+  // share). The caller must be an active owner or admin. Re-inviting the same
+  // recipient rotates the pending invite.
   rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
   // AcceptInvite consumes one invitation token. It works for any authenticated
   // user, not only an existing member: the account email must match the invite
@@ -62,6 +64,23 @@ message Organization {
   string slug = 5;
 }
 
+// InviteService is public, like TenantService: the invitee has no session yet
+// when they open an invitation link. Both RPCs take only the invitation token.
+// Every failure of a token is the same NotFound.
+service InviteService {
+  // GetInvitePreview shows what an invitation grants before the holder signs
+  // in: the organization, its tier and the expiry. It never returns the
+  // recipient's email address or phone number.
+  rpc GetInvitePreview(GetInvitePreviewRequest) returns (InvitePreview);
+  // AcceptInviteWithSignup creates the account for a phone invitation, sets
+  // its password and display name, joins the organization with the invited
+  // tier and returns the new user. The account's mobile number is the invited
+  // number and is not verified: no OTP proved it. If an account already uses
+  // the number, the call is AlreadyExists and the person must sign in and call
+  // AcceptInvite instead. Email invitations are not accepted here.
+  rpc AcceptInviteWithSignup(AcceptInviteWithSignupRequest) returns (AcceptInviteWithSignupResponse);
+}
+
 // TenantService answers which organization a tenant host label belongs to. It
 // is public on purpose: the edge asks it before anyone has signed in, so it
 // returns only the organization id, name and current slug and never members.
@@ -70,6 +89,32 @@ service TenantService {
   // retired slug resolves to the same organization and reports its current slug
   // so the edge can redirect. An unknown or invalid slug is NotFound.
   rpc ResolveTenant(ResolveTenantRequest) returns (ResolveTenantResponse);
+}
+
+message GetInvitePreviewRequest {
+  string token = 1;
+}
+
+// InvitePreview is what a holder of an invitation token may see before
+// accepting it. It carries no recipient address.
+message InvitePreview {
+  string org_id = 1;
+  string org_name = 2;
+  string org_slug = 3;
+  // owner, admin or member.
+  string role = 4;
+  string expires_at = 5;
+}
+
+message AcceptInviteWithSignupRequest {
+  string token = 1;
+  string password = 2;
+  string display_name = 3;
+}
+
+message AcceptInviteWithSignupResponse {
+  string user_id = 1;
+  string org_id = 2;
 }
 
 message ResolveTenantRequest {
@@ -106,6 +151,11 @@ message Invite {
   string expires_at = 6;
   string accepted_at = 7;
   string created_at = 8;
+  // phone is the invited E.164 number of a phone invitation. Exactly one of
+  // email and phone is set.
+  string phone = 9;
+  // role is the organization tier the invitee receives: owner, admin or member.
+  string role = 10;
 }
 
 message CreateOrgRequest {
@@ -176,10 +226,18 @@ message SetMemberRoleResponse {
 message InviteMemberRequest {
   string org_id = 1;
   string email = 2;
+  // phone is an E.164 number. Set exactly one of email and phone.
+  string phone = 3;
+  // role is owner, admin or member. Empty means member.
+  string role = 4;
 }
 
 message InviteMemberResponse {
   Invite invite = 1;
+  // token is the raw invitation token. It is returned only from this call and
+  // only for a phone invitation, which has no email to carry it; it is never
+  // stored in clear and never returned by any other RPC.
+  string token = 2;
 }
 
 message AcceptInviteRequest {

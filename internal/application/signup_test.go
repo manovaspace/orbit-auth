@@ -23,6 +23,7 @@ type signupStore struct {
 	otp       *fakeOTP
 
 	createCalls  int
+	phoneCalls   int
 	reissueCalls int
 	verifyCalls  int
 	purgeCalls   int
@@ -109,6 +110,18 @@ func (s *signupStore) FindByID(_ context.Context, userID string) (domain.User, e
 
 func (s *signupStore) UpdateLastLogin(context.Context, string) error { return nil }
 
+func (s *signupStore) MarkMobileVerified(_ context.Context, userID string, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	user.MobileVerified = true
+	s.users[userID] = user
+	return nil
+}
+
 func (s *signupStore) UpsertDemoUser(context.Context, string, string, string, string) error {
 	return nil
 }
@@ -180,6 +193,25 @@ func (s *signupStore) ReissuePendingSignup(ctx context.Context, user domain.User
 		s.users[id] = existing
 	}
 	return id, true, nil
+}
+
+// CreatePhoneInviteSignup models the store transaction: the user row, the
+// accepted invitation and the membership are written together or not at all.
+func (s *signupStore) CreatePhoneInviteSignup(ctx context.Context, user domain.User, invite domain.Invite, acceptedAt time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.phoneCalls++
+	for _, existing := range s.users {
+		if existing.Mobile != "" && existing.Mobile == user.Mobile {
+			return false, nil
+		}
+	}
+	s.users[user.ID] = user
+	if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, user.ID, invite.Role, acceptedAt); err != nil {
+		delete(s.users, user.ID)
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *signupStore) VerifySignup(_ context.Context, userID string, _ time.Time) error {

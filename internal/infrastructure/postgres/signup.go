@@ -118,6 +118,82 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 	return true, nil
 }
 
+// CreatePhoneInviteSignup writes an active account for a phone invitation and,
+// in the same transaction, emits user.created, accepts the invitation and adds
+// the active membership with the invited role. The account's mobile number is
+// the invited number and stays unverified. ON CONFLICT (mobile) DO NOTHING makes
+// a number that already belongs to an account a no-op (created=false), and a
+// non-pending invitation rolls the whole transaction back, so no user row is
+// left behind without its membership.
+func (s *Store) CreatePhoneInviteSignup(ctx context.Context, user domain.User, invite domain.Invite, acceptedAt time.Time) (bool, error) {
+	userID, err := uuid.Parse(user.ID)
+	if err != nil {
+		return false, fmt.Errorf("postgres: user id %q: %w", user.ID, err)
+	}
+	orgID, inviteID, err := inviteIDs(invite.OrgID, invite.ID)
+	if err != nil {
+		return false, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("postgres: begin phone invite signup: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	created, err := queries.CreatePhoneSignupUser(ctx, sqlcgen.CreatePhoneSignupUserParams{
+		ID:           userID,
+		Mobile:       user.Mobile,
+		PasswordHash: user.PasswordHash,
+		DisplayName:  user.DisplayName,
+		Status:       domain.UserActive,
+	})
+	if err != nil {
+		return false, fmt.Errorf("postgres: create phone signup user: %w", err)
+	}
+	if created == 0 {
+		return false, nil
+	}
+
+	sink := newOutboxSink(tx)
+	if err := emitEvents(ctx, sink,
+		domain.NewUserCreatedEvent(user.ID, acceptedAt),
+	); err != nil {
+		return false, err
+	}
+	if err := lockOrganization(ctx, queries, orgID); err != nil {
+		return false, err
+	}
+	affected, err := queries.AcceptOrganizationInvite(ctx, sqlcgen.AcceptOrganizationInviteParams{
+		ID:         inviteID,
+		OrgID:      orgID,
+		AcceptedAt: timestamptz(acceptedAt),
+	})
+	if err != nil {
+		return false, fmt.Errorf("postgres: accept phone signup invite: %w", err)
+	}
+	if affected == 0 {
+		return false, domain.ErrInviteNotFound
+	}
+	if err := queries.AddActiveOrganizationMembership(ctx, sqlcgen.AddActiveOrganizationMembershipParams{
+		OrgID:  orgID,
+		UserID: userID,
+		Role:   string(invite.Role),
+	}); err != nil {
+		return false, fmt.Errorf("postgres: add phone signup member: %w", err)
+	}
+	if err := emitEvents(ctx, sink,
+		domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, invite.Role, acceptedAt),
+	); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("postgres: commit phone invite signup: %w", err)
+	}
+	return true, nil
+}
+
 // ReissuePendingSignup replaces the password and display name of an existing
 // unverified sign-up. A non-nil challenge rotates the address's email OTP in
 // the same transaction; a non-nil invite activates the account and accepts the
