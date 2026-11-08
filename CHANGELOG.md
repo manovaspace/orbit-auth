@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1](https://github.com/manovaspace/orbit-auth/compare/v0.8.0...v0.8.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **auth:** redeem refresh tokens once and add RevokeRefreshToken ([0692d08](https://github.com/manovaspace/orbit-auth/commit/0692d08029cb01a6f5b023988152b3d9344bdd9e))
+* **auth:** redeem refresh tokens once and add RevokeRefreshToken ([000fd01](https://github.com/manovaspace/orbit-auth/commit/000fd01ea5f266f4f1550db45926eb9ef7a42f5e)), closes [#88](https://github.com/manovaspace/orbit-auth/issues/88)
+
 ## [0.8.0](https://github.com/manovaspace/orbit-auth/compare/v0.7.1...v0.8.0) (2026-11-07)
 
 
