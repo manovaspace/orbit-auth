@@ -65,6 +65,10 @@ type User struct {
 	DisplayName   string
 	Status        string
 	EmailVerified bool
+	// MobileVerified is true when a mobile OTP for Mobile succeeded at some
+	// point, or the account was seeded. An account created by accepting a phone
+	// invitation with a password starts unverified. Sign-in does not depend on it.
+	MobileVerified bool
 }
 
 // OTPChallenge is a pending one-time code.

@@ -34,6 +34,12 @@ type Deps struct {
 	// that do not opt in keep self-serve registration disabled.
 	SignupOpen bool
 
+	// InviteSignupDisabled is AUTH_INVITE_SIGNUP=off or false. Invite sign-up
+	// is on by default and does not depend on SignupOpen: it needs a token that
+	// an owner or admin issued, not self-serve registration. The field is the
+	// disabled flag so the zero value keeps invite sign-up on.
+	InviteSignupDisabled bool
+
 	// DemoMode enables seeding on start; DemoUsers is the parsed
 	// AUTH_DEMO_USERS array. Both are resolved by cmd from the environment.
 	DemoMode  bool
@@ -64,6 +70,7 @@ type Service struct {
 	codes               domain.CodeGenerator
 	secrets             domain.SecretGenerator
 	signupOpen          bool
+	inviteSignupOff     bool
 	demoMode            bool
 	demoUsers           []domain.DemoUser
 	autoSelectSingleOrg bool
@@ -93,6 +100,7 @@ func NewService(deps Deps) *Service {
 		codes:               deps.Codes,
 		secrets:             deps.Secrets,
 		signupOpen:          deps.SignupOpen,
+		inviteSignupOff:     deps.InviteSignupDisabled,
 		demoMode:            deps.DemoMode,
 		demoUsers:           deps.DemoUsers,
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,
@@ -220,6 +228,13 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	// OTP login must not be a shortcut around that verification.
 	if user.Status == domain.UserSignupPending {
 		return "", "", time.Time{}, ErrInvalidOTPCode
+	}
+	if channel == domain.ChannelSMS {
+		// The successful code is the proof that the number belongs to the
+		// person. Sign-in does not depend on this record.
+		if err := s.users.MarkMobileVerified(ctx, user.ID, s.clock.Now()); err != nil {
+			return "", "", time.Time{}, err
+		}
 	}
 	return s.issueTokens(ctx, user.ID)
 }

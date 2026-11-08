@@ -142,6 +142,10 @@ func main() {
 		// AUTH_SIGNUP defaults to off; only the literal open (case-insensitive)
 		// enables self-serve registration.
 		SignupOpen: strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_SIGNUP")), "open"),
+		// AUTH_INVITE_SIGNUP defaults to on; only an explicit off or false
+		// disables invite sign-up.
+		InviteSignupDisabled: strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_INVITE_SIGNUP")), "off") ||
+			strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_INVITE_SIGNUP")), "false"),
 		// AUTH_AUTO_SELECT_SINGLE_ORG defaults to true; only an explicit
 		// false disables it.
 		AutoSelectSingleOrg: !strings.EqualFold(envOr("AUTH_AUTO_SELECT_SINGLE_ORG", "true"), "false"),
@@ -163,6 +167,7 @@ func main() {
 	authv1.RegisterAuthServiceServer(gs, grpchandlers.New(svc))
 	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
 	authv1.RegisterTenantServiceServer(gs, grpchandlers.NewTenant(svc))
+	authv1.RegisterInviteServiceServer(gs, grpchandlers.NewInvite(svc))
 	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
 
 	health := httpapi.New(flagService)

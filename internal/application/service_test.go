@@ -124,6 +124,16 @@ func (f *fakeUsers) FindByID(_ context.Context, userID string) (domain.User, err
 
 func (f *fakeUsers) UpdateLastLogin(context.Context, string) error { return nil }
 
+func (f *fakeUsers) MarkMobileVerified(_ context.Context, userID string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.user.ID != userID {
+		return domain.ErrUserNotFound
+	}
+	f.user.MobileVerified = true
+	return nil
+}
+
 func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string, string) error { return nil }
 
 type fakeApiTokens struct{}

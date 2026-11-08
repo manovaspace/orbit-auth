@@ -141,19 +141,41 @@ func (s *Store) findByEmail(ctx context.Context, email string) (domain.User, err
 		return domain.User{}, err
 	}
 	return domain.User{
-		ID:            row.ID,
-		Email:         row.Email,
-		Mobile:        row.Mobile,
-		PasswordHash:  row.PasswordHash,
-		DisplayName:   row.DisplayName,
-		Status:        row.Status,
-		EmailVerified: row.EmailVerified,
+		ID:             row.ID,
+		Email:          row.Email,
+		Mobile:         row.Mobile,
+		PasswordHash:   row.PasswordHash,
+		DisplayName:    row.DisplayName,
+		Status:         row.Status,
+		EmailVerified:  row.EmailVerified,
+		MobileVerified: row.MobileVerified,
 	}, nil
 }
 
 // FindByMobile returns the user with mobile or pgx.ErrNoRows.
 func (s *Store) FindByMobile(ctx context.Context, mobile string) (domain.User, error) {
 	return s.findByMobile(ctx, mobile)
+}
+
+// MarkMobileVerified sets mobile_verified_at to verifiedAt unless it is already
+// set, so the first successful mobile OTP is the record. A missing user is
+// domain.ErrUserNotFound.
+func (s *Store) MarkMobileVerified(ctx context.Context, userID string, verifiedAt time.Time) error {
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("postgres: user id %q: %w", userID, err)
+	}
+	affected, err := s.queries.MarkMobileVerified(ctx, sqlcgen.MarkMobileVerifiedParams{
+		ID:         id,
+		VerifiedAt: timestamptz(verifiedAt),
+	})
+	if err != nil {
+		return fmt.Errorf("postgres: mark mobile verified: %w", err)
+	}
+	if affected == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
 }
 
 // FindByID returns the user with id or domain.ErrUserNotFound.
@@ -170,13 +192,14 @@ func (s *Store) FindByID(ctx context.Context, userID string) (domain.User, error
 		return domain.User{}, err
 	}
 	return domain.User{
-		ID:            row.ID,
-		Email:         row.Email,
-		Mobile:        row.Mobile,
-		PasswordHash:  row.PasswordHash,
-		DisplayName:   row.DisplayName,
-		Status:        row.Status,
-		EmailVerified: row.EmailVerified,
+		ID:             row.ID,
+		Email:          row.Email,
+		Mobile:         row.Mobile,
+		PasswordHash:   row.PasswordHash,
+		DisplayName:    row.DisplayName,
+		Status:         row.Status,
+		EmailVerified:  row.EmailVerified,
+		MobileVerified: row.MobileVerified,
 	}, nil
 }
 
@@ -186,13 +209,14 @@ func (s *Store) findByMobile(ctx context.Context, mobile string) (domain.User, e
 		return domain.User{}, err
 	}
 	return domain.User{
-		ID:            row.ID,
-		Email:         row.Email,
-		Mobile:        row.Mobile,
-		PasswordHash:  row.PasswordHash,
-		DisplayName:   row.DisplayName,
-		Status:        row.Status,
-		EmailVerified: row.EmailVerified,
+		ID:             row.ID,
+		Email:          row.Email,
+		Mobile:         row.Mobile,
+		PasswordHash:   row.PasswordHash,
+		DisplayName:    row.DisplayName,
+		Status:         row.Status,
+		EmailVerified:  row.EmailVerified,
+		MobileVerified: row.MobileVerified,
 	}, nil
 }
 

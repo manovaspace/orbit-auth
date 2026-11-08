@@ -5,9 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )
+
+// minInvitePasswordRunes is the minimum password length, in Unicode characters
+// after trimming, for invite sign-up.
+const minInvitePasswordRunes = 8
 
 // defaultInviteLocale is the locale an organization invitation uses when the
 // caller supplies none. orbit-notifications renders the org_invite template in
@@ -144,6 +150,26 @@ func (s *Service) GetInvitePreview(ctx context.Context, token string) (domain.In
 	}, nil
 }
 
+// pendingInvite resolves an invitation token to its invite. A token that is
+// unknown, not pending or expired at now is the generic ErrInvalidInvite.
+func (s *Service) pendingInvite(ctx context.Context, token string, now time.Time) (domain.Invite, error) {
+	token = strings.TrimSpace(token)
+	if token == "" || s.invites == nil {
+		return domain.Invite{}, domain.ErrInvalidInvite
+	}
+	invite, err := s.invites.FindInviteByTokenHash(ctx, domain.HashInviteToken(token))
+	if err != nil {
+		if errors.Is(err, domain.ErrInviteNotFound) {
+			return domain.Invite{}, domain.ErrInvalidInvite
+		}
+		return domain.Invite{}, err
+	}
+	if invite.Status != domain.InvitePending || !now.Before(invite.ExpiresAt) {
+		return domain.Invite{}, domain.ErrInvalidInvite
+	}
+	return invite, nil
+}
+
 // AcceptInvite consumes one invitation token for the authenticated user. The
 // account email must equal the invitation address case-insensitively, the
 // account must be usable, and the invite must still be pending and unexpired.
@@ -156,19 +182,10 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, token string) (domai
 	if userID == "" || token == "" {
 		return domain.Invite{}, domain.ErrInvalidInvite
 	}
-	if s.invites == nil {
-		return domain.Invite{}, domain.ErrInvalidInvite
-	}
-	invite, err := s.invites.FindInviteByTokenHash(ctx, domain.HashInviteToken(token))
-	if err != nil {
-		if errors.Is(err, domain.ErrInviteNotFound) {
-			return domain.Invite{}, domain.ErrInvalidInvite
-		}
-		return domain.Invite{}, err
-	}
 	now := s.clock.Now()
-	if invite.Status != domain.InvitePending || !now.Before(invite.ExpiresAt) {
-		return domain.Invite{}, domain.ErrInvalidInvite
+	invite, err := s.pendingInvite(ctx, token, now)
+	if err != nil {
+		return domain.Invite{}, err
 	}
 	user, err := s.users.FindByID(ctx, userID)
 	if err != nil {
@@ -191,6 +208,74 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, token string) (domai
 	invite.TokenHash = ""
 	s.logger("organization_invite_accepted", "org_id", invite.OrgID, "invite_id", invite.ID, "user_id", userID)
 	return invite, nil
+}
+
+// AcceptInviteWithSignup creates the account for a phone invitation. The token
+// must resolve to a pending, unexpired phone invitation (anything else is
+// ErrInvalidInvite). Invite sign-up is switched by AUTH_INVITE_SIGNUP, default
+// on; off is ErrInviteSignupDisabled. It does not depend on AUTH_SIGNUP. If an
+// account already uses the invited number the call is ErrAccountExists and
+// nothing is written: that person signs in and accepts with AcceptInvite. The
+// password must be at least eight characters after trimming (ErrPasswordTooShort),
+// and present (ErrPasswordRequired) when empty.
+// The account is active, its mobile is the invited number and it stays
+// unverified (mobile_verified_at NULL). The account, the accepted invitation,
+// the membership with the invited tier and the events commit in one
+// transaction. It returns the new user's id and the organization's id.
+func (s *Service) AcceptInviteWithSignup(ctx context.Context, token, password, displayName string) (string, string, error) {
+	if s.inviteSignupOff {
+		return "", "", ErrInviteSignupDisabled
+	}
+	if s.signup == nil || s.users == nil || s.hasher == nil || s.ids == nil {
+		return "", "", fmt.Errorf("invite sign-up is not configured")
+	}
+	now := s.clock.Now()
+	invite, err := s.pendingInvite(ctx, token, now)
+	if err != nil {
+		return "", "", err
+	}
+	if invite.Phone == "" {
+		return "", "", domain.ErrInvalidInvite
+	}
+	// Only a found account is decided here. A failed lookup falls through to the
+	// insert, which refuses a number that already exists in the same transaction.
+	if _, err := s.users.FindByMobile(ctx, invite.Phone); err == nil {
+		return "", "", ErrAccountExists
+	}
+	trimmed := strings.TrimSpace(password)
+	if trimmed == "" {
+		return "", "", ErrPasswordRequired
+	}
+	if utf8.RuneCountInString(trimmed) < minInvitePasswordRunes {
+		return "", "", ErrPasswordTooShort
+	}
+	hash, err := s.hasher.Hash(password)
+	if err != nil {
+		return "", "", err
+	}
+	user := domain.User{
+		ID:           s.ids.NewID(),
+		Mobile:       invite.Phone,
+		PasswordHash: hash,
+		DisplayName:  strings.TrimSpace(displayName),
+		Status:       domain.UserActive,
+	}
+	created, err := s.signup.CreatePhoneInviteSignup(ctx, user, invite, now)
+	if err != nil {
+		if errors.Is(err, domain.ErrInviteNotFound) {
+			return "", "", domain.ErrInvalidInvite
+		}
+		return "", "", err
+	}
+	if !created {
+		// A concurrent sign-up took the number between the check above and the
+		// insert.
+		return "", "", ErrAccountExists
+	}
+	s.logger("organization_invite_accepted",
+		"org_id", invite.OrgID, "invite_id", invite.ID, "user_id", user.ID,
+		"channel", inviteChannelPhone, "signup", true)
+	return user.ID, invite.OrgID, nil
 }
 
 // RevokeInvite revokes one pending invitation. Only an active owner or admin of
