@@ -9,6 +9,8 @@ service AuthService {
   rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse);
   rpc LoginWithPassword(LoginWithPasswordRequest) returns (TokenResponse);
   rpc RefreshToken(RefreshTokenRequest) returns (TokenResponse);
+  // Idempotent: always succeeds for unknown, revoked or expired tokens.
+  rpc RevokeRefreshToken(RevokeRefreshTokenRequest) returns (RevokeRefreshTokenResponse);
   rpc CreateApiToken(CreateApiTokenRequest) returns (CreateApiTokenResponse);
   rpc ListApiTokens(ListApiTokensRequest) returns (ListApiTokensResponse);
   rpc RevokeApiToken(RevokeApiTokenRequest) returns (RevokeApiTokenResponse);
@@ -47,6 +49,12 @@ message LoginWithPasswordRequest {
 message RefreshTokenRequest {
   string refresh_token = 1;
 }
+
+message RevokeRefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RevokeRefreshTokenResponse {}
 
 message TokenResponse {
   string access_token = 1;

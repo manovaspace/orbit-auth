@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const consumeRefreshToken = `-- name: ConsumeRefreshToken :one
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
+RETURNING user_id::text AS user_id, COALESCE(org_id::text, '')::text AS org_id
+`
+
+type ConsumeRefreshTokenRow struct {
+	UserID string
+	OrgID  string
+}
+
+func (q *Queries) ConsumeRefreshToken(ctx context.Context, tokenHash string) (ConsumeRefreshTokenRow, error) {
+	row := q.db.QueryRow(ctx, consumeRefreshToken, tokenHash)
+	var i ConsumeRefreshTokenRow
+	err := row.Scan(&i.UserID, &i.OrgID)
+	return i, err
+}
+
 const findValidRefreshToken = `-- name: FindValidRefreshToken :one
 SELECT user_id::text AS user_id,
        COALESCE(org_id::text, '')::text AS org_id

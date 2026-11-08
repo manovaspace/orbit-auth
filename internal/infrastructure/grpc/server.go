@@ -19,6 +19,7 @@ type AuthService interface {
 	VerifyOTP(ctx context.Context, identifier, channel, code string) (access, refresh string, expires time.Time, err error)
 	LoginWithPassword(ctx context.Context, identifier, password string) (access, refresh string, expires time.Time, err error)
 	Refresh(ctx context.Context, refreshToken string) (access, refresh string, expires time.Time, err error)
+	RevokeRefresh(ctx context.Context, refreshToken string) error
 	CreateApiToken(ctx context.Context, userID, name string, scopes []string, expiresAt *time.Time) (tokenID, prefix, secret string, err error)
 	ListApiTokens(ctx context.Context, userID string) ([]domain.APITokenInfo, error)
 	RevokeApiToken(ctx context.Context, userID, tokenID string) error
@@ -84,6 +85,15 @@ func (s *Server) RefreshToken(ctx context.Context, req *authv1.RefreshTokenReque
 		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 	return tokenResponse(access, refresh, exp), nil
+}
+
+// RevokeRefreshToken is idempotent: unknown, revoked and expired tokens succeed.
+// Only store failures return codes.Internal.
+func (s *Server) RevokeRefreshToken(ctx context.Context, req *authv1.RevokeRefreshTokenRequest) (*authv1.RevokeRefreshTokenResponse, error) {
+	if err := s.svc.RevokeRefresh(ctx, req.GetRefreshToken()); err != nil {
+		return nil, status.Error(codes.Internal, "revoke refresh token failed")
+	}
+	return &authv1.RevokeRefreshTokenResponse{}, nil
 }
 
 func (s *Server) CreateApiToken(ctx context.Context, req *authv1.CreateApiTokenRequest) (*authv1.CreateApiTokenResponse, error) {

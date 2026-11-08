@@ -351,6 +351,20 @@ func (s *Store) FindValid(ctx context.Context, tokenHash string) (string, string
 	return row.UserID, row.OrgID, nil
 }
 
+// Consume atomically revokes a live refresh token and returns its user ID and
+// remembered organization. A missing, revoked or expired token returns
+// domain.ErrRefreshTokenNotFound.
+func (s *Store) Consume(ctx context.Context, tokenHash string) (string, string, error) {
+	row, err := s.queries.ConsumeRefreshToken(ctx, tokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", domain.ErrRefreshTokenNotFound
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return row.UserID, row.OrgID, nil
+}
+
 // Revoke marks one refresh token revoked.
 func (s *Store) Revoke(ctx context.Context, tokenHash string) error {
 	return s.queries.RevokeRefreshToken(ctx, tokenHash)

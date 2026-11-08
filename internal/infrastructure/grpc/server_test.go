@@ -38,6 +38,9 @@ type fakeAuth struct {
 	refreshToken string
 	refreshErr   error
 
+	revokeRefreshToken string
+	revokeRefreshErr   error
+
 	createUserID  string
 	createName    string
 	createScopes  []string
@@ -79,6 +82,11 @@ func (f *fakeAuth) LoginWithPassword(_ context.Context, identifier, password str
 func (f *fakeAuth) Refresh(_ context.Context, refreshToken string) (string, string, time.Time, error) {
 	f.refreshToken = refreshToken
 	return f.loginAccess, f.loginRefresh, f.loginExpires, f.refreshErr
+}
+
+func (f *fakeAuth) RevokeRefresh(_ context.Context, refreshToken string) error {
+	f.revokeRefreshToken = refreshToken
+	return f.revokeRefreshErr
 }
 
 func (f *fakeAuth) CreateApiToken(_ context.Context, userID, name string, scopes []string, expiresAt *time.Time) (string, string, string, error) {
@@ -220,6 +228,23 @@ func TestRefreshTokenMapsError(t *testing.T) {
 	app.refreshErr = errors.New("invalid refresh token")
 	_, err := srv.RefreshToken(context.Background(), &authv1.RefreshTokenRequest{RefreshToken: "r1"})
 	assertCode(t, err, codes.Unauthenticated, "invalid refresh token")
+}
+
+func TestRevokeRefreshTokenIsIdempotentAndMapsStoreErrors(t *testing.T) {
+	app := &fakeAuth{}
+	srv := New(app)
+	if _, err := srv.RevokeRefreshToken(context.Background(), &authv1.RevokeRefreshTokenRequest{RefreshToken: "r1"}); err != nil {
+		t.Fatal(err)
+	}
+	if app.revokeRefreshToken != "r1" {
+		t.Fatalf("revoked token = %q", app.revokeRefreshToken)
+	}
+	if _, err := srv.RevokeRefreshToken(context.Background(), &authv1.RevokeRefreshTokenRequest{}); err != nil {
+		t.Fatalf("empty token must succeed: %v", err)
+	}
+	app.revokeRefreshErr = errors.New("db down")
+	_, err := srv.RevokeRefreshToken(context.Background(), &authv1.RevokeRefreshTokenRequest{RefreshToken: "r1"})
+	assertCode(t, err, codes.Internal, "revoke refresh token failed")
 }
 
 func TestCreateApiTokenParsesExpiry(t *testing.T) {

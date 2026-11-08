@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -229,11 +230,10 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 // failing the refresh.
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (access, refresh string, expires time.Time, err error) {
 	hash := domain.HashRefreshToken(refreshToken)
-	userID, orgID, err := s.refresh.FindValid(ctx, hash)
+	userID, orgID, err := s.refresh.Consume(ctx, hash)
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	_ = s.refresh.Revoke(ctx, hash)
 	return s.issueTokensForOrg(ctx, userID, s.activeOrg(ctx, userID, orgID))
 }
 
@@ -262,8 +262,27 @@ func (s *Service) SelectOrg(ctx context.Context, userID, refreshToken, orgID str
 	if err != nil || tokenUserID != userID {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	_ = s.refresh.Revoke(ctx, hash)
+	// Consume, not Revoke: a concurrent redemption that wins the race must
+	// make this one fail.
+	if _, _, err := s.refresh.Consume(ctx, hash); err != nil {
+		return "", "", time.Time{}, ErrInvalidRefresh
+	}
 	return s.issueTokensForOrg(ctx, userID, orgID)
+}
+
+// RevokeRefresh revokes the presented refresh token so it can no longer be
+// redeemed. It is idempotent: an empty, unknown, revoked or expired token
+// returns nil, so logout does not reveal whether the token was valid. Any
+// other store error is returned.
+func (s *Service) RevokeRefresh(ctx context.Context, refreshToken string) error {
+	if strings.TrimSpace(refreshToken) == "" {
+		return nil
+	}
+	_, _, err := s.refresh.Consume(ctx, domain.HashRefreshToken(refreshToken))
+	if err != nil && !errors.Is(err, domain.ErrRefreshTokenNotFound) {
+		return err
+	}
+	return nil
 }
 
 // issueTokens issues a pair for a login, applying single-organization
