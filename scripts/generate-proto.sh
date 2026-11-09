@@ -8,4 +8,5 @@ protoc \
   --go-grpc_out="${ROOT}/api" --go-grpc_opt=paths=source_relative \
   "${ROOT}/api/proto/auth/v1/auth.proto" \
   "${ROOT}/api/proto/auth/v1/orgs.proto" \
-  "${ROOT}/api/proto/auth/v1/signup.proto"
+  "${ROOT}/api/proto/auth/v1/signup.proto" \
+  "${ROOT}/api/proto/auth/v1/staff.proto"

@@ -242,9 +242,16 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 // Refresh rotates a valid refresh token. The new pair keeps the remembered
 // organization while the user is still an active member; if the membership was
 // suspended or removed, the pair is issued without an org claim instead of
-// failing the refresh.
+// failing the refresh. A token whose remembered organization staff have
+// suspended is refused with ErrOrgSuspended before it is consumed, so it can be
+// used again after reactivation.
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (access, refresh string, expires time.Time, err error) {
 	hash := domain.HashRefreshToken(refreshToken)
+	if _, rememberedOrg, findErr := s.refresh.FindValid(ctx, hash); findErr == nil && rememberedOrg != "" && s.orgs != nil {
+		if org, getErr := s.orgs.GetOrg(ctx, rememberedOrg); getErr == nil && org.Status == domain.OrgStatusSuspended {
+			return "", "", time.Time{}, domain.ErrOrgSuspended
+		}
+	}
 	userID, orgID, err := s.refresh.Consume(ctx, hash)
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidRefresh
@@ -271,6 +278,13 @@ func (s *Service) SelectOrg(ctx context.Context, userID, refreshToken, orgID str
 	}
 	if !active {
 		return "", "", time.Time{}, domain.ErrNotMember
+	}
+	org, err := s.orgs.GetOrg(ctx, orgID)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	if org.Status == domain.OrgStatusSuspended {
+		return "", "", time.Time{}, domain.ErrOrgSuspended
 	}
 	hash := domain.HashRefreshToken(refreshToken)
 	tokenUserID, _, err := s.refresh.FindValid(ctx, hash)
@@ -311,14 +325,16 @@ func (s *Service) issueTokens(ctx context.Context, userID string) (access, refre
 }
 
 // singleActiveOrg returns the only active organization of userID, or an empty
-// string for zero or many memberships. A store failure is treated as no
-// organization so an optional convenience claim never blocks login.
+// string for zero or many memberships. A suspended organization is not selected
+// at login, since a token carrying it could never be refreshed. A store failure
+// is treated as no organization so an optional convenience claim never blocks
+// login.
 func (s *Service) singleActiveOrg(ctx context.Context, userID string) string {
 	if s.orgs == nil {
 		return ""
 	}
 	orgs, err := s.orgs.ListOrgsForUser(ctx, userID)
-	if err != nil || len(orgs) != 1 {
+	if err != nil || len(orgs) != 1 || orgs[0].Status == domain.OrgStatusSuspended {
 		return ""
 	}
 	return orgs[0].ID

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/sqlcgen"
@@ -27,9 +28,9 @@ func (s *Store) CreateInvite(ctx context.Context, invite domain.Invite) error {
 	if err != nil {
 		return fmt.Errorf("postgres: organization id %q: %w", invite.OrgID, err)
 	}
-	inviterID, err := uuid.Parse(invite.InviterID)
+	inviterID, err := inviterParam(invite.InviterID)
 	if err != nil {
-		return fmt.Errorf("postgres: inviter id %q: %w", invite.InviterID, err)
+		return err
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -57,16 +58,17 @@ func (s *Store) CreateInvite(ctx context.Context, invite domain.Invite) error {
 		return fmt.Errorf("postgres: revoke previous pending invite: %w", err)
 	}
 	if err := queries.CreateOrganizationInvite(ctx, sqlcgen.CreateOrganizationInviteParams{
-		ID:        id,
-		OrgID:     orgID,
-		Email:     nullableText(invite.Email),
-		Phone:     nullableText(invite.Phone),
-		Role:      string(invite.Role),
-		TokenHash: invite.TokenHash,
-		InviterID: inviterID,
-		Status:    string(invite.Status),
-		ExpiresAt: timestamptz(invite.ExpiresAt),
-		CreatedAt: timestamptz(invite.CreatedAt),
+		ID:                  id,
+		OrgID:               orgID,
+		Email:               nullableText(invite.Email),
+		Phone:               nullableText(invite.Phone),
+		Role:                string(invite.Role),
+		TokenHash:           invite.TokenHash,
+		InviterID:           inviterID,
+		InviterStaffSubject: nullableText(invite.InviterStaffSubject),
+		Status:              string(invite.Status),
+		ExpiresAt:           timestamptz(invite.ExpiresAt),
+		CreatedAt:           timestamptz(invite.CreatedAt),
 	}); err != nil {
 		return fmt.Errorf("postgres: create invite: %w", err)
 	}
@@ -87,17 +89,18 @@ func (s *Store) FindInviteByTokenHash(ctx context.Context, tokenHash string) (do
 		return domain.Invite{}, err
 	}
 	return domain.Invite{
-		ID:         row.ID,
-		OrgID:      row.OrgID,
-		Email:      textValue(row.Email),
-		Phone:      textValue(row.Phone),
-		Role:       domain.MembershipRole(row.Role),
-		TokenHash:  row.TokenHash,
-		InviterID:  row.InviterID,
-		Status:     domain.InviteStatus(row.Status),
-		ExpiresAt:  row.ExpiresAt.Time,
-		AcceptedAt: timePtr(row.AcceptedAt),
-		CreatedAt:  row.CreatedAt.Time,
+		ID:                  row.ID,
+		OrgID:               row.OrgID,
+		Email:               textValue(row.Email),
+		Phone:               textValue(row.Phone),
+		Role:                domain.MembershipRole(row.Role),
+		TokenHash:           row.TokenHash,
+		InviterID:           row.InviterID,
+		InviterStaffSubject: textValue(row.InviterStaffSubject),
+		Status:              domain.InviteStatus(row.Status),
+		ExpiresAt:           row.ExpiresAt.Time,
+		AcceptedAt:          timePtr(row.AcceptedAt),
+		CreatedAt:           row.CreatedAt.Time,
 	}, nil
 }
 
@@ -115,16 +118,17 @@ func (s *Store) ListInvites(ctx context.Context, orgID string) ([]domain.Invite,
 	var out []domain.Invite
 	for _, row := range rows {
 		out = append(out, domain.Invite{
-			ID:         row.ID,
-			OrgID:      row.OrgID,
-			Email:      textValue(row.Email),
-			Phone:      textValue(row.Phone),
-			Role:       domain.MembershipRole(row.Role),
-			InviterID:  row.InviterID,
-			Status:     domain.InviteStatus(row.Status),
-			ExpiresAt:  row.ExpiresAt.Time,
-			AcceptedAt: timePtr(row.AcceptedAt),
-			CreatedAt:  row.CreatedAt.Time,
+			ID:                  row.ID,
+			OrgID:               row.OrgID,
+			Email:               textValue(row.Email),
+			Phone:               textValue(row.Phone),
+			Role:                domain.MembershipRole(row.Role),
+			InviterID:           row.InviterID,
+			InviterStaffSubject: textValue(row.InviterStaffSubject),
+			Status:              domain.InviteStatus(row.Status),
+			ExpiresAt:           row.ExpiresAt.Time,
+			AcceptedAt:          timePtr(row.AcceptedAt),
+			CreatedAt:           row.CreatedAt.Time,
 		})
 	}
 	return out, nil
@@ -234,6 +238,19 @@ func inviteIDs(orgID, inviteID string) (uuid.UUID, uuid.UUID, error) {
 		return uuid.Nil, uuid.Nil, fmt.Errorf("postgres: invite id %q: %w", inviteID, err)
 	}
 	return org, id, nil
+}
+
+// inviterParam maps the inviting user to its column value. A staff invitation
+// has no user inviter, so the empty id is SQL NULL.
+func inviterParam(inviterID string) (pgtype.UUID, error) {
+	if inviterID == "" {
+		return pgtype.UUID{}, nil
+	}
+	id, err := uuid.Parse(inviterID)
+	if err != nil {
+		return pgtype.UUID{}, fmt.Errorf("postgres: inviter id %q: %w", inviterID, err)
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}, nil
 }
 
 // nullableText maps the empty string to SQL NULL, for the invite email and

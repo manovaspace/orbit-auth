@@ -179,10 +179,11 @@ func (s *TenantServer) ResolveTenant(ctx context.Context, req *authv1.ResolveTen
 	}
 	requested := strings.ToLower(strings.TrimSpace(req.GetSlug()))
 	return &authv1.ResolveTenantResponse{
-		OrgId:   org.ID,
-		Name:    org.Name,
-		Slug:    org.Slug,
-		Retired: requested != org.Slug,
+		OrgId:     org.ID,
+		Name:      org.Name,
+		Slug:      org.Slug,
+		Retired:   requested != org.Slug,
+		Suspended: org.Status == domain.OrgStatusSuspended,
 	}, nil
 }
 
@@ -457,6 +458,8 @@ func orgError(err error) error {
 		return status.Error(codes.InvalidArgument, domain.ErrInvalidInviteTarget.Error())
 	case errors.Is(err, domain.ErrInviteNotFound):
 		return status.Error(codes.NotFound, "invite not found")
+	case errors.Is(err, domain.ErrOrgSuspended):
+		return status.Error(codes.FailedPrecondition, "organization suspended")
 	default:
 		slog.Error("organization operation failed", "error", err)
 		return status.Error(codes.Internal, "internal error")

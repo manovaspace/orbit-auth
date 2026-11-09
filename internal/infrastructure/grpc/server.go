@@ -82,6 +82,9 @@ func (s *Server) LoginWithPassword(ctx context.Context, req *authv1.LoginWithPas
 func (s *Server) RefreshToken(ctx context.Context, req *authv1.RefreshTokenRequest) (*authv1.TokenResponse, error) {
 	access, refresh, exp, err := s.svc.Refresh(ctx, req.GetRefreshToken())
 	if err != nil {
+		if errors.Is(err, domain.ErrOrgSuspended) {
+			return nil, status.Error(codes.FailedPrecondition, domain.ErrOrgSuspended.Error())
+		}
 		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 	return tokenResponse(access, refresh, exp), nil

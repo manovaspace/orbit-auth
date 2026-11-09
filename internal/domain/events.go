@@ -21,6 +21,10 @@ const (
 	// SubjectOrgSlugChanged is published when an owner renames the slug of an
 	// organization, which changes the address of its tenant host.
 	SubjectOrgSlugChanged = "auth.org.slug_changed"
+	// SubjectOrgSuspended is published when staff suspend an organization.
+	SubjectOrgSuspended = "auth.org.suspended"
+	// SubjectOrgReactivated is published when staff lift a suspension.
+	SubjectOrgReactivated = "auth.org.reactivated"
 )
 
 // EventSource is the envelope metadata source of every event this service
@@ -49,12 +53,24 @@ type OrgCreatedPayload struct {
 }
 
 // OrgSlugChangedPayload is the body of auth.org.slug_changed. ActorID is the
-// owner who made the change.
+// caller who made the change: the owner, or the staff subject for a staff
+// change. Reason is the reason staff gave, set only for a staff change.
 type OrgSlugChangedPayload struct {
 	OrgID        string    `json:"org_id"`
 	Slug         string    `json:"slug"`
 	PreviousSlug string    `json:"previous_slug"`
 	ActorID      string    `json:"actor_id"`
+	Reason       string    `json:"reason,omitempty"`
+	OccurredAt   time.Time `json:"occurred_at"`
+}
+
+// OrgStatusChangedPayload is the body of auth.org.suspended and
+// auth.org.reactivated. StaffSubject and Reason identify the staff write. The
+// organization is changed by staff, so no member is an actor.
+type OrgStatusChangedPayload struct {
+	OrgID        string    `json:"org_id"`
+	StaffSubject string    `json:"staff_subject"`
+	Reason       string    `json:"reason"`
 	OccurredAt   time.Time `json:"occurred_at"`
 }
 
@@ -169,11 +185,30 @@ func NewMembershipRoleChangedEvent(orgID, userID string, role, previous Membersh
 	}
 }
 
-// NewOrgSlugChangedEvent builds auth.org.slug_changed.
-func NewOrgSlugChangedEvent(orgID, slug, previous, actorID string, at time.Time) Event {
+// NewOrgSuspendedEvent builds auth.org.suspended.
+func NewOrgSuspendedEvent(orgID string, by StaffActor, at time.Time) Event {
+	return Event{
+		Subject:    SubjectOrgSuspended,
+		Payload:    OrgStatusChangedPayload{OrgID: orgID, StaffSubject: by.Subject, Reason: by.Reason, OccurredAt: at},
+		OccurredAt: at,
+	}
+}
+
+// NewOrgReactivatedEvent builds auth.org.reactivated.
+func NewOrgReactivatedEvent(orgID string, by StaffActor, at time.Time) Event {
+	return Event{
+		Subject:    SubjectOrgReactivated,
+		Payload:    OrgStatusChangedPayload{OrgID: orgID, StaffSubject: by.Subject, Reason: by.Reason, OccurredAt: at},
+		OccurredAt: at,
+	}
+}
+
+// NewOrgSlugChangedEvent builds auth.org.slug_changed. reason is empty for an
+// owner's change and set for a staff change.
+func NewOrgSlugChangedEvent(orgID, slug, previous, actorID, reason string, at time.Time) Event {
 	return Event{
 		Subject:    SubjectOrgSlugChanged,
-		Payload:    OrgSlugChangedPayload{OrgID: orgID, Slug: slug, PreviousSlug: previous, ActorID: actorID, OccurredAt: at},
+		Payload:    OrgSlugChangedPayload{OrgID: orgID, Slug: slug, PreviousSlug: previous, ActorID: actorID, Reason: reason, OccurredAt: at},
 		OccurredAt: at,
 	}
 }

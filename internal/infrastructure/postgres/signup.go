@@ -103,11 +103,7 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 	}
 
 	if org != nil {
-		orgID, err := uuid.Parse(org.ID)
-		if err != nil {
-			return false, fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
-		}
-		if err := createOrganizationTx(ctx, queries, sink, *org, orgID, userID, occurredAt); err != nil {
+		if err := createOrganizationTx(ctx, queries, sink, *org, userID, occurredAt); err != nil {
 			return false, err
 		}
 	}

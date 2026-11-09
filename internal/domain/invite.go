@@ -95,17 +95,21 @@ func HashInviteToken(token string) string {
 // on acceptance. TokenHash is used only when an invite is created or resolved
 // from a token; listings leave it empty.
 type Invite struct {
-	ID         string
-	OrgID      string
-	Email      string
-	Phone      string
-	Role       MembershipRole
-	TokenHash  string
-	InviterID  string
-	Status     InviteStatus
-	ExpiresAt  time.Time
-	AcceptedAt *time.Time
-	CreatedAt  time.Time
+	ID        string
+	OrgID     string
+	Email     string
+	Phone     string
+	Role      MembershipRole
+	TokenHash string
+	// InviterID is the user who issued the invitation. It is empty for an
+	// invitation issued by staff, which sets InviterStaffSubject instead.
+	InviterID string
+	// InviterStaffSubject is the staff subject that issued the invitation.
+	InviterStaffSubject string
+	Status              InviteStatus
+	ExpiresAt           time.Time
+	AcceptedAt          *time.Time
+	CreatedAt           time.Time
 }
 
 // InviteNotification is the org_invite email orbit-notifications renders. The

@@ -14,8 +14,13 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/testutil"
 )
 
+// legacyLastMigration is the last file the previous hand-written runner applied.
+// Later migrations run through goose after adoption, as they do on production.
+const legacyLastMigration = "013_mobile_verified.sql"
+
 // applyLegacyRunner reproduces the state the previous hand-written runner left
-// behind: schema_migrations with every file name and the Up SQL applied.
+// behind: schema_migrations with every file name through legacyLastMigration and
+// the Up SQL applied.
 func applyLegacyRunner(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	if _, err := pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -30,7 +35,7 @@ func applyLegacyRunner(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	}
 	var names []string
 	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), ".sql") {
+		if strings.HasSuffix(entry.Name(), ".sql") && entry.Name() <= legacyLastMigration {
 			names = append(names, entry.Name())
 		}
 	}
@@ -101,10 +106,10 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 13 {
-		t.Fatalf("applied %d migrations, want 13", len(results))
+	if len(results) != 14 {
+		t.Fatalf("applied %d migrations, want 14", len(results))
 	}
-	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "outbox_events", "feature_flags", "goose_db_version"} {
+	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "organization_provisions", "outbox_events", "feature_flags", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
 			t.Fatalf("%s was not created", table)
 		}
@@ -112,15 +117,19 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
 		t.Fatal("users.email_verified_at was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 13 || target != 13 {
-		t.Fatalf("version = %d/%d, err=%v, want 13/13", current, target, err)
+	if !columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") {
+		t.Fatal("organizations.status was not created")
+	}
+	if current, target, err := m.Version(ctx); err != nil || current != 14 || target != 14 {
+		t.Fatalf("version = %d/%d, err=%v, want 14/14", current, target, err)
 	}
 }
 
 // TestAdoptionOnLegacyDatabaseChangesNothing is the production adoption proof:
 // a database created by the old runner (real users, OTP, session and API-token
 // rows) is adopted without running migration SQL. Table and index relfilenodes
-// and every row must be identical afterwards, and a second `up` is a no-op.
+// and every row must be identical afterwards. Only migration 014, which the old
+// runner never applied, runs, and a second `up` is a no-op.
 func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	db := testutil.OpenPostgres(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -142,8 +151,8 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("adopt legacy database: %v", err)
 	}
-	if len(results) != 0 {
-		t.Fatalf("adoption ran %d migrations, want 0", len(results))
+	if len(results) != 1 || results[0].Source.Version != 14 {
+		t.Fatalf("adoption ran %d migrations, want only 014", len(results))
 	}
 
 	if after := schemaSnapshot(t, ctx, db.Pool, db.Schema); after != beforeSchema {
@@ -155,10 +164,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 13 || target != 13 {
-		t.Fatalf("version = %d/%d, err=%v, want 13/13", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 14 || target != 14 {
+		t.Fatalf("version = %d/%d, err=%v, want 14/14", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -211,7 +220,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -228,9 +237,11 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// Roll 013, 012, 011, 010, 009, 008 and 007 back so the next insert represents an
-	// account created before self-serve sign-up existed and before the outbox
-	// table.
+	// Roll 014 through 007 back so the next insert represents an account created
+	// before self-serve sign-up existed and before the outbox table.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 014: %v", err)
+	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 013: %v", err)
 	}
@@ -259,7 +270,7 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	}
 
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 007 to 011: %v", err)
+		t.Fatalf("reapply 007 to 014: %v", err)
 	}
 	var verified, created *time.Time
 	if err := db.Pool.QueryRow(ctx,
@@ -298,6 +309,16 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := m.Down(ctx)
+	if err != nil {
+		t.Fatalf("down 014: %v", err)
+	}
+	if result.Source.Version != 14 {
+		t.Fatalf("rolled back version %d, want 14", result.Source.Version)
+	}
+	if columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") || tableExists(t, ctx, db.Pool, db.Schema, "organization_provisions") {
+		t.Fatal("down of 014 left the organization status objects in place")
+	}
+	result, err = m.Down(ctx)
 	if err != nil {
 		t.Fatalf("down 013: %v", err)
 	}
@@ -443,6 +464,9 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	}
 	if !tableExists(t, ctx, db.Pool, db.Schema, "outbox_events") {
 		t.Fatal("up after down did not recreate outbox_events")
+	}
+	if !columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") || !tableExists(t, ctx, db.Pool, db.Schema, "organization_provisions") {
+		t.Fatal("up after down did not recreate the organization status objects")
 	}
 }
 
@@ -607,6 +631,9 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 014: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 013: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
@@ -660,7 +687,7 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 	}
 
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 010 and 011: %v", err)
+		t.Fatalf("reapply 010 to 014: %v", err)
 	}
 	want := map[[2]string]string{
 		{orgA, u1}: "owner",
@@ -699,6 +726,9 @@ func TestOrganizationSlugBackfill(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 014: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 013: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
@@ -723,7 +753,7 @@ func TestOrganizationSlugBackfill(t *testing.T) {
 		}
 	}
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 011: %v", err)
+		t.Fatalf("reapply 011 to 014: %v", err)
 	}
 	for _, org := range orgs {
 		var slug string
@@ -762,6 +792,9 @@ func TestMobileVerifiedBackfillsExistingMobileAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 014: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 013: %v", err)
 	}
 	// Accounts that existed before 013: one from a mobile OTP, one by email only.
@@ -775,7 +808,7 @@ func TestMobileVerifiedBackfillsExistingMobileAccounts(t *testing.T) {
 	}
 
 	if _, err := m.Up(ctx); err != nil {
-		t.Fatalf("reapply 013: %v", err)
+		t.Fatalf("reapply 013 and 014: %v", err)
 	}
 	var mobileVerified *time.Time
 	if err := db.Pool.QueryRow(ctx,
@@ -793,4 +826,176 @@ func TestMobileVerifiedBackfillsExistingMobileAccounts(t *testing.T) {
 	if emailOnly != nil {
 		t.Fatal("backfill marked an email-only account's mobile verified")
 	}
+}
+
+// TestOrganizationStatusMigrationAppliesAndRollsBackCleanly covers migration 014
+// on a database at 013 that already holds a user-issued invitation. It checks
+// the defaults on existing rows, the status and inviter constraints and the
+// provision table, then that a rollback restores the 013 shape exactly and
+// deletes only the staff-issued invitations it has to.
+func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
+	db := testutil.OpenPostgres(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	m, err := Open(db.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Close() }()
+
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 014: %v", err)
+	}
+	beforeShape := shapeSnapshot(t, ctx, db.Pool, db.Schema)
+
+	for _, statement := range []string{
+		`INSERT INTO users (id, email, password_hash, status)
+		 VALUES ('a1000000-0000-0000-0000-000000000001', 'owner@example.com', 'hash', 'active')`,
+		`INSERT INTO organizations (id, name, slug)
+		 VALUES ('a2000000-0000-0000-0000-000000000002', 'Existing', 'existing')`,
+		`INSERT INTO organization_invites (id, org_id, email, token_hash, inviter_id, expires_at)
+		 VALUES ('a3000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000002',
+		         'invitee@example.com', 'user-token-hash', 'a1000000-0000-0000-0000-000000000001',
+		         NOW() + INTERVAL '7 days')`,
+	} {
+		if _, err := db.Pool.Exec(ctx, statement); err != nil {
+			t.Fatalf("insert 013 data: %v", err)
+		}
+	}
+
+	results, err := m.Up(ctx)
+	if err != nil {
+		t.Fatalf("apply 014: %v", err)
+	}
+	if len(results) != 1 || results[0].Source.Version != 14 {
+		t.Fatalf("up ran %d migrations, want only 014", len(results))
+	}
+	if shapeSnapshot(t, ctx, db.Pool, db.Schema) == beforeShape {
+		t.Fatal("migration 014 left the organization shape unchanged")
+	}
+	var status, reason string
+	var suspendedAt *time.Time
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT status, suspended_at, suspended_reason FROM organizations WHERE id = 'a2000000-0000-0000-0000-000000000002'`,
+	).Scan(&status, &suspendedAt, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if status != "active" || suspendedAt != nil || reason != "" {
+		t.Fatalf("existing organization after 014 has status %q, suspended_at %v, reason %q; want active, NULL and empty", status, suspendedAt, reason)
+	}
+
+	// Each statement must fail on the constraint that migration 014 adds for it,
+	// so a failure for any other reason does not pass the check.
+	for _, rejected := range []struct{ name, statement, constraint string }{
+		{"unknown organization status", `UPDATE organizations SET status = 'paused' WHERE id = 'a2000000-0000-0000-0000-000000000002'`, "organizations_status_check"},
+		{"invitation without an inviter", `INSERT INTO organization_invites (id, org_id, email, token_hash, expires_at)
+		 VALUES ('a3000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000002', 'nobody@example.com', 'no-inviter-hash', NOW() + INTERVAL '7 days')`, "organization_invites_one_inviter_chk"},
+		{"invitation with two inviters", `INSERT INTO organization_invites (id, org_id, email, token_hash, inviter_id, inviter_staff_subject, expires_at)
+		 VALUES ('a3000000-0000-0000-0000-000000000006', 'a2000000-0000-0000-0000-000000000002', 'both@example.com', 'two-inviters-hash', 'a1000000-0000-0000-0000-000000000001', 'staff-1', NOW() + INTERVAL '7 days')`, "organization_invites_one_inviter_chk"},
+		{"empty staff subject", `INSERT INTO organization_invites (id, org_id, email, token_hash, inviter_staff_subject, expires_at)
+		 VALUES ('a3000000-0000-0000-0000-000000000007', 'a2000000-0000-0000-0000-000000000002', 'empty@example.com', 'empty-subject-hash', '', NOW() + INTERVAL '7 days')`, "organization_invites_one_inviter_chk"},
+		{"empty provision key", `INSERT INTO organization_provisions (idempotency_key, org_id, owner_email) VALUES ('', 'a2000000-0000-0000-0000-000000000002', 'owner@example.com')`, "organization_provisions_idempotency_key_check"},
+		{"provision without an owner target", `INSERT INTO organization_provisions (idempotency_key, org_id) VALUES ('provision-no-owner', 'a2000000-0000-0000-0000-000000000002')`, "organization_provisions_one_owner_chk"},
+		{"provision with two owner targets", `INSERT INTO organization_provisions (idempotency_key, org_id, owner_email, owner_phone) VALUES ('provision-two-owners', 'a2000000-0000-0000-0000-000000000002', 'owner@example.com', '+989120000004')`, "organization_provisions_one_owner_chk"},
+	} {
+		if _, err := db.Pool.Exec(ctx, rejected.statement); err == nil || !strings.Contains(err.Error(), rejected.constraint) {
+			t.Fatalf("%s: got %v, want a violation of %s", rejected.name, err, rejected.constraint)
+		}
+	}
+
+	// A staff-issued invitation and a provision key are valid rows of 014.
+	for _, statement := range []string{
+		`INSERT INTO organization_invites (id, org_id, email, token_hash, inviter_staff_subject, expires_at)
+		 VALUES ('a3000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000002',
+		         'staff-invitee@example.com', 'staff-token-hash', 'staff-subject-1', NOW() + INTERVAL '7 days')`,
+		`INSERT INTO organization_provisions (idempotency_key, org_id, owner_email)
+		 VALUES ('provision-key-1', 'a2000000-0000-0000-0000-000000000002', 'owner@example.com')`,
+	} {
+		if _, err := db.Pool.Exec(ctx, statement); err != nil {
+			t.Fatalf("valid row rejected: %v", err)
+		}
+	}
+	if _, err := db.Pool.Exec(ctx, `INSERT INTO organization_provisions (idempotency_key, org_id, owner_email)
+		 VALUES ('provision-key-1', 'a2000000-0000-0000-0000-000000000002', 'owner@example.com')`); err == nil || !strings.Contains(err.Error(), "organization_provisions_pkey") {
+		t.Fatalf("duplicate provision key: got %v, want a primary key violation", err)
+	}
+
+	// Rolling back deletes the staff-issued invitation, keeps the user-issued one
+	// and restores the 013 shape exactly.
+	result, err := m.Down(ctx)
+	if err != nil {
+		t.Fatalf("roll back 014: %v", err)
+	}
+	if result.Source.Version != 14 {
+		t.Fatalf("rolled back version %d, want 14", result.Source.Version)
+	}
+	if after := shapeSnapshot(t, ctx, db.Pool, db.Schema); after != beforeShape {
+		t.Fatalf("roll back 014 changed the shape:\nbefore: %s\nafter:  %s", beforeShape, after)
+	}
+	var invites int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_invites`).Scan(&invites); err != nil {
+		t.Fatal(err)
+	}
+	if invites != 1 {
+		t.Fatalf("roll back 014 left %d invitations, want only the user-issued one", invites)
+	}
+
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatalf("reapply 014: %v", err)
+	}
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT status FROM organizations WHERE id = 'a2000000-0000-0000-0000-000000000002'`).Scan(&status); err != nil || status != "active" {
+		t.Fatalf("status after reapplying 014 = %q, %v; want active", status, err)
+	}
+	if current, target, err := m.Version(ctx); err != nil || current != 14 || target != 14 {
+		t.Fatalf("version = %d/%d, err=%v, want 14/14", current, target, err)
+	}
+}
+
+// shapeSnapshot lists the columns, and the constraints other than NOT NULL, of
+// the tables migration 014 changes. A rollback must restore it exactly.
+func shapeSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema string) string {
+	t.Helper()
+	const columns = `
+		SELECT table_name || '.' || column_name || ':' || is_nullable || ':' || data_type || ':' || COALESCE(column_default, '')
+		FROM information_schema.columns
+		WHERE table_schema = $1
+		  AND table_name IN ('organizations', 'organization_invites', 'organization_provisions')
+		ORDER BY table_name, column_name`
+	const constraints = `
+		SELECT cl.relname || '.' || c.conname || ':' || c.contype::text
+		FROM pg_constraint c
+		JOIN pg_class cl ON cl.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = cl.relnamespace
+		WHERE n.nspname = $1
+		  AND cl.relname IN ('organizations', 'organization_invites', 'organization_provisions')
+		  AND c.contype <> 'n'
+		ORDER BY 1`
+	return queryLines(t, ctx, pool, columns, schema) + "\n--\n" + queryLines(t, ctx, pool, constraints, schema)
+}
+
+// queryLines returns the single text column of query, one row per line.
+func queryLines(t *testing.T, ctx context.Context, pool *pgxpool.Pool, query, schema string) string {
+	t.Helper()
+	rows, err := pool.Query(ctx, query, schema)
+	if err != nil {
+		t.Fatalf("read snapshot: %v", err)
+	}
+	defer rows.Close()
+	var lines []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(lines, "\n")
 }

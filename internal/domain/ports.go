@@ -93,6 +93,10 @@ type OrgStore interface {
 	// ErrSlugTaken when another organization holds or has held the slug, and
 	// writes auth.org.slug_changed. Setting the current slug is a no-op.
 	SetOrgSlug(ctx context.Context, orgID, slug string, by MembershipActor) error
+	// SetOrgSlugByStaff is SetOrgSlug for a staff write. Staff are not members,
+	// so no membership is checked; auth.org.slug_changed names the staff subject
+	// as its actor and carries the reason.
+	SetOrgSlugByStaff(ctx context.Context, orgID, slug string, by StaffActor) error
 	// ResolveSlug finds the organization that holds or once held slug. The
 	// returned organization carries its current slug, so a caller can redirect
 	// from a retired one. An unknown slug is ErrSlugNotFound.
@@ -101,6 +105,27 @@ type OrgStore interface {
 	// ListMembers returns every membership of orgID with its lifecycle status.
 	ListMembers(ctx context.Context, orgID string) ([]Membership, error)
 	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus, role MembershipRole) error
+	// ListOrganizationsForStaff returns one page of organizations with their
+	// member counts and active owners, oldest first.
+	ListOrganizationsForStaff(ctx context.Context, query StaffOrgListQuery) ([]StaffOrgSummary, error)
+	// ProvisionedOrganization returns what an idempotency key created: the
+	// organization and the owner target it was provisioned for. found is false
+	// when the key has not been used.
+	ProvisionedOrganization(ctx context.Context, idempotencyKey string) (provision OrganizationProvision, found bool, err error)
+	// ProvisionOrganization writes an organization with no members, its slug
+	// registry row and organization.created, the owner invitation, and the
+	// idempotency key with its owner target, in one transaction. With a
+	// non-empty idempotencyKey that already created an organization, nothing is
+	// written and the recorded provision is returned with created=false.
+	// created=true means the invitation was written too; the caller decides
+	// about notification.
+	ProvisionOrganization(ctx context.Context, org Organization, owner Invite, idempotencyKey string) (provision OrganizationProvision, created bool, err error)
+	// SuspendOrganization suspends an organization and emits
+	// auth.org.suspended, unless it is already suspended.
+	SuspendOrganization(ctx context.Context, orgID string, by StaffActor) error
+	// ReactivateOrganization lifts a suspension and emits
+	// auth.org.reactivated, unless the organization is active.
+	ReactivateOrganization(ctx context.Context, orgID string, by StaffActor) error
 	UpdateMemberStatus(ctx context.Context, orgID, userID string, status MembershipStatus, by MembershipActor) error
 	// UpdateMemberRole changes a member's administration tier. It returns
 	// ErrLastOwner when the change would leave no active owner, and records

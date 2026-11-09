@@ -14,7 +14,7 @@ WHERE org_id = sqlc.arg('org_id')::uuid
 
 -- name: CreateOrganizationInvite :exec
 INSERT INTO organization_invites (
-    id, org_id, email, phone, role, token_hash, inviter_id, status, expires_at, created_at
+    id, org_id, email, phone, role, token_hash, inviter_id, inviter_staff_subject, status, expires_at, created_at
 )
 VALUES (
     sqlc.arg('id')::uuid,
@@ -23,7 +23,8 @@ VALUES (
     sqlc.narg('phone')::text,
     sqlc.arg('role')::text,
     sqlc.arg('token_hash')::text,
-    sqlc.arg('inviter_id')::uuid,
+    sqlc.narg('inviter_id')::uuid,
+    sqlc.narg('inviter_staff_subject')::text,
     sqlc.arg('status')::text,
     sqlc.arg('expires_at')::timestamptz,
     sqlc.arg('created_at')::timestamptz
@@ -36,7 +37,8 @@ SELECT id::text AS id,
        phone,
        role,
        token_hash,
-       inviter_id::text AS inviter_id,
+       COALESCE(inviter_id::text, '')::text AS inviter_id,
+       inviter_staff_subject,
        status,
        expires_at,
        accepted_at,
@@ -50,7 +52,8 @@ SELECT id::text AS id,
        email,
        phone,
        role,
-       inviter_id::text AS inviter_id,
+       COALESCE(inviter_id::text, '')::text AS inviter_id,
+       inviter_staff_subject,
        status,
        expires_at,
        accepted_at,

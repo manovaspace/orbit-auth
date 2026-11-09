@@ -130,18 +130,40 @@ func (q *Queries) DeleteOrganizationMembership(ctx context.Context, arg DeleteOr
 	return err
 }
 
+const findOrganizationProvision = `-- name: FindOrganizationProvision :one
+SELECT org_id, owner_email, owner_phone
+FROM organization_provisions
+WHERE idempotency_key = $1::text
+`
+
+type FindOrganizationProvisionRow struct {
+	OrgID      uuid.UUID
+	OwnerEmail *string
+	OwnerPhone *string
+}
+
+func (q *Queries) FindOrganizationProvision(ctx context.Context, idempotencyKey string) (FindOrganizationProvisionRow, error) {
+	row := q.db.QueryRow(ctx, findOrganizationProvision, idempotencyKey)
+	var i FindOrganizationProvisionRow
+	err := row.Scan(&i.OrgID, &i.OwnerEmail, &i.OwnerPhone)
+	return i, err
+}
+
 const getOrganization = `-- name: GetOrganization :one
-SELECT id::text AS id, name, slug, created_at, updated_at
+SELECT id::text AS id, name, slug, status, suspended_at, suspended_reason, created_at, updated_at
 FROM organizations
 WHERE id = $1::uuid
 `
 
 type GetOrganizationRow struct {
-	ID        string
-	Name      string
-	Slug      string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID              string
+	Name            string
+	Slug            string
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 func (q *Queries) GetOrganization(ctx context.Context, id uuid.UUID) (GetOrganizationRow, error) {
@@ -151,6 +173,9 @@ func (q *Queries) GetOrganization(ctx context.Context, id uuid.UUID) (GetOrganiz
 		&i.ID,
 		&i.Name,
 		&i.Slug,
+		&i.Status,
+		&i.SuspendedAt,
+		&i.SuspendedReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -195,6 +220,33 @@ func (q *Queries) GetOrganizationMembership(ctx context.Context, arg GetOrganiza
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertOrganizationProvision = `-- name: InsertOrganizationProvision :execrows
+INSERT INTO organization_provisions (idempotency_key, org_id, owner_email, owner_phone)
+VALUES ($1::text, $2::uuid,
+        $3::text, $4::text)
+ON CONFLICT (idempotency_key) DO NOTHING
+`
+
+type InsertOrganizationProvisionParams struct {
+	IdempotencyKey string
+	OrgID          uuid.UUID
+	OwnerEmail     *string
+	OwnerPhone     *string
+}
+
+func (q *Queries) InsertOrganizationProvision(ctx context.Context, arg InsertOrganizationProvisionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertOrganizationProvision,
+		arg.IdempotencyKey,
+		arg.OrgID,
+		arg.OwnerEmail,
+		arg.OwnerPhone,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertOrganizationSlug = `-- name: InsertOrganizationSlug :exec
@@ -260,8 +312,100 @@ func (q *Queries) ListOrganizationMembers(ctx context.Context, orgID uuid.UUID) 
 	return items, nil
 }
 
+const listOrganizationsForStaff = `-- name: ListOrganizationsForStaff :many
+SELECT o.id::text AS id,
+       o.name,
+       o.slug,
+       o.status,
+       o.suspended_at,
+       o.suspended_reason,
+       o.created_at,
+       o.updated_at,
+       (SELECT count(*)::bigint FROM organization_memberships m WHERE m.org_id = o.id) AS member_count,
+       ARRAY(
+           SELECT m.user_id::text
+           FROM organization_memberships m
+           WHERE m.org_id = o.id
+             AND m.role = 'owner'
+             AND m.status = 'active'
+           ORDER BY m.created_at, m.user_id
+       )::text[] AS owner_user_ids
+FROM organizations o
+WHERE ($1::text = '' OR o.status = $1::text)
+  AND ($2::text = '' OR o.name ILIKE $2::text OR o.slug ILIKE $2::text)
+  AND (NOT $3::bool OR (o.created_at, o.id) > ($4::timestamptz, $5::uuid))
+ORDER BY o.created_at, o.id
+LIMIT $6::int
+`
+
+type ListOrganizationsForStaffParams struct {
+	StatusFilter   string
+	Pattern        string
+	HasAfter       bool
+	AfterCreatedAt pgtype.Timestamptz
+	AfterID        uuid.UUID
+	RowLimit       int32
+}
+
+type ListOrganizationsForStaffRow struct {
+	ID              string
+	Name            string
+	Slug            string
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	MemberCount     int64
+	OwnerUserIds    []string
+}
+
+// One page of organizations for the staff console, oldest first. The keyset
+// (created_at, id) resumes after the previous page; has_after false starts at
+// the beginning. An empty status_filter or pattern matches every row. pattern
+// is a complete ILIKE pattern built by the adapter, which escapes the user's
+// text. member_count counts every membership; owner_user_ids are the active
+// owners.
+func (q *Queries) ListOrganizationsForStaff(ctx context.Context, arg ListOrganizationsForStaffParams) ([]ListOrganizationsForStaffRow, error) {
+	rows, err := q.db.Query(ctx, listOrganizationsForStaff,
+		arg.StatusFilter,
+		arg.Pattern,
+		arg.HasAfter,
+		arg.AfterCreatedAt,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOrganizationsForStaffRow
+	for rows.Next() {
+		var i ListOrganizationsForStaffRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Status,
+			&i.SuspendedAt,
+			&i.SuspendedReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MemberCount,
+			&i.OwnerUserIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
-SELECT o.id::text AS id, o.name, o.slug, o.created_at, o.updated_at
+SELECT o.id::text AS id, o.name, o.slug, o.status, o.suspended_at, o.suspended_reason, o.created_at, o.updated_at
 FROM organizations o
 JOIN organization_memberships m ON m.org_id = o.id
 WHERE m.user_id = $1::uuid
@@ -270,11 +414,14 @@ ORDER BY o.created_at, o.id
 `
 
 type ListOrganizationsForUserRow struct {
-	ID        string
-	Name      string
-	Slug      string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID              string
+	Name            string
+	Slug            string
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]ListOrganizationsForUserRow, error) {
@@ -290,6 +437,9 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 			&i.ID,
 			&i.Name,
 			&i.Slug,
+			&i.Status,
+			&i.SuspendedAt,
+			&i.SuspendedReason,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -317,6 +467,17 @@ func (q *Queries) LockOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID
 	return id_2, err
 }
 
+const lockProvisionKey = `-- name: LockProvisionKey :exec
+SELECT pg_advisory_xact_lock(hashtext($1::text)::bigint)
+`
+
+// Takes a transaction-scoped advisory lock on one idempotency key, so
+// ProvisionOrganization attempts with the same key run one after another.
+func (q *Queries) LockProvisionKey(ctx context.Context, idempotencyKey string) error {
+	_, err := q.db.Exec(ctx, lockProvisionKey, idempotencyKey)
+	return err
+}
+
 const organizationSlugExists = `-- name: OrganizationSlugExists :one
 SELECT EXISTS (SELECT 1 FROM organization_slugs WHERE slug = $1::text) AS found
 `
@@ -329,18 +490,21 @@ func (q *Queries) OrganizationSlugExists(ctx context.Context, slug string) (bool
 }
 
 const resolveOrganizationSlug = `-- name: ResolveOrganizationSlug :one
-SELECT o.id::text AS id, o.name, o.slug, o.created_at, o.updated_at
+SELECT o.id::text AS id, o.name, o.slug, o.status, o.suspended_at, o.suspended_reason, o.created_at, o.updated_at
 FROM organization_slugs s
 JOIN organizations o ON o.id = s.org_id
 WHERE s.slug = $1::text
 `
 
 type ResolveOrganizationSlugRow struct {
-	ID        string
-	Name      string
-	Slug      string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID              string
+	Name            string
+	Slug            string
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 func (q *Queries) ResolveOrganizationSlug(ctx context.Context, slug string) (ResolveOrganizationSlugRow, error) {
@@ -350,6 +514,9 @@ func (q *Queries) ResolveOrganizationSlug(ctx context.Context, slug string) (Res
 		&i.ID,
 		&i.Name,
 		&i.Slug,
+		&i.Status,
+		&i.SuspendedAt,
+		&i.SuspendedReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -386,6 +553,32 @@ func (q *Queries) ReviveOwnOrganizationSlug(ctx context.Context, arg ReviveOwnOr
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setOrganizationStatus = `-- name: SetOrganizationStatus :exec
+UPDATE organizations
+SET status = $1::text,
+    suspended_at = $2::timestamptz,
+    suspended_reason = $3::text,
+    updated_at = NOW()
+WHERE id = $4::uuid
+`
+
+type SetOrganizationStatusParams struct {
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
+	ID              uuid.UUID
+}
+
+func (q *Queries) SetOrganizationStatus(ctx context.Context, arg SetOrganizationStatusParams) error {
+	_, err := q.db.Exec(ctx, setOrganizationStatus,
+		arg.Status,
+		arg.SuspendedAt,
+		arg.SuspendedReason,
+		arg.ID,
+	)
+	return err
 }
 
 const updateOrganizationMembershipRole = `-- name: UpdateOrganizationMembershipRole :exec

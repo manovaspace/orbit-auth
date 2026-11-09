@@ -29,25 +29,29 @@ type FeatureFlag struct {
 }
 
 type Organization struct {
-	ID        uuid.UUID
-	Name      string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	Slug      string
+	ID              uuid.UUID
+	Name            string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	Slug            string
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
 }
 
 type OrganizationInvite struct {
-	ID         uuid.UUID
-	OrgID      uuid.UUID
-	Email      *string
-	TokenHash  string
-	InviterID  uuid.UUID
-	Status     string
-	ExpiresAt  pgtype.Timestamptz
-	AcceptedAt pgtype.Timestamptz
-	CreatedAt  pgtype.Timestamptz
-	Phone      *string
-	Role       string
+	ID                  uuid.UUID
+	OrgID               uuid.UUID
+	Email               *string
+	TokenHash           string
+	InviterID           pgtype.UUID
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	AcceptedAt          pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	Phone               *string
+	Role                string
+	InviterStaffSubject *string
 }
 
 type OrganizationMembership struct {
@@ -57,6 +61,14 @@ type OrganizationMembership struct {
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
 	Role      string
+}
+
+type OrganizationProvision struct {
+	IdempotencyKey string
+	OrgID          uuid.UUID
+	OwnerEmail     *string
+	OwnerPhone     *string
+	CreatedAt      pgtype.Timestamptz
 }
 
 type OrganizationSlug struct {

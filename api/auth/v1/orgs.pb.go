@@ -385,7 +385,10 @@ type ResolveTenantResponse struct {
 	// slug is the organization's current slug.
 	Slug string `protobuf:"bytes,3,opt,name=slug,proto3" json:"slug,omitempty"`
 	// retired is true when the requested slug is no longer the current one.
-	Retired       bool `protobuf:"varint,4,opt,name=retired,proto3" json:"retired,omitempty"`
+	Retired bool `protobuf:"varint,4,opt,name=retired,proto3" json:"retired,omitempty"`
+	// suspended is true while staff have suspended the organization. The
+	// organization is still returned; only selecting into it is refused.
+	Suspended     bool `protobuf:"varint,5,opt,name=suspended,proto3" json:"suspended,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -444,6 +447,13 @@ func (x *ResolveTenantResponse) GetSlug() string {
 func (x *ResolveTenantResponse) GetRetired() bool {
 	if x != nil {
 		return x.Retired
+	}
+	return false
+}
+
+func (x *ResolveTenantResponse) GetSuspended() bool {
+	if x != nil {
+		return x.Suspended
 	}
 	return false
 }
@@ -1901,12 +1911,13 @@ const file_auth_v1_orgs_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x15\n" +
 	"\x06org_id\x18\x02 \x01(\tR\x05orgId\"*\n" +
 	"\x14ResolveTenantRequest\x12\x12\n" +
-	"\x04slug\x18\x01 \x01(\tR\x04slug\"p\n" +
+	"\x04slug\x18\x01 \x01(\tR\x04slug\"\x8e\x01\n" +
 	"\x15ResolveTenantResponse\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04slug\x18\x03 \x01(\tR\x04slug\x12\x18\n" +
-	"\aretired\x18\x04 \x01(\bR\aretired\"\xa6\x01\n" +
+	"\aretired\x18\x04 \x01(\bR\aretired\x12\x1c\n" +
+	"\tsuspended\x18\x05 \x01(\bR\tsuspended\"\xa6\x01\n" +
 	"\n" +
 	"Membership\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +

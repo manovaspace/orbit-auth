@@ -128,6 +128,9 @@ message ResolveTenantResponse {
   string slug = 3;
   // retired is true when the requested slug is no longer the current one.
   bool retired = 4;
+  // suspended is true while staff have suspended the organization. The
+  // organization is still returned; only selecting into it is refused.
+  bool suspended = 5;
 }
 
 message Membership {

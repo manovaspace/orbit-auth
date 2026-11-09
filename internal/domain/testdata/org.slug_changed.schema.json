@@ -4,6 +4,7 @@
 		"occurred_at": "string",
 		"org_id": "string",
 		"previous_slug": "string",
+		"reason": "string?",
 		"slug": "string"
 	}
 }

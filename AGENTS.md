@@ -69,6 +69,16 @@ Memberships carry an administration tier `role` (`owner`, `admin`, `member`; mig
 - The store keeps at least one active owner (`ErrLastOwner` → `FailedPrecondition`) under the organization row lock, so concurrent demotions cannot orphan an organization. The creator of an organization (`CreateOrg`, sign-up with `org_name`) is its first owner; invited and added members start as `member`.
 - Migration 010 backfilled the earliest active member of each organization as its owner.
 
+## Staff organization administration
+
+`StaffOrgService` is the Manova staff surface over organizations. It is not for the public edge: the gateway authenticates staff through Keycloak and is the only caller.
+
+- **Metadata:** every call carries `x-orbit-service-token`, compared in constant time with `AUTH_STAFF_SERVICE_TOKEN`, and `x-staff-subject`. Every write also carries `x-staff-reason`, recorded with the change. `StaffServiceUnaryServerInterceptor` checks all three before any handler runs. An empty `AUTH_STAFF_SERVICE_TOKEN` refuses every call with `Unavailable` ("staff service disabled"); a missing or wrong token is `Unauthenticated`. The token is never logged.
+- **RPCs:** `ListOrganizations` (query, status, `page_size` up to 100, keyset `page_token`), `GetOrganization` (members and pending invitations, never token hashes), `ProvisionOrganization` (no member and one pending owner invitation by email or phone, idempotent on `idempotency_key` for the same name and owner, where a repeat rotates the owner invitation; any other repeat is `AlreadyExists`), `SuspendOrganization` and `ReactivateOrganization`, `SetOrganizationSlug` (the `SetOrgSlug` registry rules), `ReinviteOwner`.
+- **Staff are never members.** Staff operations skip `AuthorizeMembershipAction`. Each write is logged with the staff subject and reason.
+- **Suspension:** a suspended organization refuses `SelectOrg` and refresh into it (`FailedPrecondition`, "organization suspended"). Its members keep their memberships, and `ResolveTenant` reports `suspended`.
+- **Migration 014** adds `organizations.status` (`active` or `suspended`), `suspended_at`, `suspended_reason`, the `organization_provisions` idempotency table (key, organization and owner target), and `organization_invites.inviter_staff_subject`. `inviter_id` becomes nullable, and exactly one of the two inviter columns is set.
+
 ## Organization slugs and tenant hosts
 
 Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<env>`; migration 011).
@@ -78,13 +88,13 @@ Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<en
 - `organization_slugs` is the registry of every slug an organization has held; its primary key makes a slug unique across organizations **and across time**. `SetOrgSlug` (owner only, rechecked under the organization lock) retires the old slug, which stays reserved for the organization and keeps resolving, so a rename never frees an address for someone else. An organization can take its own retired slug back.
 - `InviteService` is public (`GetInvitePreview`, `AcceptInviteWithSignup`) and, like `TenantService`, sits outside `OrgService`, which is the only service the access-token interceptor guards. `GetInvitePreview` shows the organization, tier and expiry of a token and never the recipient. `AcceptInviteWithSignup` creates the account for a **phone** invitation; it is refused with `FailedPrecondition` "invite sign-up is disabled" only while `AUTH_INVITE_SIGNUP` is `off` or `false` (default on; it does not depend on `AUTH_SIGNUP`), `InvalidArgument` for a password under eight characters after trimming, `AlreadyExists` when an account already uses the number (that person signs in and calls `AcceptInvite`), and `NotFound` for any unusable token. The account's mobile is the invited number with `users.mobile_verified_at` NULL: invite sign-up does not verify the number, and only a successful mobile OTP sets the column (`VerifyOTP` on the `sms` channel, and demo seeding). Sign-in does not depend on the column.
 - `OrgService.InviteMember` takes `email` or `phone` (exactly one) and an optional `role` (empty means `member`). Only a phone invitation returns the raw `token` in its response, because no email carries it there; an email invitation never returns it.
-- `TenantService.ResolveTenant` is the only unauthenticated organization call. It answers the organization id, name and current slug and whether the requested slug is retired, never members. Unknown, invalid and reserved slugs are the same `NotFound`.
+- `TenantService.ResolveTenant` is the only unauthenticated organization call. It answers the organization id, name and current slug, whether the requested slug is retired and whether the organization is suspended, never members. Unknown, invalid and reserved slugs are the same `NotFound`.
 
 ## Feature Flags & Demo Mode
 
 - **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
-- **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds the optional `org` access-token claim at login when the user has exactly one active membership. Zero or many memberships omit it. `SelectOrg` rotates the refresh token and issues a pair carrying the selected org.
-- **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically (`RefreshTokenStore.Consume`), so a token can be redeemed once even under concurrent requests. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
+- **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds the optional `org` access-token claim at login when the user has exactly one active membership. Zero or many memberships omit it, and a suspended organization is never chosen. `SelectOrg` rotates the refresh token and issues a pair carrying the selected org.
+- **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically (`RefreshTokenStore.Consume`), so a token can be redeemed once even under concurrent requests. Refreshing into or selecting a suspended organization fails with `FailedPrecondition` (`organization suspended`) and leaves the token unspent. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
 - **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup. `cmd/auth` parses the JSON; the application validates and hashes each entry.
 - **Invite sign-up:** `AUTH_INVITE_SIGNUP` defaults to on; only an explicit `off` or `false` disables `InviteService.AcceptInviteWithSignup`. It needs a token an owner or admin issued, so it is independent of `AUTH_SIGNUP`.
 - **Self-serve sign-up:** `AUTH_SIGNUP` is `open` or `off` (default `off`), read in `cmd/auth` and injected through `application.Deps`. While off, `SignupService` returns `codes.FailedPrecondition` "sign-up is disabled" and writes nothing. A sign-up account is `signup_pending` until `VerifySignup` receives both the `signup_verify` OTP and the pending account password; password and OTP login refuse it with the generic invalid-credentials error. A retry for a still-pending address replaces its credentials and reissues the code (at most once per 60 seconds); an active account is left untouched. Admin and demo accounts are verified from the start, and a valid invite token verifies the address without an OTP.
@@ -94,12 +104,14 @@ Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<en
 Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 008) in the same transaction as the change and relayed by `outbox.Relay` to `orbit-message-bus`:
 
 - `auth.user.created` — a user is created by OTP login, sign-up, invite-sign-up or demo seeding
-- `auth.org.created` — `CreateOrg` or sign-up with `org_name`
+- `auth.org.created` — `CreateOrg`, sign-up with `org_name`, or staff `ProvisionOrganization`
 - `auth.membership.added` — `AddMember`, invite acceptance (including phone invite sign-up), or the creator membership
 - `auth.membership.removed` — `RemoveMember`
 - `auth.membership.suspended` — `SuspendMember`
 - `auth.membership.role_changed` — `SetMemberRole` (carries `role`, `previous_role` and `actor_id`)
-- `auth.org.slug_changed` — `SetOrgSlug` (carries `slug`, `previous_slug` and `actor_id`); `auth.org.created` carries the new organization's `slug`
+- `auth.org.slug_changed` — `SetOrgSlug` or staff `SetOrganizationSlug` (carries `slug`, `previous_slug` and `actor_id`: the caller, or for a staff change the staff subject, with `reason`); `auth.org.created` carries the new organization's `slug`
+- `auth.org.suspended` — staff `SuspendOrganization` (carries `org_id`, `staff_subject` and `reason`)
+- `auth.org.reactivated` — staff `ReactivateOrganization` (same payload)
 
 Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version is envelope metadata `version="1"`, not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: owner, admin or member, never a product role) on `membership.added` and `occurred_at`; they never carry emails, tokens or secrets.
 
