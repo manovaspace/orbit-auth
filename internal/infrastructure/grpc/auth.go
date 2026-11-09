@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 	orbittoken "github.com/manovaspace/orbit-auth/token"
@@ -22,8 +23,13 @@ const authorizationMetadataKey = "authorization"
 const (
 	serviceTokenMetadataKey = "x-orbit-service-token"
 	staffSubjectMetadataKey = "x-staff-subject"
-	staffReasonMetadataKey  = "x-staff-reason"
-	staffOrgServicePrefix   = "/auth.v1.StaffOrgService/"
+	// staffReasonBinaryMetadataKey carries the reason as UTF-8 text. gRPC sends
+	// -bin metadata base64-encoded and delivers the raw bytes, so a reason may be
+	// written in any language. The ASCII key is still read for older callers.
+	staffReasonBinaryMetadataKey = "x-staff-reason-bin"
+	staffReasonMetadataKey       = "x-staff-reason"
+	staffReasonMaxRunes          = 500
+	staffOrgServicePrefix        = "/auth.v1.StaffOrgService/"
 )
 
 // staffReadMethods are the StaffOrgService RPCs that change nothing and so need
@@ -69,9 +75,15 @@ func StaffServiceUnaryServerInterceptor(serviceToken string) grpc.UnaryServerInt
 			return nil, status.Error(codes.InvalidArgument, "staff subject required")
 		}
 		if _, isRead := staffReadMethods[info.FullMethod]; !isRead {
-			actor.Reason = strings.TrimSpace(firstMetadataValue(md, staffReasonMetadataKey))
+			actor.Reason = strings.TrimSpace(firstMetadataValue(md, staffReasonBinaryMetadataKey))
+			if actor.Reason == "" {
+				actor.Reason = strings.TrimSpace(firstMetadataValue(md, staffReasonMetadataKey))
+			}
 			if actor.Reason == "" {
 				return nil, status.Error(codes.InvalidArgument, "staff reason required")
+			}
+			if !utf8.ValidString(actor.Reason) || utf8.RuneCountInString(actor.Reason) > staffReasonMaxRunes {
+				return nil, status.Error(codes.InvalidArgument, "staff reason must be UTF-8 text of at most 500 characters")
 			}
 		}
 		return handler(withStaffActor(ctx, actor), req)

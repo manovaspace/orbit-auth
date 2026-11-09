@@ -171,7 +171,7 @@ Each membership has an administration tier: `owner`, `admin` or `member`. Orbit 
 
 ## Staff organization administration
 
-`StaffOrgService` is the Manova staff surface over organizations. It is not for the public edge: the gateway authenticates staff through Keycloak and is the only caller. Every call carries `x-orbit-service-token`, compared in constant time with `AUTH_STAFF_SERVICE_TOKEN`, and `x-staff-subject`. Every write also carries `x-staff-reason`, which is recorded with the change. Without a configured token every call is `Unavailable`; a missing or wrong token is `Unauthenticated`; a write without a reason is `InvalidArgument`. Staff are never members of an organization: staff operations skip the membership policy, and every write is logged with the staff subject and the reason.
+`StaffOrgService` is the Manova staff surface over organizations. It is not for the public edge: the gateway authenticates staff through Keycloak and is the only caller. Every call carries `x-orbit-service-token`, compared in constant time with `AUTH_STAFF_SERVICE_TOKEN`, and `x-staff-subject`. Every write also carries the reason, which is recorded with the change: `x-staff-reason-bin` holds it as UTF-8 text of at most 500 characters, and the ASCII `x-staff-reason` is still read for older callers. Without a configured token every call is `Unavailable`; a missing or wrong token is `Unauthenticated`; a write without a reason is `InvalidArgument`. Staff are never members of an organization: staff operations skip the membership policy, and every write is logged with the staff subject and the reason.
 
 | RPC | What it does |
 | --- | --- |
