@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1](https://github.com/manovaspace/orbit-auth/compare/v0.10.0...v0.10.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **grpc:** read the staff reason as UTF-8 binary metadata ([2bfb384](https://github.com/manovaspace/orbit-auth/commit/2bfb384af17e8eecf68530b2e75007cb1a44baae))
+* **grpc:** read the staff reason as UTF-8 binary metadata ([e6d4489](https://github.com/manovaspace/orbit-auth/commit/e6d4489f6aec9528e95dee021c11cdfaf09fe03b))
+
 ## [0.10.0](https://github.com/manovaspace/orbit-auth/compare/v0.9.0...v0.10.0) (2026-11-09)
 
 
