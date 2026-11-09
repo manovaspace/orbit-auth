@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,5 +303,39 @@ func TestTenantServiceReportsSuspendedFlag(t *testing.T) {
 	}
 	if !resp.GetSuspended() {
 		t.Fatal("a suspended organization must resolve with suspended set")
+	}
+}
+
+// A reason written in any language travels in the binary metadata key. gRPC
+// base64-encodes -bin values on the wire and delivers the raw UTF-8 bytes.
+func TestStaffInterceptorAcceptsUTF8ReasonInBinaryMetadata(t *testing.T) {
+	const reason = "بررسی درخواست مشتری"
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		staffOrgServiceToken, staffTestToken,
+		"x-staff-subject", "staff-1",
+		staffReasonBinaryMetadataKey, reason,
+	))
+	actor, ran, err := runStaffInterceptor(t, staffTestToken, ctx, staffWriteMethod)
+	if err != nil || !ran {
+		t.Fatalf("a UTF-8 reason was refused: ran=%v err=%v", ran, err)
+	}
+	if actor.Reason != reason {
+		t.Fatalf("reason = %q, want %q", actor.Reason, reason)
+	}
+}
+
+// The reason must be UTF-8 text of at most staffReasonMaxRunes characters.
+func TestStaffInterceptorRefusesInvalidOrLongReason(t *testing.T) {
+	for _, reason := range []string{string([]byte{0xff, 0xfe}), strings.Repeat("a", staffReasonMaxRunes+1)} {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+			staffOrgServiceToken, staffTestToken,
+			"x-staff-subject", "staff-1",
+			staffReasonBinaryMetadataKey, reason,
+		))
+		_, ran, err := runStaffInterceptor(t, staffTestToken, ctx, staffWriteMethod)
+		assertCode(t, err, codes.InvalidArgument, "")
+		if ran {
+			t.Fatal("the handler must not run for an invalid reason")
+		}
 	}
 }
