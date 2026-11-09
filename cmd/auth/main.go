@@ -163,12 +163,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	gs := googlegrpc.NewServer(serverOptions(signer)...)
+	// AUTH_STAFF_SERVICE_TOKEN is the shared secret the gateway presents on every
+	// StaffOrgService call. Empty disables the staff surface: every call is
+	// refused. The value is never logged.
+	staffServiceToken := os.Getenv("AUTH_STAFF_SERVICE_TOKEN")
+	if staffServiceToken == "" {
+		log.Info("staff service disabled", "reason", "AUTH_STAFF_SERVICE_TOKEN is empty")
+	}
+
+	gs := googlegrpc.NewServer(serverOptions(signer, staffServiceToken)...)
 	authv1.RegisterAuthServiceServer(gs, grpchandlers.New(svc))
 	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
 	authv1.RegisterTenantServiceServer(gs, grpchandlers.NewTenant(svc))
 	authv1.RegisterInviteServiceServer(gs, grpchandlers.NewInvite(svc))
 	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
+	authv1.RegisterStaffOrgServiceServer(gs, grpchandlers.NewStaffOrg(svc))
 
 	health := httpapi.New(flagService)
 	healthPort := envOr("HEALTH_PORT", "10011")
@@ -252,13 +261,14 @@ func runEventRelay(ctx context.Context, relay *outbox.Relay, logInfo, logError f
 }
 
 // serverOptions keeps the observability chain and adds access-token validation
-// for OrgService. The access interceptor runs after internal auth and before
-// every OrgService handler. AuthService keeps its existing unauthenticated
-// contract.
-func serverOptions(signer *jwt.Signer) []googlegrpc.ServerOption {
+// for OrgService and the service-token guard for StaffOrgService. The access
+// interceptor runs after internal auth and before every OrgService handler.
+// AuthService keeps its existing unauthenticated contract.
+func serverOptions(signer *jwt.Signer, staffServiceToken string) []googlegrpc.ServerOption {
 	opts := observability.GRPCServerOptions()
 	return append(opts, googlegrpc.ChainUnaryInterceptor(
 		grpchandlers.AccessTokenUnaryServerInterceptor(signer.KeySet()),
+		grpchandlers.StaffServiceUnaryServerInterceptor(staffServiceToken),
 	))
 }
 

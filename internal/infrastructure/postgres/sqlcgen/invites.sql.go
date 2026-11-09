@@ -63,7 +63,7 @@ func (q *Queries) AddActiveOrganizationMembership(ctx context.Context, arg AddAc
 
 const createOrganizationInvite = `-- name: CreateOrganizationInvite :exec
 INSERT INTO organization_invites (
-    id, org_id, email, phone, role, token_hash, inviter_id, status, expires_at, created_at
+    id, org_id, email, phone, role, token_hash, inviter_id, inviter_staff_subject, status, expires_at, created_at
 )
 VALUES (
     $1::uuid,
@@ -74,22 +74,24 @@ VALUES (
     $6::text,
     $7::uuid,
     $8::text,
-    $9::timestamptz,
-    $10::timestamptz
+    $9::text,
+    $10::timestamptz,
+    $11::timestamptz
 )
 `
 
 type CreateOrganizationInviteParams struct {
-	ID        uuid.UUID
-	OrgID     uuid.UUID
-	Email     *string
-	Phone     *string
-	Role      string
-	TokenHash string
-	InviterID uuid.UUID
-	Status    string
-	ExpiresAt pgtype.Timestamptz
-	CreatedAt pgtype.Timestamptz
+	ID                  uuid.UUID
+	OrgID               uuid.UUID
+	Email               *string
+	Phone               *string
+	Role                string
+	TokenHash           string
+	InviterID           pgtype.UUID
+	InviterStaffSubject *string
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
 }
 
 func (q *Queries) CreateOrganizationInvite(ctx context.Context, arg CreateOrganizationInviteParams) error {
@@ -101,6 +103,7 @@ func (q *Queries) CreateOrganizationInvite(ctx context.Context, arg CreateOrgani
 		arg.Role,
 		arg.TokenHash,
 		arg.InviterID,
+		arg.InviterStaffSubject,
 		arg.Status,
 		arg.ExpiresAt,
 		arg.CreatedAt,
@@ -115,7 +118,8 @@ SELECT id::text AS id,
        phone,
        role,
        token_hash,
-       inviter_id::text AS inviter_id,
+       COALESCE(inviter_id::text, '')::text AS inviter_id,
+       inviter_staff_subject,
        status,
        expires_at,
        accepted_at,
@@ -125,17 +129,18 @@ WHERE token_hash = $1::text
 `
 
 type FindOrganizationInviteByTokenHashRow struct {
-	ID         string
-	OrgID      string
-	Email      *string
-	Phone      *string
-	Role       string
-	TokenHash  string
-	InviterID  string
-	Status     string
-	ExpiresAt  pgtype.Timestamptz
-	AcceptedAt pgtype.Timestamptz
-	CreatedAt  pgtype.Timestamptz
+	ID                  string
+	OrgID               string
+	Email               *string
+	Phone               *string
+	Role                string
+	TokenHash           string
+	InviterID           string
+	InviterStaffSubject *string
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	AcceptedAt          pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
 }
 
 func (q *Queries) FindOrganizationInviteByTokenHash(ctx context.Context, tokenHash string) (FindOrganizationInviteByTokenHashRow, error) {
@@ -149,6 +154,7 @@ func (q *Queries) FindOrganizationInviteByTokenHash(ctx context.Context, tokenHa
 		&i.Role,
 		&i.TokenHash,
 		&i.InviterID,
+		&i.InviterStaffSubject,
 		&i.Status,
 		&i.ExpiresAt,
 		&i.AcceptedAt,
@@ -163,7 +169,8 @@ SELECT id::text AS id,
        email,
        phone,
        role,
-       inviter_id::text AS inviter_id,
+       COALESCE(inviter_id::text, '')::text AS inviter_id,
+       inviter_staff_subject,
        status,
        expires_at,
        accepted_at,
@@ -174,16 +181,17 @@ ORDER BY created_at DESC, id
 `
 
 type ListOrganizationInvitesRow struct {
-	ID         string
-	OrgID      string
-	Email      *string
-	Phone      *string
-	Role       string
-	InviterID  string
-	Status     string
-	ExpiresAt  pgtype.Timestamptz
-	AcceptedAt pgtype.Timestamptz
-	CreatedAt  pgtype.Timestamptz
+	ID                  string
+	OrgID               string
+	Email               *string
+	Phone               *string
+	Role                string
+	InviterID           string
+	InviterStaffSubject *string
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	AcceptedAt          pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
 }
 
 func (q *Queries) ListOrganizationInvites(ctx context.Context, orgID uuid.UUID) ([]ListOrganizationInvitesRow, error) {
@@ -202,6 +210,7 @@ func (q *Queries) ListOrganizationInvites(ctx context.Context, orgID uuid.UUID) 
 			&i.Phone,
 			&i.Role,
 			&i.InviterID,
+			&i.InviterStaffSubject,
 			&i.Status,
 			&i.ExpiresAt,
 			&i.AcceptedAt,

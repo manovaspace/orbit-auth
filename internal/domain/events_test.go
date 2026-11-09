@@ -69,7 +69,7 @@ func TestLifecycleEventConstructors(t *testing.T) {
 		{"added", NewMembershipAddedEvent("o-1", "u-1", MembershipActive, RoleMember, at), SubjectMembershipAdded},
 		{"removed", NewMembershipRemovedEvent("o-1", "u-1", MembershipSuspended, at), SubjectMembershipRemoved},
 		{"suspended", NewMembershipSuspendedEvent("o-1", "u-1", MembershipSuspended, at), SubjectMembershipSuspended},
-		{"slug changed", NewOrgSlugChangedEvent("o-1", "acme-cafe", "acme", "u-1", at), SubjectOrgSlugChanged},
+		{"slug changed", NewOrgSlugChangedEvent("o-1", "acme-cafe", "acme", "u-1", "", at), SubjectOrgSlugChanged},
 		{"role changed", NewMembershipRoleChangedEvent("o-1", "u-1", RoleAdmin, RoleMember, "u-2", at), SubjectMembershipRoleChanged},
 	}
 	for _, tc := range tests {

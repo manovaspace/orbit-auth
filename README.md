@@ -131,6 +131,7 @@ must never be edited by hand.
 | `AUTH_AUTO_SELECT_SINGLE_ORG` | `true` | Add the `org` claim when the user has one active membership |
 | `AUTH_SIGNUP` | `off` | `open` enables self-serve sign-up |
 | `AUTH_INVITE_SIGNUP` | `on` | `off` or `false` disables invite sign-up (`InviteService.AcceptInviteWithSignup`); independent of `AUTH_SIGNUP` |
+| `AUTH_STAFF_SERVICE_TOKEN` | unset | Shared secret the gateway sends as `x-orbit-service-token` on every `StaffOrgService` call. Empty disables the staff surface: every call is `Unavailable`. Never logged |
 | `DEMO_MODE` | `false` | Dev-only demo account seeding |
 | `BUS_TRANSPORT` | `inproc` | Lifecycle event transport: `inproc`, `nats` or `redis` |
 | `BUS_NATS_URL` | unset | NATS endpoint when `BUS_TRANSPORT=nats` |
@@ -140,8 +141,8 @@ must never be edited by hand.
 - **Demo Mode:** When `DEMO_MODE=true` in dev, pre-seeds accounts from `AUTH_DEMO_USERS` JSON array. Enabling it outside dev fails closed.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
 - **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
-- **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. `SelectOrg` switches organization and rotates the refresh token.
-- **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically, so a token can be redeemed once even under concurrent requests. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
+- **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. A suspended organization is never auto-selected. `SelectOrg` switches organization and rotates the refresh token.
+- **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically, so a token can be redeemed once even under concurrent requests. Refreshing into or selecting a suspended organization fails with `FailedPrecondition` (`organization suspended`) and does not consume the token. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
 - **Self-serve sign-up:** `AUTH_SIGNUP=open` enables `SignupService.RegisterWithEmail` and `SignupService.VerifySignup`; the default `off` rejects both with `FailedPrecondition` before anything is written. A new email account stays `signup_pending` until `VerifySignup` receives both the `signup_verify` OTP and the pending account password. A retry for a still-pending address replaces its credentials and reissues the code (at most once per 60 seconds); an active account is left untouched. Admin and demo accounts are verified from the start, and a valid `invite_token` verifies the address without an OTP.
 - **Phone invitations:** `OrgService.InviteMember` invites one recipient, an email address or an E.164 phone number, with an organization tier (`role`, default `member`). A phone invitation returns its raw token once, in that response, for the inviter to share. The public `InviteService` lets the invitee preview it (`GetInvitePreview`) and, when no account uses the number yet, create the account with a password (`AcceptInviteWithSignup`; password at least 8 characters; refused only when `AUTH_INVITE_SIGNUP` is `off` or `false`, which is on by default). An account created that way has an unverified mobile (`mobile_verified_at` NULL) until a mobile OTP for the number succeeds; sign-in is not gated on it.
 - **Lifecycle events:** `BUS_TRANSPORT` selects the message bus (`inproc` default, `nats` with `BUS_NATS_URL`, `redis` with `BUS_REDIS_URL`). See [Events](#events).
@@ -153,18 +154,35 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`) in the sam
 | Subject | Metadata version | Trigger |
 | --- | --- | --- |
 | `auth.user.created` | `1` | OTP first login, sign-up, invite-sign-up (email or phone), demo seed |
-| `auth.org.created` | `1` | `CreateOrg`, sign-up with `org_name` |
+| `auth.org.created` | `1` | `CreateOrg`, sign-up with `org_name`, staff `ProvisionOrganization` |
 | `auth.membership.added` | `1` | `AddMember`, invite acceptance (including phone invite sign-up), creator membership |
 | `auth.membership.removed` | `1` | `RemoveMember` |
 | `auth.membership.suspended` | `1` | `SuspendMember` |
 | `auth.membership.role_changed` | `1` | `SetMemberRole` |
-| `auth.org.slug_changed` | `1` | `SetOrgSlug` |
+| `auth.org.slug_changed` | `1` | `SetOrgSlug`, staff `SetOrganizationSlug` |
+| `auth.org.suspended` | `1` | Staff `SuspendOrganization` |
+| `auth.org.reactivated` | `1` | Staff `ReactivateOrganization` |
 
-Subjects use the bus's three-segment `{domain}.{entity}.{action}` form; the event version is the envelope `metadata.version` value (`"1"`), not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: `owner`, `admin` or `member`, never a product role) on `membership.added` and `occurred_at`, and never carry emails, tokens or secrets. Delivery is at-least-once; consumers are idempotent on the envelope `id`.
+Subjects use the bus's three-segment `{domain}.{entity}.{action}` form; the event version is the envelope `metadata.version` value (`"1"`), not a subject suffix. Payloads carry ids, the organization name for `org.created`, the membership status, the organization administration tier (`role`: `owner`, `admin` or `member`, never a product role) on `membership.added` and `occurred_at`, and never carry emails, tokens or secrets. The staff events `auth.org.suspended` and `auth.org.reactivated` carry `org_id`, the staff subject and the reason that staff entered. A staff `slug_changed` carries the staff subject as `actor_id` and the reason. Delivery is at-least-once; consumers are idempotent on the envelope `id`.
 
 ## Organization administration
 
 Each membership has an administration tier: `owner`, `admin` or `member`. Orbit Auth enforces it on `AddMember`, `RemoveMember`, `SuspendMember`, `SetMemberRole`, `InviteMember`, `RevokeInvite` and `ListInvites`: the caller must be an active owner or admin, an admin acts only on plain members, and only an owner grants `owner` or `admin`. Any active member may remove themselves. An organization always keeps one active owner. The tier is not a product role; products keep their own roles and permissions.
+
+## Staff organization administration
+
+`StaffOrgService` is the Manova staff surface over organizations. It is not for the public edge: the gateway authenticates staff through Keycloak and is the only caller. Every call carries `x-orbit-service-token`, compared in constant time with `AUTH_STAFF_SERVICE_TOKEN`, and `x-staff-subject`. Every write also carries `x-staff-reason`, which is recorded with the change. Without a configured token every call is `Unavailable`; a missing or wrong token is `Unauthenticated`; a write without a reason is `InvalidArgument`. Staff are never members of an organization: staff operations skip the membership policy, and every write is logged with the staff subject and the reason.
+
+| RPC | What it does |
+| --- | --- |
+| `ListOrganizations` | Pages organizations, oldest first, at most 100 per page. `query` matches the name or the slug, case-insensitively. `status` is `active`, `suspended`, or empty for both. |
+| `GetOrganization` | One organization with its members and pending invitations. Token hashes are never returned. |
+| `ProvisionOrganization` | Creates an organization with no members and one pending owner invitation, by email or phone, in one transaction. Idempotent on `idempotency_key` for the same name and owner: a repeat returns the same organization and rotates the owner invitation, and an email owner is sent a new invitation. A repeat with another name or owner is `AlreadyExists`. The raw token is returned for a phone owner only, so a repeat for a phone owner carries the new token. |
+| `SuspendOrganization`, `ReactivateOrganization` | A suspended organization refuses `SelectOrg` and refresh into it with `FailedPrecondition` (`organization suspended`), and `ResolveTenant` reports it as suspended. Its members keep their memberships. |
+| `SetOrganizationSlug` | Changes the slug under the same registry rules as the owner's `SetOrgSlug`: the old slug stays reserved for the organization. The event names the staff subject and carries the reason. |
+| `ReinviteOwner` | Issues a new owner invitation by email or phone, rotating the pending one for that recipient. The raw token is returned for a phone owner only. |
+
+Migration 014 adds `organizations.status`, `suspended_at` and `suspended_reason`, the `organization_provisions` idempotency table (key, organization and owner target), and `organization_invites.inviter_staff_subject`. A staff-issued invitation has no user inviter, so `inviter_id` is nullable and exactly one of the two inviter columns is set.
 
 ## Organization slugs
 

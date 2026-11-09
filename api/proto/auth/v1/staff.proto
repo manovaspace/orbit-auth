@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/manovaspace/orbit-auth/api/auth/v1;authv1";
+
+// StaffOrgService is the Manova staff surface over organizations. It is not
+// for the public edge. The gateway authenticates staff (Keycloak) and is the
+// only caller. Every call carries the service token in x-orbit-service-token
+// and the staff subject in x-staff-subject. Every write RPC also carries
+// x-staff-reason, which is recorded with the change. Without a configured
+// service token every call is refused with Unavailable, and a missing or wrong
+// token with Unauthenticated.
+//
+// Staff are never members of an organization. Staff operations bypass the
+// membership policy, and every write is logged with the staff subject and the
+// reason.
+service StaffOrgService {
+  // ListOrganizations pages through organizations, oldest first. The query
+  // matches the name or the slug, case-insensitively.
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+  // GetOrganization returns one organization with its members and pending
+  // invitations. Token hashes are never returned.
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  // ProvisionOrganization creates an organization with no members and one
+  // pending owner invitation, in one transaction. A repeated idempotency_key
+  // with the same name and owner returns the same organization and rotates the
+  // owner invitation; a phone owner's response then carries the new token. A
+  // repeat with another name or owner is refused with ALREADY_EXISTS.
+  rpc ProvisionOrganization(ProvisionOrganizationRequest) returns (ProvisionOrganizationResponse);
+  // SuspendOrganization stops selecting into and refreshing into the
+  // organization. Its members keep their memberships.
+  rpc SuspendOrganization(SuspendOrganizationRequest) returns (SuspendOrganizationResponse);
+  // ReactivateOrganization lifts a suspension.
+  rpc ReactivateOrganization(ReactivateOrganizationRequest) returns (ReactivateOrganizationResponse);
+  // SetOrganizationSlug changes the slug through the same registry rules as
+  // the owner's SetOrgSlug: the old slug stays reserved for the organization.
+  // The auth.org.slug_changed event names the staff subject as its actor and
+  // carries the reason.
+  rpc SetOrganizationSlug(SetOrganizationSlugRequest) returns (SetOrganizationSlugResponse);
+  // ReinviteOwner issues a new owner invitation to an email address or a phone
+  // number and rotates the pending one for that recipient.
+  rpc ReinviteOwner(ReinviteOwnerRequest) returns (ReinviteOwnerResponse);
+}
+
+// StaffOrganization is an organization as staff see it.
+message StaffOrganization {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  // active or suspended.
+  string status = 4;
+  string created_at = 5;
+  // member_count counts every membership, whatever its lifecycle status.
+  int64 member_count = 6;
+  // owner_user_ids are the owners whose membership is active.
+  repeated string owner_user_ids = 7;
+  // suspended_at and suspended_reason are set while the organization is
+  // suspended.
+  string suspended_at = 8;
+  string suspended_reason = 9;
+}
+
+message StaffMember {
+  string user_id = 1;
+  // owner, admin or member.
+  string role = 2;
+  // active, invited or suspended.
+  string status = 3;
+  string joined_at = 4;
+}
+
+// StaffInvite is a pending invitation without its token.
+message StaffInvite {
+  string id = 1;
+  string email = 2;
+  string phone = 3;
+  // owner, admin or member.
+  string role = 4;
+  string expires_at = 5;
+}
+
+message ListOrganizationsRequest {
+  string query = 1;
+  // active or suspended. Empty lists both.
+  string status = 2;
+  // At most 100. Zero means the default page size.
+  int32 page_size = 3;
+  // The next_page_token of the previous page. Empty starts at the beginning.
+  string page_token = 4;
+}
+
+message ListOrganizationsResponse {
+  repeated StaffOrganization organizations = 1;
+  // Empty when there is no further page.
+  string next_page_token = 2;
+}
+
+message GetOrganizationRequest {
+  string org_id = 1;
+}
+
+message GetOrganizationResponse {
+  StaffOrganization organization = 1;
+  repeated StaffMember members = 2;
+  repeated StaffInvite pending_invites = 3;
+}
+
+message ProvisionOrganizationRequest {
+  string name = 1;
+  // Optional. Empty derives the slug from the name.
+  string slug = 2;
+  // Exactly one of owner_email and owner_phone.
+  string owner_email = 3;
+  string owner_phone = 4;
+  // Required. A repeat must carry the same name and owner as the request that
+  // first used the key; otherwise it is refused with ALREADY_EXISTS.
+  string idempotency_key = 5;
+}
+
+message ProvisionOrganizationResponse {
+  StaffOrganization organization = 1;
+  StaffInvite owner_invite = 2;
+  // token is the raw owner token for a phone invitation only, which has no
+  // email to carry it. It is never returned again.
+  string token = 3;
+}
+
+message SuspendOrganizationRequest {
+  string org_id = 1;
+}
+
+message SuspendOrganizationResponse {
+  StaffOrganization organization = 1;
+}
+
+message ReactivateOrganizationRequest {
+  string org_id = 1;
+}
+
+message ReactivateOrganizationResponse {
+  StaffOrganization organization = 1;
+}
+
+message SetOrganizationSlugRequest {
+  string org_id = 1;
+  string slug = 2;
+}
+
+message SetOrganizationSlugResponse {
+  StaffOrganization organization = 1;
+}
+
+message ReinviteOwnerRequest {
+  string org_id = 1;
+  // Exactly one of owner_email and owner_phone.
+  string owner_email = 2;
+  string owner_phone = 3;
+}
+
+message ReinviteOwnerResponse {
+  StaffInvite invite = 1;
+  // token is the raw owner token for a phone invitation only.
+  string token = 2;
+}

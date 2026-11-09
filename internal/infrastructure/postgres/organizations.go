@@ -17,8 +17,7 @@ import (
 // CreateOrg writes the organization and the creator's active owner membership
 // in one transaction, so a failure leaves no organization without its owner.
 func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorID string) error {
-	orgID, err := uuid.Parse(org.ID)
-	if err != nil {
+	if _, err := uuid.Parse(org.ID); err != nil {
 		return fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
 	}
 	userID, err := uuid.Parse(creatorID)
@@ -37,7 +36,7 @@ func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorI
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
 	}
-	if err := createOrganizationTx(ctx, queries, newOutboxSink(tx), org, orgID, userID, occurredAt); err != nil {
+	if err := createOrganizationTx(ctx, queries, newOutboxSink(tx), org, userID, occurredAt); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -46,11 +45,39 @@ func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorI
 	return nil
 }
 
-// createOrganizationTx writes a new organization, its slug registry row, its
-// creator as the first owner, and the creation events. It is shared by CreateOrg
-// and sign-up with an organization so both allocate slugs the same way. A slug
-// that another organization holds or has held is domain.ErrSlugTaken.
-func createOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, orgID, userID uuid.UUID, occurredAt time.Time) error {
+// createOrganizationTx writes a new organization with its creator as the first
+// owner, and the creation events. It is shared by CreateOrg and sign-up with an
+// organization so both allocate slugs the same way.
+func createOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, userID uuid.UUID, occurredAt time.Time) error {
+	if err := insertOrganizationTx(ctx, queries, sink, org, occurredAt); err != nil {
+		return err
+	}
+	orgID, err := uuid.Parse(org.ID)
+	if err != nil {
+		return fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
+	}
+	if err := queries.AddOrganizationMembership(ctx, sqlcgen.AddOrganizationMembershipParams{
+		OrgID:  orgID,
+		UserID: userID,
+		Status: string(domain.MembershipActive),
+		Role:   string(domain.RoleOwner),
+	}); err != nil {
+		return fmt.Errorf("postgres: add organization creator: %w", err)
+	}
+	return emitEvents(ctx, sink,
+		domain.NewMembershipAddedEvent(org.ID, userID.String(), domain.MembershipActive, domain.RoleOwner, occurredAt),
+	)
+}
+
+// insertOrganizationTx writes the organization row, its slug registry row and
+// auth.org.created, without any membership. Staff provisioning uses it directly
+// because staff are never members. A slug that another organization holds or
+// has held is domain.ErrSlugTaken.
+func insertOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, occurredAt time.Time) error {
+	orgID, err := uuid.Parse(org.ID)
+	if err != nil {
+		return fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
+	}
 	if err := domain.ValidateSlug(org.Slug); err != nil {
 		return err
 	}
@@ -66,17 +93,8 @@ func createOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink do
 	if err := queries.InsertOrganizationSlug(ctx, sqlcgen.InsertOrganizationSlugParams{Slug: org.Slug, OrgID: orgID}); err != nil {
 		return slugConflict(fmt.Errorf("postgres: register organization slug: %w", err))
 	}
-	if err := queries.AddOrganizationMembership(ctx, sqlcgen.AddOrganizationMembershipParams{
-		OrgID:  orgID,
-		UserID: userID,
-		Status: string(domain.MembershipActive),
-		Role:   string(domain.RoleOwner),
-	}); err != nil {
-		return fmt.Errorf("postgres: add organization creator: %w", err)
-	}
 	return emitEvents(ctx, sink,
 		domain.NewOrgCreatedEvent(org.ID, org.Name, org.Slug, occurredAt),
-		domain.NewMembershipAddedEvent(org.ID, userID.String(), domain.MembershipActive, domain.RoleOwner, occurredAt),
 	)
 }
 
@@ -99,12 +117,25 @@ func (s *Store) SlugAvailable(ctx context.Context, slug string) (bool, error) {
 	return !exists, nil
 }
 
-// SetOrgSlug makes slug the organization's current slug in one transaction
+// SetOrgSlug makes slug the organization's current slug for a member, under the
+// organization lock where the policy is rechecked. The event names the caller.
+func (s *Store) SetOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor) error {
+	return s.changeOrgSlug(ctx, orgID, slug, by, by.CallerID, "")
+}
+
+// SetOrgSlugByStaff makes slug the organization's current slug for a staff
+// write. Staff are not members, so no membership is checked. The event names the
+// staff subject as its actor and carries the reason.
+func (s *Store) SetOrgSlugByStaff(ctx context.Context, orgID, slug string, by domain.StaffActor) error {
+	return s.changeOrgSlug(ctx, orgID, slug, domain.MembershipActor{}, by.Subject, by.Reason)
+}
+
+// changeOrgSlug makes slug the organization's current slug in one transaction
 // under the organization lock. The previous slug is retired, stays reserved for
 // this organization and keeps resolving, so a rename never frees an address for
 // someone else. Re-claiming one of the organization's own retired slugs is
-// allowed.
-func (s *Store) SetOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor) error {
+// allowed. actorID and reason are written to auth.org.slug_changed.
+func (s *Store) changeOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor, actorID, reason string) error {
 	if err := domain.ValidateSlug(slug); err != nil {
 		return err
 	}
@@ -151,7 +182,7 @@ func (s *Store) SetOrgSlug(ctx context.Context, orgID, slug string, by domain.Me
 		return slugConflict(fmt.Errorf("postgres: update organization slug: %w", err))
 	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewOrgSlugChangedEvent(orgID, slug, current.Slug, by.CallerID, time.Now().UTC()),
+		domain.NewOrgSlugChangedEvent(orgID, slug, current.Slug, actorID, reason, time.Now().UTC()),
 	); err != nil {
 		return err
 	}
@@ -173,6 +204,7 @@ func (s *Store) ResolveSlug(ctx context.Context, slug string) (domain.Organizati
 	}
 	return domain.Organization{
 		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		Status: domain.OrganizationStatus(row.Status), SuspendedAt: timePtr(row.SuspendedAt), SuspendedReason: row.SuspendedReason,
 		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }
@@ -191,11 +223,14 @@ func (s *Store) GetOrg(ctx context.Context, orgID string) (domain.Organization, 
 		return domain.Organization{}, err
 	}
 	return domain.Organization{
-		ID:        row.ID,
-		Name:      row.Name,
-		Slug:      row.Slug,
-		CreatedAt: row.CreatedAt.Time,
-		UpdatedAt: row.UpdatedAt.Time,
+		ID:              row.ID,
+		Name:            row.Name,
+		Slug:            row.Slug,
+		Status:          domain.OrganizationStatus(row.Status),
+		SuspendedAt:     timePtr(row.SuspendedAt),
+		SuspendedReason: row.SuspendedReason,
+		CreatedAt:       row.CreatedAt.Time,
+		UpdatedAt:       row.UpdatedAt.Time,
 	}, nil
 }
 
@@ -212,11 +247,14 @@ func (s *Store) ListOrgsForUser(ctx context.Context, userID string) ([]domain.Or
 	var out []domain.Organization
 	for _, row := range rows {
 		out = append(out, domain.Organization{
-			ID:        row.ID,
-			Name:      row.Name,
-			Slug:      row.Slug,
-			CreatedAt: row.CreatedAt.Time,
-			UpdatedAt: row.UpdatedAt.Time,
+			ID:              row.ID,
+			Name:            row.Name,
+			Slug:            row.Slug,
+			Status:          domain.OrganizationStatus(row.Status),
+			SuspendedAt:     timePtr(row.SuspendedAt),
+			SuspendedReason: row.SuspendedReason,
+			CreatedAt:       row.CreatedAt.Time,
+			UpdatedAt:       row.UpdatedAt.Time,
 		})
 	}
 	return out, nil

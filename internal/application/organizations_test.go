@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,16 @@ type fakeOrgStore struct {
 	// slugs maps every slug an organization has held to its id.
 	slugs       map[string]string
 	slugChanges []string
+	// provisions maps a provisioning idempotency key to its organization id.
+	provisions map[string]string
+	// provisionOwners maps a provisioning idempotency key to the owner target it
+	// was provisioned for.
+	provisionOwners map[string]domain.InviteTarget
+	// staffSlugChanges records the staff actor of each staff slug change.
+	staffSlugChanges []domain.StaffActor
+	// invites receives the owner invitation of a provisioned organization, the
+	// way the Postgres transaction writes it.
+	invites *fakeInviteStore
 }
 
 // roleChange records one UpdateMemberRole call.
@@ -77,6 +88,11 @@ func (f *fakeOrgStore) SetOrgSlug(_ context.Context, orgID, slug string, by doma
 	if owner, taken := f.slugs[slug]; taken && owner != orgID {
 		return domain.ErrSlugTaken
 	}
+	for id, other := range f.orgs {
+		if other.Slug == slug && id != orgID {
+			return domain.ErrSlugTaken
+		}
+	}
 	if org.Slug == slug {
 		return nil
 	}
@@ -88,6 +104,18 @@ func (f *fakeOrgStore) SetOrgSlug(_ context.Context, orgID, slug string, by doma
 	org.Slug = slug
 	f.orgs[orgID] = org
 	f.slugChanges = append(f.slugChanges, by.CallerID+":"+slug)
+	return nil
+}
+
+// SetOrgSlugByStaff applies a staff slug change and records the staff actor the
+// store received, so a test can assert the subject and the reason.
+func (f *fakeOrgStore) SetOrgSlugByStaff(ctx context.Context, orgID, slug string, by domain.StaffActor) error {
+	if err := f.SetOrgSlug(ctx, orgID, slug, domain.MembershipActor{}); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.staffSlugChanges = append(f.staffSlugChanges, by)
 	return nil
 }
 
@@ -837,4 +865,141 @@ func TestSetOrgSlugNeedsAnOwnerAndKeepsTheOldSlug(t *testing.T) {
 	if _, err := svc.SetOrgSlug(ctx, other.ID, "u2", "acme"); !errors.Is(err, domain.ErrSlugTaken) {
 		t.Fatalf("claiming a retired slug err = %v, want ErrSlugTaken", err)
 	}
+}
+
+// ListOrganizationsForStaff filters, orders and pages the staff listing the way
+// the Postgres query does: name or slug containing the query, the status when
+// given, and keyset order on (created_at, id).
+func (f *fakeOrgStore) ListOrganizationsForStaff(_ context.Context, query domain.StaffOrgListQuery) ([]domain.StaffOrgSummary, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	var rows []domain.StaffOrgSummary
+	for _, org := range f.orgs {
+		if query.Status != "" && org.Status != query.Status {
+			continue
+		}
+		if query.Query != "" {
+			needle := strings.ToLower(query.Query)
+			if !strings.Contains(strings.ToLower(org.Name), needle) && !strings.Contains(strings.ToLower(org.Slug), needle) {
+				continue
+			}
+		}
+		if query.After != nil {
+			if org.CreatedAt.Before(query.After.CreatedAt) ||
+				(org.CreatedAt.Equal(query.After.CreatedAt) && org.ID <= query.After.ID) {
+				continue
+			}
+		}
+		rows = append(rows, f.summaryLocked(org))
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i].Organization, rows[j].Organization
+		if !a.CreatedAt.Equal(b.CreatedAt) {
+			return a.CreatedAt.Before(b.CreatedAt)
+		}
+		return a.ID < b.ID
+	})
+	if len(rows) > query.Limit {
+		rows = rows[:query.Limit]
+	}
+	return rows, nil
+}
+
+func (f *fakeOrgStore) summaryLocked(org domain.Organization) domain.StaffOrgSummary {
+	var owners []string
+	for _, m := range f.memberships[org.ID] {
+		if m.Status == domain.MembershipActive && m.Role == domain.RoleOwner {
+			owners = append(owners, m.UserID)
+		}
+	}
+	sort.Strings(owners)
+	return domain.StaffOrgSummary{Organization: org, MemberCount: len(f.memberships[org.ID]), OwnerUserIDs: owners}
+}
+
+func (f *fakeOrgStore) ProvisionedOrganization(_ context.Context, key string) (domain.OrganizationProvision, bool, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	id, ok := f.provisions[key]
+	if !ok {
+		return domain.OrganizationProvision{}, false, nil
+	}
+	return domain.OrganizationProvision{Organization: f.orgs[id], OwnerTarget: f.provisionOwners[key]}, true, nil
+}
+
+// ProvisionOrganization writes the organization with no members, its slug, the
+// owner invitation and the key with its owner target. A repeated key returns the
+// provision it recorded.
+func (f *fakeOrgStore) ProvisionOrganization(ctx context.Context, org domain.Organization, owner domain.Invite, key string) (domain.OrganizationProvision, bool, error) {
+	target := domain.InviteTarget{Email: owner.Email, Phone: owner.Phone}
+	f.mu.Lock()
+	if key != "" {
+		if id, ok := f.provisions[key]; ok {
+			recorded := domain.OrganizationProvision{Organization: f.orgs[id], OwnerTarget: f.provisionOwners[key]}
+			f.mu.Unlock()
+			return recorded, false, nil
+		}
+	}
+	if holder, taken := f.slugs[org.Slug]; taken && holder != "" {
+		f.mu.Unlock()
+		return domain.OrganizationProvision{}, false, domain.ErrSlugTaken
+	}
+	if f.slugs == nil {
+		f.slugs = map[string]string{}
+	}
+	if f.provisions == nil {
+		f.provisions = map[string]string{}
+	}
+	if f.provisionOwners == nil {
+		f.provisionOwners = map[string]domain.InviteTarget{}
+	}
+	f.orgs[org.ID] = org
+	f.slugs[org.Slug] = org.ID
+	f.memberships[org.ID] = map[string]domain.Membership{}
+	if key != "" {
+		f.provisions[key] = org.ID
+		f.provisionOwners[key] = target
+	}
+	invites := f.invites
+	f.mu.Unlock()
+	if invites != nil {
+		if err := invites.CreateInvite(ctx, owner); err != nil {
+			return domain.OrganizationProvision{}, false, err
+		}
+	}
+	return domain.OrganizationProvision{Organization: org, OwnerTarget: target}, true, nil
+}
+
+func (f *fakeOrgStore) SuspendOrganization(_ context.Context, orgID string, by domain.StaffActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	org, ok := f.orgs[orgID]
+	if !ok {
+		return domain.ErrOrgNotFound
+	}
+	if org.Status == domain.OrgStatusSuspended {
+		return nil
+	}
+	now := time.Now().UTC()
+	org.Status = domain.OrgStatusSuspended
+	org.SuspendedAt = &now
+	org.SuspendedReason = by.Reason
+	f.orgs[orgID] = org
+	return nil
+}
+
+func (f *fakeOrgStore) ReactivateOrganization(_ context.Context, orgID string, _ domain.StaffActor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	org, ok := f.orgs[orgID]
+	if !ok {
+		return domain.ErrOrgNotFound
+	}
+	if org.Status != domain.OrgStatusSuspended {
+		return nil
+	}
+	org.Status = domain.OrgStatusActive
+	org.SuspendedAt = nil
+	org.SuspendedReason = ""
+	f.orgs[orgID] = org
+	return nil
 }

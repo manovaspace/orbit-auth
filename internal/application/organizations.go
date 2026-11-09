@@ -33,6 +33,7 @@ func (s *Service) CreateOrg(ctx context.Context, creatorID, name, slug string) (
 		ID:        orgID,
 		Name:      name,
 		Slug:      slug,
+		Status:    domain.OrgStatusActive,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
