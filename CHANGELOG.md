@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2](https://github.com/manovaspace/orbit-auth/compare/v0.10.1...v0.10.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **deps:** upgrade Go to 1.27.4 and patch vulnerable modules ([#103](https://github.com/manovaspace/orbit-auth/issues/103)) ([f7d9669](https://github.com/manovaspace/orbit-auth/commit/f7d9669efb9da205358b02644ffd2837653c3e08))
+
 ## [0.10.1](https://github.com/manovaspace/orbit-auth/compare/v0.10.0...v0.10.1) (2026-11-09)
 
 
