@@ -1,5 +1,5 @@
 # Standalone image build (GitHub/GHCR). Shared modules are pinned in go.mod.
-FROM golang:1.27.3-alpine AS builder
+FROM golang:1.27.4-alpine AS builder
 RUN apk add --no-cache git ca-certificates
 WORKDIR /src
 COPY go.mod go.sum ./
