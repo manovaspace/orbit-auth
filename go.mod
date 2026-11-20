@@ -1,6 +1,6 @@
 module github.com/manovaspace/orbit-auth
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/gofiber/fiber/v3 v3.7.0
@@ -13,7 +13,7 @@ require (
 	github.com/nats-io/nats.go v1.55.0
 	github.com/open-feature/go-sdk v1.20.0
 	github.com/pressly/goose/v3 v3.30.0
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 )
@@ -41,6 +41,7 @@ require (
 	github.com/philhofer/fwd v1.2.1 // indirect
 	github.com/redis/go-redis/v9 v9.23.0 // indirect
 	github.com/sethvargo/go-retry v0.5.0 // indirect
+	github.com/shamaton/msgpack/v3 v3.2.8 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.78.0 // indirect
@@ -59,7 +60,6 @@ require (
 	go.uber.org/atomic v1.12.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
