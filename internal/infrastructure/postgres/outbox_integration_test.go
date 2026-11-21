@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	messagebus "github.com/manovaspace/orbit-message-bus"
-	"github.com/manovaspace/orbit-message-bus/inproc"
-	"github.com/manovaspace/orbit-message-bus/outbox"
+	messagebus "github.com/manovaspace/orbit-kit/messagebus"
+	"github.com/manovaspace/orbit-kit/messagebus/inproc"
+	"github.com/manovaspace/orbit-kit/messagebus/outbox"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )

@@ -13,7 +13,7 @@ import (
 
 	"github.com/manovaspace/orbit-auth/internal/application"
 	"github.com/manovaspace/orbit-auth/internal/domain"
-	observability "github.com/manovaspace/orbit-observability"
+	observability "github.com/manovaspace/orbit-kit/observability"
 )
 
 type fakeFlagStore struct {

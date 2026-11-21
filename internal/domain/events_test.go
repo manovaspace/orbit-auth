@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manovaspace/orbit-message-bus/bustest"
+	"github.com/manovaspace/orbit-kit/messagebus/bustest"
 )
 
 func TestLifecycleEventSubjectsAndVersion(t *testing.T) {

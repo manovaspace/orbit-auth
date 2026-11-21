@@ -8,7 +8,7 @@ import (
 // LogAttrs returns the slog attributes services add to a request log line,
 // currently org_id when an organization is in context. It is
 // observability-neutral: pass the result to the product's own context-attribute
-// registration instead of importing orbit-observability here.
+// registration instead of importing orbit-kit/observability here.
 func LogAttrs(ctx context.Context) []slog.Attr {
 	orgID, ok := OrgFrom(ctx)
 	if !ok {

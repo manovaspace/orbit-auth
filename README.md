@@ -149,7 +149,7 @@ must never be edited by hand.
 
 ## Events
 
-Lifecycle events are written to the Postgres outbox (`outbox_events`) in the same transaction as the change, then relayed to `orbit-message-bus` by a relay in `cmd/auth`:
+Lifecycle events are written to the Postgres outbox (`outbox_events`) in the same transaction as the change, then relayed to `orbit-kit/messagebus` by a relay in `cmd/auth`:
 
 | Subject | Metadata version | Trigger |
 | --- | --- | --- |
