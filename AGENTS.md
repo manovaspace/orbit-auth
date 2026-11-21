@@ -150,9 +150,9 @@ Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version i
 
 ## Session pre-flight
 
-1. `rtk o port list` — verify 10010 (gRPC) and 10011 (health) allocations
-2. `rtk o status orbit` — check dependency state (`orbit-notifications`, dev Postgres)
-3. `rtk git log --oneline -6 origin/main` — inspect recently landed changes
+1. `o port list` — verify 10010 (gRPC) and 10011 (health) allocations
+2. `o status orbit` — check dependency state (`orbit-notifications`, dev Postgres)
+3. `git log --oneline -6 origin/main` — inspect recently landed changes
 
 ## Definition of done
 
