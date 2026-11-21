@@ -10,7 +10,7 @@ require (
 	github.com/manovaspace/orbit-message-bus v0.1.0
 	github.com/manovaspace/orbit-notifications v0.5.0
 	github.com/manovaspace/orbit-observability v0.2.0
-	github.com/nats-io/nats.go v1.55.0
+	github.com/nats-io/nats.go v1.56.0
 	github.com/open-feature/go-sdk v1.20.0
 	github.com/pressly/goose/v3 v3.30.1
 	golang.org/x/crypto v0.59.0
