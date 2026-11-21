@@ -56,7 +56,7 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 
 - **gRPC interceptor order:** Panic recovery must wrap the outermost boundary; auth token validation must precede tenant context extraction in the interceptor chain.
 - **Proto code regeneration:** When editing `api/proto/auth/v1/`, run `./scripts/generate-proto.sh`. Never manually modify generated `*.pb.go` files.
-- **Unleash flag fallback:** When Unleash flags (`manova.auth.email_otp`, `manova.auth.mobile_otp`) are toggled off or unreachable, handlers return typed errors (`ErrEmailOTPDisabled`). Unit tests must mock the flag provider.
+- **Feature flag fallback:** When flags (`manova.auth.email_otp`, `manova.auth.mobile_otp`) read from orbit-auth `/v1/flags` through OpenFeature are toggled off or unreachable, handlers return typed errors (`ErrEmailOTPDisabled`). Unit tests must mock the flag provider.
 - **Demo mode guard:** `DEMO_MODE=true` is permitted only when `DEPLOYMENT_ENVIRONMENT=dev`. `cmd/auth` fails closed before the service starts if demo mode is enabled elsewhere.
 - **Migration adoption:** `migrate up` maps the old `schema_migrations` rows to goose versions without running SQL and without touching `schema_migrations`. Do not drop that table in this release.
 
@@ -92,7 +92,7 @@ Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<en
 
 ## Feature Flags & Demo Mode
 
-- **Unleash flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp` (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
+- **Feature flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp`, evaluated with OpenFeature over orbit-auth `/v1/flags` (`FLAGS_URL`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds the optional `org` access-token claim at login when the user has exactly one active membership. Zero or many memberships omit it, and a suspended organization is never chosen. `SelectOrg` rotates the refresh token and issues a pair carrying the selected org.
 - **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically (`RefreshTokenStore.Consume`), so a token can be redeemed once even under concurrent requests. Refreshing into or selecting a suspended organization fails with `FailedPrecondition` (`organization suspended`) and leaves the token unspent. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
 - **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup. `cmd/auth` parses the JSON; the application validates and hashes each entry.
