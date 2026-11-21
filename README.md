@@ -57,7 +57,7 @@ internal/application/              OTP, password, refresh, API-token use cases
 internal/infrastructure/
   clock/                           system clock (UTC)
   credentials/                     bcrypt, OTP code and API-secret adapters
-  featureflags/                    Unleash/OpenFeature adapter
+  featureflags/                    OpenFeature adapter over /v1/flags
   grpc/                            AuthService, OrgService and SignupService adapters
   httpapi/                         Fiber v3 health server (/healthz, /readyz)
   ids/                             UUID identifiers
@@ -137,7 +137,7 @@ must never be edited by hand.
 | `BUS_NATS_URL` | unset | NATS endpoint when `BUS_TRANSPORT=nats` |
 | `BUS_REDIS_URL` | unset | Redis endpoint when `BUS_TRANSPORT=redis` |
 
-- **Feature Flags:** Uses Unleash (`UNLEASH_URL`, `UNLEASH_API_TOKEN`, `UNLEASH_APP_NAME`) to evaluate `manova.auth.email_otp` and `manova.auth.mobile_otp`.
+- **Feature Flags:** Uses OpenFeature over orbit-auth `/v1/flags` (`FLAGS_URL`, default `http://localhost:10011/v1/flags`; `off` disables) to evaluate `manova.auth.email_otp` and `manova.auth.mobile_otp`. An unreachable endpoint means the flag is off.
 - **Demo Mode:** When `DEMO_MODE=true` in dev, pre-seeds accounts from `AUTH_DEMO_USERS` JSON array. Enabling it outside dev fails closed.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
 - **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
