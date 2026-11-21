@@ -101,7 +101,7 @@ Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<en
 
 ## Events
 
-Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 008) in the same transaction as the change and relayed by `outbox.Relay` to `orbit-message-bus`:
+Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 008) in the same transaction as the change and relayed by `outbox.Relay` to `orbit-kit/messagebus`:
 
 - `auth.user.created` — a user is created by OTP login, sign-up, invite-sign-up or demo seeding
 - `auth.org.created` — `CreateOrg`, sign-up with `org_name`, or staff `ProvisionOrganization`

@@ -101,7 +101,7 @@ attrs := append(baseAttrs, tenancy.LogAttrs(ctx)...)
 ```
 
 Pass those attributes to the product's own `observability.RegisterContextAttrs`
-or logger. The package does not import `orbit-observability`.
+or logger. The package does not import `orbit-kit/observability`.
 
 ## The fallback is temporary
 

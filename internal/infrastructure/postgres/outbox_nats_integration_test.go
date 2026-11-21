@@ -10,9 +10,9 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	messagebus "github.com/manovaspace/orbit-message-bus"
-	"github.com/manovaspace/orbit-message-bus/bustest"
-	"github.com/manovaspace/orbit-message-bus/outbox"
+	messagebus "github.com/manovaspace/orbit-kit/messagebus"
+	"github.com/manovaspace/orbit-kit/messagebus/bustest"
+	"github.com/manovaspace/orbit-kit/messagebus/outbox"
 
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )

@@ -23,10 +23,10 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/notifications"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/migrations"
-	messagebus "github.com/manovaspace/orbit-message-bus"
-	"github.com/manovaspace/orbit-message-bus/outbox"
-	"github.com/manovaspace/orbit-message-bus/transport"
-	observability "github.com/manovaspace/orbit-observability"
+	messagebus "github.com/manovaspace/orbit-kit/messagebus"
+	"github.com/manovaspace/orbit-kit/messagebus/outbox"
+	"github.com/manovaspace/orbit-kit/messagebus/transport"
+	observability "github.com/manovaspace/orbit-kit/observability"
 	googlegrpc "google.golang.org/grpc"
 )
 
