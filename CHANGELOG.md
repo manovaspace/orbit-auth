@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0](https://github.com/manovaspace/orbit-auth/compare/v0.11.0...v0.12.0) (2026-11-22)
+
+
+### Features
+
+* accept email invitations with sign-up and link them to the product ([#117](https://github.com/manovaspace/orbit-auth/issues/117)) ([846dc14](https://github.com/manovaspace/orbit-auth/commit/846dc14dd07dd462974b49ad86895c315b5543df))
+* accept invitations with Google and manage sign-in methods ([#121](https://github.com/manovaspace/orbit-auth/issues/121)) ([bd60f3e](https://github.com/manovaspace/orbit-auth/commit/bd60f3e25507f73d4ea7a17c8fddf66db04b3d04))
+* account and membership states with an audit trail ([#120](https://github.com/manovaspace/orbit-auth/issues/120)) ([ee0c8d6](https://github.com/manovaspace/orbit-auth/commit/ee0c8d66ae6d02180a40bc0ff7183a8230eb97a8))
+* **token:** accept a plain-HTTP JWKS from a container host name ([#119](https://github.com/manovaspace/orbit-auth/issues/119)) ([345cc44](https://github.com/manovaspace/orbit-auth/commit/345cc44e2e0f8369da809d860047dc9bc6574565))
+
 ## [0.11.0](https://github.com/manovaspace/orbit-auth/compare/v0.10.3...v0.11.0) (2026-11-22)
 
 
