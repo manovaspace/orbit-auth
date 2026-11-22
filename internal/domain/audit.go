@@ -28,6 +28,10 @@ const (
 	AuditUserCreated           = "user.created"
 	AuditUserDisabled          = "user.disabled"
 	AuditUserEnabled           = "user.enabled"
+	AuditIdentityLinked        = "identity.linked"
+	AuditIdentityUnlinked      = "identity.unlinked"
+	AuditPasswordSet           = "password.set"
+	AuditSessionsRevoked       = "sessions.revoked"
 )
 
 // AuditActor says who made a change. ID is the user id for a user actor and the

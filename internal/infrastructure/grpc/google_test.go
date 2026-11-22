@@ -7,18 +7,19 @@ import (
 	"time"
 
 	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
+	"github.com/manovaspace/orbit-auth/internal/application"
 	"github.com/manovaspace/orbit-auth/internal/domain"
 	"google.golang.org/grpc/codes"
 )
 
 // The Google sign-in calls on the shared fake. Tests that do not reach them
 // never see these zero values.
-func (f *fakeAuth) StartGoogleSignIn(context.Context, string, string) (string, string, error) {
+func (f *fakeAuth) StartGoogleSignIn(context.Context, string, string, string) (string, string, error) {
 	return "", "", nil
 }
 
-func (f *fakeAuth) CompleteGoogleSignIn(context.Context, string, string) (string, string, time.Time, string, error) {
-	return "", "", time.Time{}, "", nil
+func (f *fakeAuth) CompleteGoogleSignIn(context.Context, string, string) (application.GoogleSignInResult, error) {
+	return application.GoogleSignInResult{}, nil
 }
 
 // googleAuth overrides the two Google calls and records their arguments.
@@ -26,6 +27,7 @@ type googleAuth struct {
 	*fakeAuth
 	startRedirectURI string
 	startReturnTo    string
+	startInviteToken string
 	startURL         string
 	startState       string
 	startErr         error
@@ -39,14 +41,19 @@ type googleAuth struct {
 	completeErr      error
 }
 
-func (f *googleAuth) StartGoogleSignIn(_ context.Context, redirectURI, returnTo string) (string, string, error) {
-	f.startRedirectURI, f.startReturnTo = redirectURI, returnTo
+func (f *googleAuth) StartGoogleSignIn(_ context.Context, redirectURI, returnTo, inviteToken string) (string, string, error) {
+	f.startRedirectURI, f.startReturnTo, f.startInviteToken = redirectURI, returnTo, inviteToken
 	return f.startURL, f.startState, f.startErr
 }
 
-func (f *googleAuth) CompleteGoogleSignIn(_ context.Context, state, code string) (string, string, time.Time, string, error) {
+func (f *googleAuth) CompleteGoogleSignIn(_ context.Context, state, code string) (application.GoogleSignInResult, error) {
 	f.completeState, f.completeCode = state, code
-	return f.completeAccess, f.completeRefresh, f.completeExpires, f.completeReturnTo, f.completeErr
+	return application.GoogleSignInResult{
+		Access:   f.completeAccess,
+		Refresh:  f.completeRefresh,
+		Expires:  f.completeExpires,
+		ReturnTo: f.completeReturnTo,
+	}, f.completeErr
 }
 
 func TestStartGoogleSignInPassesArgumentsAndReturnsURLAndState(t *testing.T) {
@@ -111,6 +118,10 @@ func TestGoogleErrorsMapToFixedStatuses(t *testing.T) {
 		{"state unknown or expired", domain.ErrInvalidGoogleState, codes.Unauthenticated, "google sign-in failed"},
 		{"exchange failed", domain.ErrGoogleExchangeFailed, codes.Unauthenticated, "google sign-in failed"},
 		{"account not allowed", domain.ErrGoogleAccountNotAllowed, codes.PermissionDenied, "account not allowed"},
+		{"invite unknown or expired", domain.ErrInvalidInvite, codes.InvalidArgument, domain.ErrInvalidInvite.Error()},
+		{"phone invite", domain.ErrInviteNeedsPassword, codes.FailedPrecondition, domain.ErrInviteNeedsPassword.Error()},
+		{"invite email mismatch", domain.ErrInviteEmailMismatch, codes.FailedPrecondition, domain.ErrInviteEmailMismatch.Error()},
+		{"invite sign-up off", domain.ErrInviteSignupDisabled, codes.FailedPrecondition, domain.ErrInviteSignupDisabled.Error()},
 		{"store failure", errors.New("connection reset with secret-looking detail"), codes.Internal, "internal error"},
 	}
 	for _, tc := range cases {

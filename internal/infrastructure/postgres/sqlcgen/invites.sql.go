@@ -163,6 +163,43 @@ func (q *Queries) FindOrganizationInviteByTokenHash(ctx context.Context, tokenHa
 	return i, err
 }
 
+const getOrganizationInviteByID = `-- name: GetOrganizationInviteByID :one
+SELECT id::text AS id,
+       org_id::text AS org_id,
+       COALESCE(email, '')::text AS email,
+       role,
+       status,
+       expires_at
+FROM organization_invites
+WHERE id = $1::uuid
+`
+
+type GetOrganizationInviteByIDRow struct {
+	ID        string
+	OrgID     string
+	Email     string
+	Role      string
+	Status    string
+	ExpiresAt pgtype.Timestamptz
+}
+
+// Reads an invitation without a lock. The caller locks it with
+// LockOrganizationInviteForAccept after it has locked the account and the
+// organization.
+func (q *Queries) GetOrganizationInviteByID(ctx context.Context, id uuid.UUID) (GetOrganizationInviteByIDRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationInviteByID, id)
+	var i GetOrganizationInviteByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Email,
+		&i.Role,
+		&i.Status,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const listOrganizationInvites = `-- name: ListOrganizationInvites :many
 SELECT id::text AS id,
        org_id::text AS org_id,
@@ -224,6 +261,41 @@ func (q *Queries) ListOrganizationInvites(ctx context.Context, orgID uuid.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockOrganizationInviteForAccept = `-- name: LockOrganizationInviteForAccept :one
+SELECT id::text AS id,
+       org_id::text AS org_id,
+       COALESCE(email, '')::text AS email,
+       role,
+       status,
+       expires_at
+FROM organization_invites
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+type LockOrganizationInviteForAcceptRow struct {
+	ID        string
+	OrgID     string
+	Email     string
+	Role      string
+	Status    string
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) LockOrganizationInviteForAccept(ctx context.Context, id uuid.UUID) (LockOrganizationInviteForAcceptRow, error) {
+	row := q.db.QueryRow(ctx, lockOrganizationInviteForAccept, id)
+	var i LockOrganizationInviteForAcceptRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Email,
+		&i.Role,
+		&i.Status,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
 const revokeOrganizationInvite = `-- name: RevokeOrganizationInvite :execrows

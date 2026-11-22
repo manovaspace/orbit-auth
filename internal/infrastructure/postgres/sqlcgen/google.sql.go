@@ -12,11 +12,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activatePendingUserForGoogle = `-- name: ActivatePendingUserForGoogle :execrows
+UPDATE users
+SET status = 'active',
+    email_verified_at = NOW(),
+    password_hash = NULL,
+    display_name = CASE WHEN $1::text = '' THEN display_name ELSE $1::text END,
+    updated_at = NOW()
+WHERE id = $2::uuid
+  AND status = 'signup_pending'
+`
+
+type ActivatePendingUserForGoogleParams struct {
+	DisplayName string
+	ID          uuid.UUID
+}
+
+// Takes over a signup_pending account for a verified Google email. The
+// password is cleared, the display name is replaced when Google gave one, and
+// the email is marked verified now.
+func (q *Queries) ActivatePendingUserForGoogle(ctx context.Context, arg ActivatePendingUserForGoogleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, activatePendingUserForGoogle, arg.DisplayName, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const consumeOAuthSignInState = `-- name: ConsumeOAuthSignInState :one
 DELETE FROM oauth_sign_in_states
 WHERE state_hash = $1::text
   AND expires_at > $2::timestamptz
-RETURNING redirect_uri, return_to
+RETURNING redirect_uri,
+          return_to,
+          purpose,
+          COALESCE(invite_id::text, '')::text AS invite_id,
+          COALESCE(user_id::text, '')::text AS user_id
 `
 
 type ConsumeOAuthSignInStateParams struct {
@@ -27,12 +58,21 @@ type ConsumeOAuthSignInStateParams struct {
 type ConsumeOAuthSignInStateRow struct {
 	RedirectUri string
 	ReturnTo    string
+	Purpose     string
+	InviteID    string
+	UserID      string
 }
 
 func (q *Queries) ConsumeOAuthSignInState(ctx context.Context, arg ConsumeOAuthSignInStateParams) (ConsumeOAuthSignInStateRow, error) {
 	row := q.db.QueryRow(ctx, consumeOAuthSignInState, arg.StateHash, arg.Now)
 	var i ConsumeOAuthSignInStateRow
-	err := row.Scan(&i.RedirectUri, &i.ReturnTo)
+	err := row.Scan(
+		&i.RedirectUri,
+		&i.ReturnTo,
+		&i.Purpose,
+		&i.InviteID,
+		&i.UserID,
+	)
 	return i, err
 }
 
@@ -59,12 +99,15 @@ func (q *Queries) CreateGoogleUser(ctx context.Context, arg CreateGoogleUserPara
 }
 
 const createOAuthSignInState = `-- name: CreateOAuthSignInState :exec
-INSERT INTO oauth_sign_in_states (state_hash, redirect_uri, return_to, expires_at)
+INSERT INTO oauth_sign_in_states (state_hash, redirect_uri, return_to, expires_at, purpose, invite_id, user_id)
 VALUES (
     $1::text,
     $2::text,
     $3::text,
-    $4::timestamptz
+    $4::timestamptz,
+    $5::text,
+    $6::uuid,
+    $7::uuid
 )
 `
 
@@ -73,6 +116,9 @@ type CreateOAuthSignInStateParams struct {
 	RedirectUri string
 	ReturnTo    string
 	ExpiresAt   pgtype.Timestamptz
+	Purpose     string
+	InviteID    pgtype.UUID
+	UserID      pgtype.UUID
 }
 
 func (q *Queries) CreateOAuthSignInState(ctx context.Context, arg CreateOAuthSignInStateParams) error {
@@ -81,6 +127,9 @@ func (q *Queries) CreateOAuthSignInState(ctx context.Context, arg CreateOAuthSig
 		arg.RedirectUri,
 		arg.ReturnTo,
 		arg.ExpiresAt,
+		arg.Purpose,
+		arg.InviteID,
+		arg.UserID,
 	)
 	return err
 }
@@ -96,6 +145,71 @@ func (q *Queries) DeleteExpiredOAuthSignInStates(ctx context.Context, now pgtype
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteGoogleIdentityForUser = `-- name: DeleteGoogleIdentityForUser :execrows
+DELETE FROM user_identities
+WHERE provider = $1::text
+  AND user_id = $2::uuid
+`
+
+type DeleteGoogleIdentityForUserParams struct {
+	Provider string
+	UserID   uuid.UUID
+}
+
+func (q *Queries) DeleteGoogleIdentityForUser(ctx context.Context, arg DeleteGoogleIdentityForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGoogleIdentityForUser, arg.Provider, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const findGoogleIdentityForUser = `-- name: FindGoogleIdentityForUser :one
+SELECT email, created_at, last_login_at
+FROM user_identities
+WHERE provider = $1::text
+  AND user_id = $2::uuid
+`
+
+type FindGoogleIdentityForUserParams struct {
+	Provider string
+	UserID   uuid.UUID
+}
+
+type FindGoogleIdentityForUserRow struct {
+	Email       *string
+	CreatedAt   pgtype.Timestamptz
+	LastLoginAt pgtype.Timestamptz
+}
+
+// The Google identity linked to one account, without its subject.
+func (q *Queries) FindGoogleIdentityForUser(ctx context.Context, arg FindGoogleIdentityForUserParams) (FindGoogleIdentityForUserRow, error) {
+	row := q.db.QueryRow(ctx, findGoogleIdentityForUser, arg.Provider, arg.UserID)
+	var i FindGoogleIdentityForUserRow
+	err := row.Scan(&i.Email, &i.CreatedAt, &i.LastLoginAt)
+	return i, err
+}
+
+const findGoogleIdentityUser = `-- name: FindGoogleIdentityUser :one
+SELECT user_id::text AS user_id
+FROM user_identities
+WHERE provider = $1::text
+  AND subject = $2::text
+`
+
+type FindGoogleIdentityUserParams struct {
+	Provider string
+	Subject  string
+}
+
+// The account a Google subject is linked to. No row is ErrNoRows.
+func (q *Queries) FindGoogleIdentityUser(ctx context.Context, arg FindGoogleIdentityUserParams) (string, error) {
+	row := q.db.QueryRow(ctx, findGoogleIdentityUser, arg.Provider, arg.Subject)
+	var user_id string
+	err := row.Scan(&user_id)
+	return user_id, err
 }
 
 const hasIdentityForProvider = `-- name: HasIdentityForProvider :one
@@ -177,6 +291,28 @@ func (q *Queries) LockUserByEmail(ctx context.Context, email string) ([]LockUser
 		return nil, err
 	}
 	return items, nil
+}
+
+const setUserPasswordHash = `-- name: SetUserPasswordHash :execrows
+UPDATE users
+SET password_hash = $1::text,
+    updated_at = NOW()
+WHERE id = $2::uuid
+  AND status = 'active'
+`
+
+type SetUserPasswordHashParams struct {
+	PasswordHash string
+	ID           uuid.UUID
+}
+
+// Stores a new password hash for an active account.
+func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserPasswordHash, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateGoogleIdentityLogin = `-- name: UpdateGoogleIdentityLogin :one

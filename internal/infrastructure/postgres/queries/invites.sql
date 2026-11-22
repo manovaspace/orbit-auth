@@ -94,3 +94,27 @@ ON CONFLICT (org_id, user_id) DO UPDATE SET
     role = EXCLUDED.role,
     updated_at = NOW()
 WHERE organization_memberships.status = 'invited';
+
+-- name: GetOrganizationInviteByID :one
+-- Reads an invitation without a lock. The caller locks it with
+-- LockOrganizationInviteForAccept after it has locked the account and the
+-- organization.
+SELECT id::text AS id,
+       org_id::text AS org_id,
+       COALESCE(email, '')::text AS email,
+       role,
+       status,
+       expires_at
+FROM organization_invites
+WHERE id = sqlc.arg('id')::uuid;
+
+-- name: LockOrganizationInviteForAccept :one
+SELECT id::text AS id,
+       org_id::text AS org_id,
+       COALESCE(email, '')::text AS email,
+       role,
+       status,
+       expires_at
+FROM organization_invites
+WHERE id = sqlc.arg('id')::uuid
+FOR UPDATE;

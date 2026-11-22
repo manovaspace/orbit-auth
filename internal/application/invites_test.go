@@ -845,3 +845,35 @@ func TestGetInvitePreviewRefusesUnusableTokensGenerically(t *testing.T) {
 		}
 	})
 }
+
+func TestListInvitesShowsPendingInvitesAsExpiredAtTheBoundary(t *testing.T) {
+	svc, _, invites, _, org := inviteFixture(t)
+	ctx := context.Background()
+	invite, _, err := svc.InviteMember(ctx, org.ID, "inviter", domain.InviteTarget{Email: "member@example.com"}, domain.RoleMember, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fixture clock is 2026-11-02 12:00 UTC.
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+
+	invites.setExpiry(t, invite.ID, now.Add(time.Nanosecond))
+	list, err := svc.ListInvites(ctx, org.ID, "inviter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Status != domain.InvitePending {
+		t.Fatalf("one nanosecond before expiry: list = %+v, want pending", list)
+	}
+
+	invites.setExpiry(t, invite.ID, now)
+	list, err = svc.ListInvites(ctx, org.ID, "inviter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Status != domain.InviteExpired {
+		t.Fatalf("at expiry: list = %+v, want expired", list)
+	}
+	if stored := invites.get(t, invite.ID); stored.Status != domain.InvitePending {
+		t.Fatalf("stored status = %q, want the stored pending value kept", stored.Status)
+	}
+}

@@ -596,7 +596,8 @@ type Invite struct {
 	OrgId     string                 `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	Email     string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
 	InviterId string                 `protobuf:"bytes,4,opt,name=inviter_id,json=inviterId,proto3" json:"inviter_id,omitempty"`
-	// pending, accepted or revoked.
+	// pending, accepted, revoked or expired. expired is never stored: it is a
+	// pending invitation whose expires_at has passed.
 	Status     string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
 	ExpiresAt  string `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	AcceptedAt string `protobuf:"bytes,7,opt,name=accepted_at,json=acceptedAt,proto3" json:"accepted_at,omitempty"`

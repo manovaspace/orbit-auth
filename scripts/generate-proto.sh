@@ -9,4 +9,5 @@ protoc \
   "${ROOT}/api/proto/auth/v1/auth.proto" \
   "${ROOT}/api/proto/auth/v1/orgs.proto" \
   "${ROOT}/api/proto/auth/v1/signup.proto" \
-  "${ROOT}/api/proto/auth/v1/staff.proto"
+  "${ROOT}/api/proto/auth/v1/staff.proto" \
+  "${ROOT}/api/proto/auth/v1/account.proto"

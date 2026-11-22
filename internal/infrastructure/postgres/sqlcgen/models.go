@@ -47,6 +47,9 @@ type OauthSignInState struct {
 	ReturnTo    string
 	ExpiresAt   pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
+	Purpose     string
+	InviteID    pgtype.UUID
+	UserID      pgtype.UUID
 }
 
 type Organization struct {

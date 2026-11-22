@@ -1075,7 +1075,11 @@ type StartGoogleSignInRequest struct {
 	// Must equal one of GOOGLE_REDIRECT_URIS exactly.
 	RedirectUri string `protobuf:"bytes,1,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
 	// A path on this product's origin, or empty for "/".
-	ReturnTo      string `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	ReturnTo string `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	// An email invitation token. When set, the sign-in accepts that invitation
+	// for the Google account. The token is checked now and never stored. A phone
+	// invitation is refused with FailedPrecondition. Empty is a plain sign-in.
+	InviteToken   string `protobuf:"bytes,3,opt,name=invite_token,json=inviteToken,proto3" json:"invite_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1120,6 +1124,13 @@ func (x *StartGoogleSignInRequest) GetRedirectUri() string {
 func (x *StartGoogleSignInRequest) GetReturnTo() string {
 	if x != nil {
 		return x.ReturnTo
+	}
+	return ""
+}
+
+func (x *StartGoogleSignInRequest) GetInviteToken() string {
+	if x != nil {
+		return x.InviteToken
 	}
 	return ""
 }
@@ -1236,7 +1247,17 @@ type CompleteGoogleSignInResponse struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Tokens *TokenResponse         `protobuf:"bytes,1,opt,name=tokens,proto3" json:"tokens,omitempty"`
 	// The return_to given to StartGoogleSignIn, "/" when it was empty.
-	ReturnTo      string `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	ReturnTo string `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	// The invitation the sign-in accepted. Empty for a plain sign-in.
+	InviteId string `protobuf:"bytes,3,opt,name=invite_id,json=inviteId,proto3" json:"invite_id,omitempty"`
+	// The organization of the accepted invitation. Its tokens carry no
+	// organization when the organization is suspended.
+	OrgId   string `protobuf:"bytes,4,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	OrgSlug string `protobuf:"bytes,5,opt,name=org_slug,json=orgSlug,proto3" json:"org_slug,omitempty"`
+	// owner, admin or member: the stored tier of the membership.
+	Role string `protobuf:"bytes,6,opt,name=role,proto3" json:"role,omitempty"`
+	// True when the account was already an active member; the stored role is kept.
+	AlreadyMember bool `protobuf:"varint,7,opt,name=already_member,json=alreadyMember,proto3" json:"already_member,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1283,6 +1304,41 @@ func (x *CompleteGoogleSignInResponse) GetReturnTo() string {
 		return x.ReturnTo
 	}
 	return ""
+}
+
+func (x *CompleteGoogleSignInResponse) GetInviteId() string {
+	if x != nil {
+		return x.InviteId
+	}
+	return ""
+}
+
+func (x *CompleteGoogleSignInResponse) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *CompleteGoogleSignInResponse) GetOrgSlug() string {
+	if x != nil {
+		return x.OrgSlug
+	}
+	return ""
+}
+
+func (x *CompleteGoogleSignInResponse) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *CompleteGoogleSignInResponse) GetAlreadyMember() bool {
+	if x != nil {
+		return x.AlreadyMember
+	}
+	return false
 }
 
 var File_auth_v1_auth_proto protoreflect.FileDescriptor
@@ -1360,19 +1416,25 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\x12SetUsernameRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\"1\n" +
 	"\x13SetUsernameResponse\x12\x1a\n" +
-	"\busername\x18\x01 \x01(\tR\busername\"Z\n" +
+	"\busername\x18\x01 \x01(\tR\busername\"}\n" +
 	"\x18StartGoogleSignInRequest\x12!\n" +
 	"\fredirect_uri\x18\x01 \x01(\tR\vredirectUri\x12\x1b\n" +
-	"\treturn_to\x18\x02 \x01(\tR\breturnTo\"^\n" +
+	"\treturn_to\x18\x02 \x01(\tR\breturnTo\x12!\n" +
+	"\finvite_token\x18\x03 \x01(\tR\vinviteToken\"^\n" +
 	"\x19StartGoogleSignInResponse\x12+\n" +
 	"\x11authorization_url\x18\x01 \x01(\tR\x10authorizationUrl\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\"G\n" +
 	"\x1bCompleteGoogleSignInRequest\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\"k\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\"\xf5\x01\n" +
 	"\x1cCompleteGoogleSignInResponse\x12.\n" +
 	"\x06tokens\x18\x01 \x01(\v2\x16.auth.v1.TokenResponseR\x06tokens\x12\x1b\n" +
-	"\treturn_to\x18\x02 \x01(\tR\breturnTo2\xe7\a\n" +
+	"\treturn_to\x18\x02 \x01(\tR\breturnTo\x12\x1b\n" +
+	"\tinvite_id\x18\x03 \x01(\tR\binviteId\x12\x15\n" +
+	"\x06org_id\x18\x04 \x01(\tR\x05orgId\x12\x19\n" +
+	"\borg_slug\x18\x05 \x01(\tR\aorgSlug\x12\x12\n" +
+	"\x04role\x18\x06 \x01(\tR\x04role\x12%\n" +
+	"\x0ealready_member\x18\a \x01(\bR\ralreadyMember2\xe7\a\n" +
 	"\vAuthService\x12E\n" +
 	"\n" +
 	"RequestOTP\x12\x1a.auth.v1.RequestOTPRequest\x1a\x1b.auth.v1.RequestOTPResponse\x12B\n" +

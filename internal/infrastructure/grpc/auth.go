@@ -131,6 +131,10 @@ func callerIDFromContext(ctx context.Context) (string, bool) {
 	return callerID, true
 }
 
+// accountServicePrefix guards every AccountService RPC: each one acts on the
+// caller's own account and needs the verified subject.
+const accountServicePrefix = "/auth.v1.AccountService/"
+
 // authenticatedAuthMethods are the AuthService RPCs that act on the caller's
 // own account. They need a verified access token, which supplies the subject.
 // Every other AuthService RPC keeps its unauthenticated contract.
@@ -146,7 +150,8 @@ var authenticatedAuthMethods = map[string]struct{}{
 func AccessTokenUnaryServerInterceptor(keys orbittoken.KeySet) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		_, authenticated := authenticatedAuthMethods[info.FullMethod]
-		if !strings.HasPrefix(info.FullMethod, "/auth.v1.OrgService/") && !authenticated {
+		if !strings.HasPrefix(info.FullMethod, "/auth.v1.OrgService/") &&
+			!strings.HasPrefix(info.FullMethod, accountServicePrefix) && !authenticated {
 			return handler(ctx, req)
 		}
 		raw, err := bearerToken(ctx)

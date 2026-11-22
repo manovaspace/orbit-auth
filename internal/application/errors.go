@@ -1,6 +1,10 @@
 package application
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/manovaspace/orbit-auth/internal/domain"
+)
 
 var (
 	ErrEmailOTPDisabled  = errors.New("email OTP is disabled")
@@ -13,7 +17,7 @@ var (
 	ErrPasswordRequired = errors.New("password is required")
 	// ErrInviteSignupDisabled is returned by AcceptInviteWithSignup while
 	// AUTH_INVITE_SIGNUP is off. Nothing is written.
-	ErrInviteSignupDisabled = errors.New("invite sign-up is disabled")
+	ErrInviteSignupDisabled = domain.ErrInviteSignupDisabled
 	// ErrPasswordTooShort is the minimum for invite sign-up: at least eight
 	// characters after trimming. The other sign-up paths keep ErrPasswordRequired.
 	ErrPasswordTooShort = errors.New("password must be at least 8 characters")

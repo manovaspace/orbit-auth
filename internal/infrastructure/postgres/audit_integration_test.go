@@ -28,6 +28,10 @@ var allAuditActions = []string{
 	domain.AuditUserCreated,
 	domain.AuditUserDisabled,
 	domain.AuditUserEnabled,
+	domain.AuditIdentityLinked,
+	domain.AuditIdentityUnlinked,
+	domain.AuditPasswordSet,
+	domain.AuditSessionsRevoked,
 }
 
 // auditExpect is the exact content of the audit row one operation writes.
@@ -229,6 +233,37 @@ func TestEveryAuditActionIsWritten(t *testing.T) {
 	}
 	expectAuditRow(t, ctx, db, before, auditExpect{action: domain.AuditUserEnabled, kind: domain.AuditActorStaff, actorID: "staff-1", subjectID: acceptor.ID, reason: "audit table"})
 	mark(domain.AuditUserEnabled)
+
+	// Sign-in methods: link and unlink a Google identity on owner, who has a
+	// username, so unlinking leaves a usable password identifier.
+	ownerActor := domain.UserAuditActor(owner.ID)
+	before = maxAuditID(t, ctx, db)
+	if _, err := store.LinkGoogleIdentity(ctx, "google", domain.GoogleIdentity{Subject: "audit-owner-sub", Email: "audit-owner@example.com", EmailVerified: true}, owner.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	expectAuditRow(t, ctx, db, before, auditExpect{action: domain.AuditIdentityLinked, kind: domain.AuditActorUser, actorID: owner.ID, subjectID: owner.ID})
+	mark(domain.AuditIdentityLinked)
+
+	before = maxAuditID(t, ctx, db)
+	if err := store.UnlinkGoogleIdentity(ctx, "google", owner.ID, ownerActor, now); err != nil {
+		t.Fatal(err)
+	}
+	expectAuditRow(t, ctx, db, before, auditExpect{action: domain.AuditIdentityUnlinked, kind: domain.AuditActorUser, actorID: owner.ID, subjectID: owner.ID})
+	mark(domain.AuditIdentityUnlinked)
+
+	before = maxAuditID(t, ctx, db)
+	if err := store.SetPassword(ctx, owner.ID, "audit-new-hash", "", false, ownerActor, now); err != nil {
+		t.Fatal(err)
+	}
+	expectAuditRow(t, ctx, db, before, auditExpect{action: domain.AuditPasswordSet, kind: domain.AuditActorUser, actorID: owner.ID, subjectID: owner.ID})
+	mark(domain.AuditPasswordSet)
+
+	before = maxAuditID(t, ctx, db)
+	if err := store.RevokeSessions(ctx, owner.ID, "", ownerActor, now); err != nil {
+		t.Fatal(err)
+	}
+	expectAuditRow(t, ctx, db, before, auditExpect{action: domain.AuditSessionsRevoked, kind: domain.AuditActorUser, actorID: owner.ID, subjectID: owner.ID})
+	mark(domain.AuditSessionsRevoked)
 
 	for _, action := range allAuditActions {
 		if !covered[action] {

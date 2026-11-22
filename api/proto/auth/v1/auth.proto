@@ -19,7 +19,8 @@ service AuthService {
   rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse);
   // Google sign-in, off unless GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET_FILE and
   // GOOGLE_REDIRECT_URIS are all set. Both run before any sign-in, so neither
-  // carries a bearer token.
+  // carries a bearer token. The state of a sign-in is a sign_in or an invite
+  // state; a link state is refused here (see AccountService).
   rpc StartGoogleSignIn(StartGoogleSignInRequest) returns (StartGoogleSignInResponse);
   rpc CompleteGoogleSignIn(CompleteGoogleSignInRequest) returns (CompleteGoogleSignInResponse);
 }
@@ -130,6 +131,10 @@ message StartGoogleSignInRequest {
   string redirect_uri = 1;
   // A path on this product's origin, or empty for "/".
   string return_to = 2;
+  // An email invitation token. When set, the sign-in accepts that invitation
+  // for the Google account. The token is checked now and never stored. A phone
+  // invitation is refused with FailedPrecondition. Empty is a plain sign-in.
+  string invite_token = 3;
 }
 
 message StartGoogleSignInResponse {
@@ -150,4 +155,14 @@ message CompleteGoogleSignInResponse {
   TokenResponse tokens = 1;
   // The return_to given to StartGoogleSignIn, "/" when it was empty.
   string return_to = 2;
+  // The invitation the sign-in accepted. Empty for a plain sign-in.
+  string invite_id = 3;
+  // The organization of the accepted invitation. Its tokens carry no
+  // organization when the organization is suspended.
+  string org_id = 4;
+  string org_slug = 5;
+  // owner, admin or member: the stored tier of the membership.
+  string role = 6;
+  // True when the account was already an active member; the stored role is kept.
+  bool already_member = 7;
 }

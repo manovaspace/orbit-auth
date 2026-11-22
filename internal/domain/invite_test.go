@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestNormalizeInviteTarget(t *testing.T) {
@@ -36,6 +37,30 @@ func TestNormalizeInviteTargetRefusesMalformedTargets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := NormalizeInviteTarget(tc.target); !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveInviteStatusExpiresAtTheBoundary(t *testing.T) {
+	expiresAt := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name   string
+		status InviteStatus
+		now    time.Time
+		want   InviteStatus
+	}{
+		{"pending one nanosecond before expiry", InvitePending, expiresAt.Add(-time.Nanosecond), InvitePending},
+		{"pending exactly at expiry", InvitePending, expiresAt, InviteExpired},
+		{"pending after expiry", InvitePending, expiresAt.Add(time.Second), InviteExpired},
+		{"accepted after expiry stays accepted", InviteAccepted, expiresAt.Add(time.Hour), InviteAccepted},
+		{"revoked after expiry stays revoked", InviteRevoked, expiresAt.Add(time.Hour), InviteRevoked},
+		{"accepted before expiry", InviteAccepted, expiresAt.Add(-time.Hour), InviteAccepted},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := EffectiveInviteStatus(tc.status, expiresAt, tc.now); got != tc.want {
+				t.Fatalf("EffectiveInviteStatus = %q, want %q", got, tc.want)
 			}
 		})
 	}

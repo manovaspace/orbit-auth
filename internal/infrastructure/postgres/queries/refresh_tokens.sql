@@ -30,6 +30,14 @@ RETURNING user_id::text AS user_id, COALESCE(org_id::text, '')::text AS org_id;
 UPDATE refresh_tokens SET revoked_at = NOW()
 WHERE user_id = sqlc.arg('user_id')::uuid AND revoked_at IS NULL;
 
+-- name: RevokeUserRefreshTokensExcept :execrows
+-- Revokes every live refresh token of one account except keep_hash. An empty
+-- keep_hash keeps none, because no token hash is empty.
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE user_id = sqlc.arg('user_id')::uuid
+  AND revoked_at IS NULL
+  AND token_hash <> sqlc.arg('keep_hash')::text;
+
 -- name: RevokeOrganizationRefreshTokens :execrows
 -- Revokes the live refresh tokens of one account that selected one organization.
 -- Suspending or removing that membership uses it; other organizations are kept.

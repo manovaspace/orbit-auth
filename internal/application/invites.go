@@ -404,7 +404,8 @@ func (s *Service) RevokeInvite(ctx context.Context, orgID, inviteID, callerID st
 }
 
 // ListInvites returns every invitation of orgID to an owner or admin. The token
-// hash is never returned.
+// hash is never returned. A pending invitation past its expiry is listed as
+// expired (domain.EffectiveInviteStatus, at the service clock).
 func (s *Service) ListInvites(ctx context.Context, orgID, callerID string) ([]domain.Invite, error) {
 	orgID, callerID = strings.TrimSpace(orgID), strings.TrimSpace(callerID)
 	if orgID == "" || callerID == "" {
@@ -423,8 +424,10 @@ func (s *Service) ListInvites(ctx context.Context, orgID, callerID string) ([]do
 	if err != nil {
 		return nil, err
 	}
+	now := s.clock.Now()
 	for i := range invites {
 		invites[i].TokenHash = ""
+		invites[i].Status = domain.EffectiveInviteStatus(invites[i].Status, invites[i].ExpiresAt, now)
 	}
 	return invites, nil
 }

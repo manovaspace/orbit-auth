@@ -112,6 +112,28 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID)
 	return result.RowsAffected(), nil
 }
 
+const revokeUserRefreshTokensExcept = `-- name: RevokeUserRefreshTokensExcept :execrows
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE user_id = $1::uuid
+  AND revoked_at IS NULL
+  AND token_hash <> $2::text
+`
+
+type RevokeUserRefreshTokensExceptParams struct {
+	UserID   uuid.UUID
+	KeepHash string
+}
+
+// Revokes every live refresh token of one account except keep_hash. An empty
+// keep_hash keeps none, because no token hash is empty.
+func (q *Queries) RevokeUserRefreshTokensExcept(ctx context.Context, arg RevokeUserRefreshTokensExceptParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserRefreshTokensExcept, arg.UserID, arg.KeepHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const storeRefreshToken = `-- name: StoreRefreshToken :exec
 INSERT INTO refresh_tokens (id, user_id, org_id, token_hash, expires_at)
 VALUES (

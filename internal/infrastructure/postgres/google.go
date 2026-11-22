@@ -20,30 +20,49 @@ const maxDisplayNameRunes = 100
 
 var _ domain.OAuthStore = (*Store)(nil)
 
-// CreateOAuthState stores one Google sign-in state by its hash.
-func (s *Store) CreateOAuthState(ctx context.Context, stateHash, redirectURI, returnTo string, expiresAt time.Time) error {
+// CreateOAuthState stores one Google sign-in state by its hash, with its
+// purpose and the invitation or account it carries. The ids are optional
+// columns: the database checks which ones each purpose requires.
+func (s *Store) CreateOAuthState(ctx context.Context, stateHash string, state domain.OAuthState, expiresAt time.Time) error {
+	inviteID, err := optionalUUID(state.InviteID)
+	if err != nil {
+		return err
+	}
+	userID, err := optionalUUID(state.UserID)
+	if err != nil {
+		return err
+	}
 	return s.queries.CreateOAuthSignInState(ctx, sqlcgen.CreateOAuthSignInStateParams{
 		StateHash:   stateHash,
-		RedirectUri: redirectURI,
-		ReturnTo:    returnTo,
+		RedirectUri: state.RedirectURI,
+		ReturnTo:    state.ReturnTo,
 		ExpiresAt:   timestamptz(expiresAt),
+		Purpose:     state.Purpose,
+		InviteID:    inviteID,
+		UserID:      userID,
 	})
 }
 
-// ConsumeOAuthState deletes a live state and returns its redirect URI and
-// return path. A missing, used or expired state is domain.ErrInvalidGoogleState.
-func (s *Store) ConsumeOAuthState(ctx context.Context, stateHash string, now time.Time) (string, string, error) {
+// ConsumeOAuthState deletes a live state and returns what it stored. A missing,
+// used or expired state is domain.ErrInvalidGoogleState.
+func (s *Store) ConsumeOAuthState(ctx context.Context, stateHash string, now time.Time) (domain.OAuthState, error) {
 	row, err := s.queries.ConsumeOAuthSignInState(ctx, sqlcgen.ConsumeOAuthSignInStateParams{
 		StateHash: stateHash,
 		Now:       timestamptz(now),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", domain.ErrInvalidGoogleState
+		return domain.OAuthState{}, domain.ErrInvalidGoogleState
 	}
 	if err != nil {
-		return "", "", err
+		return domain.OAuthState{}, err
 	}
-	return row.RedirectUri, row.ReturnTo, nil
+	return domain.OAuthState{
+		RedirectURI: row.RedirectUri,
+		ReturnTo:    row.ReturnTo,
+		Purpose:     row.Purpose,
+		InviteID:    row.InviteID,
+		UserID:      row.UserID,
+	}, nil
 }
 
 // DeleteExpiredOAuthStates removes states that expired at or before now.
@@ -59,7 +78,7 @@ func (s *Store) DeleteExpiredOAuthStates(ctx context.Context, now time.Time) err
 //     last login and email. It is never relinked.
 //  2. Otherwise, for an authoritative email, the accounts whose email matches
 //     it case-insensitively are locked. One verified account without a Google
-//     identity is linked. An unverified account, or one that already has a
+//     identity is linked, and identity.linked is written. An unverified account, or one that already has a
 //     Google identity, is domain.ErrGoogleAccountNotAllowed. Two or more
 //     matches (addresses that differ only by case) are also
 //     domain.ErrGoogleAccountNotAllowed, because the holder would be a guess.
@@ -152,6 +171,9 @@ func (s *Store) signInWithIdentityOnce(ctx context.Context, provider string, id 
 				Email:    emailPtr,
 			}); err != nil {
 				return domain.User{}, fmt.Errorf("postgres: link google identity: %w", err)
+			}
+			if err := identityLinkedAudit(ctx, queries, holder.ID, now); err != nil {
+				return domain.User{}, err
 			}
 			return finishSignIn(ctx, tx, queries, holder.ID)
 		}

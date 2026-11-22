@@ -27,9 +27,8 @@ type movingClock struct{ now *time.Time }
 func (c movingClock) Now() time.Time { return *c.now }
 
 type fakeOAuthState struct {
-	redirectURI string
-	returnTo    string
-	expires     time.Time
+	domain.OAuthState
+	expires time.Time
 }
 
 // fakeOAuthStore keeps states in memory with the same single-use and expiry
@@ -43,28 +42,34 @@ type fakeOAuthStore struct {
 	signIns     int
 	allowCreate bool
 	identity    domain.GoogleIdentity
+
+	acceptResult      domain.InviteAcceptance
+	acceptErr         error
+	acceptCalls       int
+	acceptInviteID    string
+	acceptAllowSignup bool
 }
 
 func newFakeOAuthStore(user domain.User) *fakeOAuthStore {
 	return &fakeOAuthStore{states: map[string]fakeOAuthState{}, signInUser: user}
 }
 
-func (f *fakeOAuthStore) CreateOAuthState(_ context.Context, stateHash, redirectURI, returnTo string, expiresAt time.Time) error {
+func (f *fakeOAuthStore) CreateOAuthState(_ context.Context, stateHash string, state domain.OAuthState, expiresAt time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.states[stateHash] = fakeOAuthState{redirectURI: redirectURI, returnTo: returnTo, expires: expiresAt}
+	f.states[stateHash] = fakeOAuthState{OAuthState: state, expires: expiresAt}
 	return nil
 }
 
-func (f *fakeOAuthStore) ConsumeOAuthState(_ context.Context, stateHash string, now time.Time) (string, string, error) {
+func (f *fakeOAuthStore) ConsumeOAuthState(_ context.Context, stateHash string, now time.Time) (domain.OAuthState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	st, ok := f.states[stateHash]
 	if !ok || !now.Before(st.expires) {
-		return "", "", domain.ErrInvalidGoogleState
+		return domain.OAuthState{}, domain.ErrInvalidGoogleState
 	}
 	delete(f.states, stateHash)
-	return st.redirectURI, st.returnTo, nil
+	return st.OAuthState, nil
 }
 
 func (f *fakeOAuthStore) DeleteExpiredOAuthStates(_ context.Context, now time.Time) error {
@@ -89,6 +94,21 @@ func (f *fakeOAuthStore) SignInWithIdentity(_ context.Context, provider string, 
 		return domain.User{}, errors.New("unexpected provider")
 	}
 	return f.signInUser, f.signInErr
+}
+
+// AcceptInviteWithIdentity returns acceptResult or acceptErr and records the
+// invitation it was asked to accept.
+func (f *fakeOAuthStore) AcceptInviteWithIdentity(_ context.Context, provider string, id domain.GoogleIdentity, inviteID string, _ time.Time, _ string, allowSignup bool) (domain.InviteAcceptance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.acceptCalls++
+	f.acceptInviteID = inviteID
+	f.acceptAllowSignup = allowSignup
+	f.identity = id
+	if provider != domain.GoogleProviderName {
+		return domain.InviteAcceptance{}, errors.New("unexpected provider")
+	}
+	return f.acceptResult, f.acceptErr
 }
 
 func (f *fakeOAuthStore) stateCount() int {
@@ -171,7 +191,7 @@ func activeGoogleUser() domain.User {
 
 func startSignIn(t *testing.T, h *googleHarness) string {
 	t.Helper()
-	_, state, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "/inbox")
+	_, state, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "/inbox", "")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -180,10 +200,10 @@ func startSignIn(t *testing.T, h *googleHarness) string {
 
 func TestGoogleSignInOffReturnsDisabledForBothRPCs(t *testing.T) {
 	svc := NewService(Deps{Users: &fakeUsers{}, Refresh: newFakeRefreshStore(), Signer: testSigner{}, IDs: testUUIDs{}, Clock: fixedClock{at: time.Now()}, Secrets: testSecrets{}})
-	if _, _, err := svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "/"); !errors.Is(err, domain.ErrGoogleDisabled) {
+	if _, _, err := svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "/", ""); !errors.Is(err, domain.ErrGoogleDisabled) {
 		t.Fatalf("start err = %v, want ErrGoogleDisabled", err)
 	}
-	if _, _, _, _, err := svc.CompleteGoogleSignIn(context.Background(), "state", "code"); !errors.Is(err, domain.ErrGoogleDisabled) {
+	if _, err := svc.CompleteGoogleSignIn(context.Background(), "state", "code"); !errors.Is(err, domain.ErrGoogleDisabled) {
 		t.Fatalf("complete err = %v, want ErrGoogleDisabled", err)
 	}
 }
@@ -191,7 +211,7 @@ func TestGoogleSignInOffReturnsDisabledForBothRPCs(t *testing.T) {
 func TestStartGoogleSignInRejectsRedirectOutsideAllowlist(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	for _, uri := range []string{"https://evil.example.com/cb", testGoogleRedirect + "?x=1", strings.ToUpper(testGoogleRedirect), ""} {
-		if _, _, err := h.svc.StartGoogleSignIn(context.Background(), uri, "/"); !errors.Is(err, domain.ErrInvalidRedirectURI) {
+		if _, _, err := h.svc.StartGoogleSignIn(context.Background(), uri, "/", ""); !errors.Is(err, domain.ErrInvalidRedirectURI) {
 			t.Fatalf("redirect %q err = %v, want ErrInvalidRedirectURI", uri, err)
 		}
 	}
@@ -203,7 +223,7 @@ func TestStartGoogleSignInRejectsRedirectOutsideAllowlist(t *testing.T) {
 func TestStartGoogleSignInRejectsBadReturnTo(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	for _, value := range []string{"//evil.example.com", "https://evil.example.com", "/\\evil"} {
-		if _, _, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, value); !errors.Is(err, domain.ErrInvalidReturnTo) {
+		if _, _, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, value, ""); !errors.Is(err, domain.ErrInvalidReturnTo) {
 			t.Fatalf("return_to %q err = %v, want ErrInvalidReturnTo", value, err)
 		}
 	}
@@ -211,7 +231,7 @@ func TestStartGoogleSignInRejectsBadReturnTo(t *testing.T) {
 
 func TestStartGoogleSignInStoresOnlyHashAndDerivesPKCE(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
-	authURL, state, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "/inbox")
+	authURL, state, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "/inbox", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,14 +275,15 @@ func TestCompleteGoogleSignInIsSingleUse(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	state := startSignIn(t, h)
 
-	access, refresh, _, returnTo, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code-1")
+	res, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code-1")
 	if err != nil {
 		t.Fatalf("first complete: %v", err)
 	}
+	access, refresh, returnTo := res.Access, res.Refresh, res.ReturnTo
 	if access == "" || refresh == "" || returnTo != "/inbox" {
 		t.Fatalf("first complete tokens=%q/%q return_to=%q", access, refresh, returnTo)
 	}
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code-1"); !errors.Is(err, domain.ErrInvalidGoogleState) {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code-1"); !errors.Is(err, domain.ErrInvalidGoogleState) {
 		t.Fatalf("second complete err = %v, want ErrInvalidGoogleState", err)
 	}
 	if h.provider.exCalls != 1 {
@@ -275,7 +296,7 @@ func TestCompleteGoogleSignInRejectsExpiredState(t *testing.T) {
 	state := startSignIn(t, h)
 	*h.clock = h.clock.Add(domain.OAuthStateTTL)
 
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrInvalidGoogleState) {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrInvalidGoogleState) {
 		t.Fatalf("expired state err = %v, want ErrInvalidGoogleState", err)
 	}
 	if h.provider.exCalls != 0 {
@@ -288,11 +309,11 @@ func TestFailedExchangeStillConsumesState(t *testing.T) {
 	state := startSignIn(t, h)
 	h.provider.exErr = errors.New("token endpoint said no")
 
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleExchangeFailed) {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleExchangeFailed) {
 		t.Fatalf("exchange failure err = %v, want ErrGoogleExchangeFailed", err)
 	}
 	h.provider.exErr = nil
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrInvalidGoogleState) {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrInvalidGoogleState) {
 		t.Fatalf("retry after failed exchange err = %v, want ErrInvalidGoogleState", err)
 	}
 }
@@ -300,7 +321,7 @@ func TestFailedExchangeStillConsumesState(t *testing.T) {
 func TestCompleteGoogleSignInPassesStoredRedirectAndDerivedVerifier(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	state := startSignIn(t, h)
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code-9"); err != nil {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code-9"); err != nil {
 		t.Fatal(err)
 	}
 	mac := hmac.New(sha256.New, DeriveGoogleStateKey(testGoogleSecret))
@@ -324,7 +345,7 @@ func TestCompleteGoogleSignInRejectsEmptyAndOverlongInput(t *testing.T) {
 		"code too long":  {state, strings.Repeat("c", 2049)},
 	}
 	for name, tc := range cases {
-		if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), tc[0], tc[1]); !errors.Is(err, domain.ErrInvalidGoogleState) {
+		if _, err := h.svc.CompleteGoogleSignIn(context.Background(), tc[0], tc[1]); !errors.Is(err, domain.ErrInvalidGoogleState) {
 			t.Fatalf("%s: err = %v, want ErrInvalidGoogleState", name, err)
 		}
 	}
@@ -338,7 +359,7 @@ func TestCompleteGoogleSignInRefusesAccountsThatCannotSignIn(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			h := newGoogleHarness(t, domain.User{ID: testGoogleUserID, Status: status}, false)
 			state := startSignIn(t, h)
-			if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
+			if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
 				t.Fatalf("status %s err = %v, want ErrGoogleAccountNotAllowed", status, err)
 			}
 			if len(h.refresh.tokens) != 0 {
@@ -352,7 +373,7 @@ func TestCompleteGoogleSignInRefusesEmptySubject(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	h.provider.identity = domain.GoogleIdentity{Email: "ali@example.com", EmailVerified: true}
 	state := startSignIn(t, h)
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
 		t.Fatalf("empty subject err = %v, want ErrGoogleAccountNotAllowed", err)
 	}
 	if h.store.signIns != 0 {
@@ -363,7 +384,7 @@ func TestCompleteGoogleSignInRefusesEmptySubject(t *testing.T) {
 func TestSignupClosedForbidsCreatingAccounts(t *testing.T) {
 	closed := newGoogleHarness(t, activeGoogleUser(), false)
 	state := startSignIn(t, closed)
-	if _, _, _, _, err := closed.svc.CompleteGoogleSignIn(context.Background(), state, "code"); err != nil {
+	if _, err := closed.svc.CompleteGoogleSignIn(context.Background(), state, "code"); err != nil {
 		t.Fatal(err)
 	}
 	if closed.store.allowCreate {
@@ -372,7 +393,7 @@ func TestSignupClosedForbidsCreatingAccounts(t *testing.T) {
 
 	open := newGoogleHarness(t, activeGoogleUser(), true)
 	state = startSignIn(t, open)
-	if _, _, _, _, err := open.svc.CompleteGoogleSignIn(context.Background(), state, "code"); err != nil {
+	if _, err := open.svc.CompleteGoogleSignIn(context.Background(), state, "code"); err != nil {
 		t.Fatal(err)
 	}
 	if !open.store.allowCreate {
@@ -384,7 +405,7 @@ func TestStoreRefusalIsReturnedAsNotAllowed(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	h.store.signInErr = domain.ErrGoogleAccountNotAllowed
 	state := startSignIn(t, h)
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
 		t.Fatalf("err = %v, want ErrGoogleAccountNotAllowed", err)
 	}
 }
@@ -393,7 +414,7 @@ func TestCompleteGoogleSignInLogsOnlyTheEvent(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
 	state := startSignIn(t, h)
 	h.logs = nil
-	if _, _, _, _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); err != nil {
+	if _, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code"); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.logs) != 1 || h.logs[0] != "google_login" {
@@ -403,13 +424,13 @@ func TestCompleteGoogleSignInLogsOnlyTheEvent(t *testing.T) {
 
 func TestReturnToDefaultsToRootWhenEmpty(t *testing.T) {
 	h := newGoogleHarness(t, activeGoogleUser(), false)
-	_, state, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "")
+	_, state, err := h.svc.StartGoogleSignIn(context.Background(), testGoogleRedirect, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, returnTo, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code")
-	if err != nil || returnTo != "/" {
-		t.Fatalf("return_to = %q, err = %v; want /", returnTo, err)
+	res, err := h.svc.CompleteGoogleSignIn(context.Background(), state, "code")
+	if err != nil || res.ReturnTo != "/" {
+		t.Fatalf("return_to = %q, err = %v; want /", res.ReturnTo, err)
 	}
 }
 

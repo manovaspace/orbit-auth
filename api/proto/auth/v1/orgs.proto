@@ -167,7 +167,8 @@ message Invite {
   string org_id = 2;
   string email = 3;
   string inviter_id = 4;
-  // pending, accepted or revoked.
+  // pending, accepted, revoked or expired. expired is never stored: it is a
+  // pending invitation whose expires_at has passed.
   string status = 5;
   string expires_at = 6;
   string accepted_at = 7;
