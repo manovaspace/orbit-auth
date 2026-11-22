@@ -8,8 +8,8 @@ SET statement_timeout = '60s';
 -- transition rules are code. Every existing row holds 'active' or
 -- 'signup_pending', so the constraint is added NOT VALID and then validated.
 -- squawk-ignore prefer-robust-stmts -- the constraint is added NOT VALID, so the scan is deferred to VALIDATE CONSTRAINT, which takes a weaker lock; the table holds one row per account and goose runs this file in one transaction
-ALTER TABLE users
-    ADD CONSTRAINT users_status_chk CHECK (status IN ('active', 'disabled', 'signup_pending')) NOT VALID;
+ALTER TABLE users ADD CONSTRAINT users_status_chk CHECK (status IN ('active', 'disabled', 'signup_pending')) NOT VALID;
+-- squawk-ignore prefer-robust-stmts -- goose runs this file in one transaction, so a failed run leaves nothing behind
 ALTER TABLE users VALIDATE CONSTRAINT users_status_chk;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ;
 -- squawk-ignore adding-not-nullable-field, prefer-robust-stmts -- a constant default ('') keeps the column cheap to add; the table holds one row per account
