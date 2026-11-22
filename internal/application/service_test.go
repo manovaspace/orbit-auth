@@ -99,7 +99,7 @@ func (f *fakeUsers) FindByEmail(_ context.Context, email string) (domain.User, e
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if f.user.Email != email {
-		return domain.User{}, errors.New("not found")
+		return domain.User{}, domain.ErrUserNotFound
 	}
 	return f.user, nil
 }
@@ -108,7 +108,7 @@ func (f *fakeUsers) FindByMobile(_ context.Context, mobile string) (domain.User,
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if f.user.Mobile != mobile {
-		return domain.User{}, errors.New("not found")
+		return domain.User{}, domain.ErrUserNotFound
 	}
 	return f.user, nil
 }

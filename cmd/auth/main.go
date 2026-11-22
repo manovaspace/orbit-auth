@@ -173,6 +173,8 @@ func main() {
 		// disables invite sign-up.
 		InviteSignupDisabled: strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_INVITE_SIGNUP")), "off") ||
 			strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_INVITE_SIGNUP")), "false"),
+		// AUTH_INVITE_ACCEPT_HOSTS lists the hosts an invitation accept_url may use.
+		InviteAcceptHosts: inviteAcceptHostsFromEnv(),
 		// AUTH_AUTO_SELECT_SINGLE_ORG defaults to true; only an explicit
 		// false disables it.
 		AutoSelectSingleOrg: !strings.EqualFold(envOr("AUTH_AUTO_SELECT_SINGLE_ORG", "true"), "false"),
@@ -320,6 +322,19 @@ func demoUsersFromEnv() ([]domain.DemoUser, error) {
 		return nil, err
 	}
 	return users, nil
+}
+
+// inviteAcceptHostsFromEnv reads AUTH_INVITE_ACCEPT_HOSTS, a comma-separated
+// list of hosts. Entries are trimmed and lower-cased, and empty entries are
+// dropped. Empty means no invitation accept_url is accepted.
+func inviteAcceptHostsFromEnv() []string {
+	var hosts []string
+	for _, raw := range strings.Split(os.Getenv("AUTH_INVITE_ACCEPT_HOSTS"), ",") {
+		if host := strings.ToLower(strings.TrimSpace(raw)); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
 }
 
 // defaultCallingCodeFromEnv reads AUTH_DEFAULT_CALLING_CODE: the country

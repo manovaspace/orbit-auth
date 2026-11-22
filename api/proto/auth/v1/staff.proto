@@ -116,6 +116,10 @@ message ProvisionOrganizationRequest {
   // Required. A repeat must carry the same name and owner as the request that
   // first used the key; otherwise it is refused with ALREADY_EXISTS.
   string idempotency_key = 5;
+  // Optional acceptance page for an email owner, with the same rules as
+  // InviteMemberRequest.accept_url; "{slug}" is the organization's allocated
+  // slug. A phone owner validates it and ignores it.
+  string accept_url = 6;
 }
 
 message ProvisionOrganizationResponse {
@@ -156,6 +160,8 @@ message ReinviteOwnerRequest {
   // Exactly one of owner_email and owner_phone.
   string owner_email = 2;
   string owner_phone = 3;
+  // Optional acceptance page, with the same rules as InviteMemberRequest.accept_url.
+  string accept_url = 4;
 }
 
 message ReinviteOwnerResponse {

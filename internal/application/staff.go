@@ -54,6 +54,9 @@ type ProvisionOrgInput struct {
 	Slug           string
 	IdempotencyKey string
 	Target         domain.InviteTarget
+	// AcceptURL is optional, with the rules of domain.ResolveAcceptURL. "{slug}"
+	// is the organization's allocated slug.
+	AcceptURL string
 }
 
 // ProvisionOrgResult is the new organization and its owner invitation. Token is
@@ -179,7 +182,7 @@ func (s *Service) StaffProvisionOrganization(ctx context.Context, actor domain.S
 		return ProvisionOrgResult{}, err
 	}
 	if found {
-		return s.repeatProvision(ctx, actor, prior, name, target)
+		return s.repeatProvision(ctx, actor, prior, name, target, in.AcceptURL)
 	}
 
 	now := s.clock.Now()
@@ -190,9 +193,15 @@ func (s *Service) StaffProvisionOrganization(ctx context.Context, actor domain.S
 		// that holds the slug. That attempt is a repeat, not a conflict.
 		if errors.Is(err, domain.ErrSlugTaken) {
 			if prior, found, findErr := s.orgs.ProvisionedOrganization(ctx, key); findErr == nil && found {
-				return s.repeatProvision(ctx, actor, prior, name, target)
+				return s.repeatProvision(ctx, actor, prior, name, target, in.AcceptURL)
 			}
 		}
+		return ProvisionOrgResult{}, err
+	}
+	// The accept_url is checked against the allocated slug before anything is
+	// written.
+	resolvedURL, err := domain.ResolveAcceptURL(in.AcceptURL, slug, s.inviteAcceptHosts)
+	if err != nil {
 		return ProvisionOrgResult{}, err
 	}
 	org := domain.Organization{
@@ -213,9 +222,9 @@ func (s *Service) StaffProvisionOrganization(ctx context.Context, actor domain.S
 	}
 	if !wasCreated {
 		// A concurrent request with the same key created the organization first.
-		return s.repeatProvision(ctx, actor, created, name, target)
+		return s.repeatProvision(ctx, actor, created, name, target, in.AcceptURL)
 	}
-	if err := s.deliverStaffOwnerInvite(ctx, org, invite, token); err != nil {
+	if err := s.deliverStaffOwnerInvite(ctx, org, invite, token, resolvedURL); err != nil {
 		return ProvisionOrgResult{}, err
 	}
 	s.logger("staff_organization_provisioned", "org_id", org.ID, "invite_id", invite.ID,
@@ -226,12 +235,16 @@ func (s *Service) StaffProvisionOrganization(ctx context.Context, actor domain.S
 // repeatProvision answers a provisioning call whose key already created an
 // organization. Only the same name and the same owner target is a repeat: it
 // rotates the owner invitation for that target. Any other call is a conflict.
-func (s *Service) repeatProvision(ctx context.Context, actor domain.StaffActor, prior domain.OrganizationProvision, name string, target domain.InviteTarget) (ProvisionOrgResult, error) {
+func (s *Service) repeatProvision(ctx context.Context, actor domain.StaffActor, prior domain.OrganizationProvision, name string, target domain.InviteTarget, acceptURL string) (ProvisionOrgResult, error) {
 	org := prior.Organization
 	if org.Name != name || prior.OwnerTarget != target {
 		return ProvisionOrgResult{}, domain.ErrIdempotencyConflict
 	}
-	invite, token, err := s.issueStaffOwnerInvite(ctx, actor, org, target)
+	resolvedURL, err := domain.ResolveAcceptURL(acceptURL, org.Slug, s.inviteAcceptHosts)
+	if err != nil {
+		return ProvisionOrgResult{}, err
+	}
+	invite, token, err := s.issueStaffOwnerInvite(ctx, actor, org, target, resolvedURL)
 	if err != nil {
 		return ProvisionOrgResult{}, err
 	}
@@ -324,9 +337,11 @@ func (s *Service) StaffSetOrganizationSlug(ctx context.Context, actor domain.Sta
 }
 
 // StaffReinviteOwner issues a new owner invitation to target and rotates the
-// pending one for the same recipient. The invitation returned carries no
-// token hash; the raw token is returned only for a phone owner.
-func (s *Service) StaffReinviteOwner(ctx context.Context, actor domain.StaffActor, orgID string, target domain.InviteTarget) (domain.Invite, string, error) {
+// pending one for the same recipient. acceptURL is validated against the
+// organization's current slug before anything is written. The invitation
+// returned carries no token hash; the raw token is returned only for a phone
+// owner.
+func (s *Service) StaffReinviteOwner(ctx context.Context, actor domain.StaffActor, orgID string, target domain.InviteTarget, acceptURL string) (domain.Invite, string, error) {
 	if err := s.staffReady(); err != nil {
 		return domain.Invite{}, "", err
 	}
@@ -345,7 +360,11 @@ func (s *Service) StaffReinviteOwner(ctx context.Context, actor domain.StaffActo
 	if err != nil {
 		return domain.Invite{}, "", err
 	}
-	invite, token, err := s.issueStaffOwnerInvite(ctx, actor, org, target)
+	resolvedURL, err := domain.ResolveAcceptURL(acceptURL, org.Slug, s.inviteAcceptHosts)
+	if err != nil {
+		return domain.Invite{}, "", err
+	}
+	invite, token, err := s.issueStaffOwnerInvite(ctx, actor, org, target, resolvedURL)
 	if err != nil {
 		return domain.Invite{}, "", err
 	}
@@ -358,8 +377,9 @@ func (s *Service) StaffReinviteOwner(ctx context.Context, actor domain.StaffActo
 }
 
 // issueStaffOwnerInvite creates the owner invitation, revokes the pending one
-// for the same recipient, and delivers it.
-func (s *Service) issueStaffOwnerInvite(ctx context.Context, actor domain.StaffActor, org domain.Organization, target domain.InviteTarget) (domain.Invite, string, error) {
+// for the same recipient, and delivers it. resolvedURL is the validated
+// accept link, or empty.
+func (s *Service) issueStaffOwnerInvite(ctx context.Context, actor domain.StaffActor, org domain.Organization, target domain.InviteTarget, resolvedURL string) (domain.Invite, string, error) {
 	invite, token, err := s.newStaffOwnerInvite(actor, org.ID, target, s.clock.Now())
 	if err != nil {
 		return domain.Invite{}, "", err
@@ -367,7 +387,7 @@ func (s *Service) issueStaffOwnerInvite(ctx context.Context, actor domain.StaffA
 	if err := s.invites.CreateInvite(ctx, invite); err != nil {
 		return domain.Invite{}, "", err
 	}
-	if err := s.deliverStaffOwnerInvite(ctx, org, invite, token); err != nil {
+	if err := s.deliverStaffOwnerInvite(ctx, org, invite, token, resolvedURL); err != nil {
 		return domain.Invite{}, "", err
 	}
 	invite.TokenHash = ""
@@ -397,8 +417,9 @@ func (s *Service) newStaffOwnerInvite(actor domain.StaffActor, orgID string, tar
 
 // deliverStaffOwnerInvite sends the org_invite email for an email owner. A phone
 // owner has no channel yet, so the token goes back to the staff caller. A failed
-// send revokes the invitation.
-func (s *Service) deliverStaffOwnerInvite(ctx context.Context, org domain.Organization, invite domain.Invite, token string) error {
+// send revokes the invitation. resolvedURL is the validated accept link without
+// the token; the token is added as the fragment here.
+func (s *Service) deliverStaffOwnerInvite(ctx context.Context, org domain.Organization, invite domain.Invite, token, resolvedURL string) error {
 	if invite.Phone != "" {
 		return nil
 	}
@@ -407,6 +428,7 @@ func (s *Service) deliverStaffOwnerInvite(ctx context.Context, org domain.Organi
 		OrgName:       org.Name,
 		InviterName:   staffInviterName,
 		AcceptToken:   token,
+		AcceptURL:     inviteAcceptLink(resolvedURL, token),
 		ExpiresAt:     invite.ExpiresAt,
 		Locale:        defaultInviteLocale,
 		CorrelationID: invite.ID,

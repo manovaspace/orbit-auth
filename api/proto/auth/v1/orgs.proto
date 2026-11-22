@@ -72,12 +72,15 @@ service InviteService {
   // in: the organization, its tier and the expiry. It never returns the
   // recipient's email address or phone number.
   rpc GetInvitePreview(GetInvitePreviewRequest) returns (InvitePreview);
-  // AcceptInviteWithSignup creates the account for a phone invitation, sets
-  // its password and display name, joins the organization with the invited
-  // tier and returns the new user. The account's mobile number is the invited
-  // number and is not verified: no OTP proved it. If an account already uses
-  // the number, the call is AlreadyExists and the person must sign in and call
-  // AcceptInvite instead. Email invitations are not accepted here.
+  // AcceptInviteWithSignup creates the account for an invitation, sets its
+  // password and display name, joins the organization with the invited tier
+  // and returns the new user. A phone invitation gets an account whose mobile
+  // number is the invited number and is not verified: no OTP proved it. An
+  // email invitation gets an account whose email is verified, because the
+  // token reached only that mailbox. If an active account already uses the
+  // number or email, the call is AlreadyExists and the person must sign in and
+  // call AcceptInvite instead. A signup_pending account with the invited email
+  // is taken over with the new password and becomes active.
   rpc AcceptInviteWithSignup(AcceptInviteWithSignupRequest) returns (AcceptInviteWithSignupResponse);
 }
 
@@ -104,6 +107,11 @@ message InvitePreview {
   // owner, admin or member.
   string role = 4;
   string expires_at = 5;
+  // channel is how the invitation was delivered: "email" or "phone".
+  string channel = 6;
+  // account_exists is true when an active account already uses the invited
+  // phone number or email. It never reveals whose account it is.
+  bool account_exists = 7;
 }
 
 message AcceptInviteWithSignupRequest {
@@ -115,6 +123,12 @@ message AcceptInviteWithSignupRequest {
 message AcceptInviteWithSignupResponse {
   string user_id = 1;
   string org_id = 2;
+  string invite_id = 3;
+  // owner, admin or member: the tier the account joined with.
+  string role = 4;
+  // identifier is what the person signs in with: the account's phone number in
+  // E.164 for a phone invitation, or its email address for an email invitation.
+  string identifier = 5;
 }
 
 message ResolveTenantRequest {
@@ -233,6 +247,14 @@ message InviteMemberRequest {
   string phone = 3;
   // role is owner, admin or member. Empty means member.
   string role = 4;
+  // accept_url is optional: the https URL of the product's acceptance page,
+  // for example "https://{slug}.app.example.com/invite". "{slug}" is
+  // replaced with the organization's current slug. No userinfo, query or
+  // fragment; the host must be, or be a subdomain of, an entry of
+  // AUTH_INVITE_ACCEPT_HOSTS. http is allowed only for localhost. An invalid
+  // value is INVALID_ARGUMENT. An email invitation sends the link with the
+  // token in its fragment; a phone invitation validates it and ignores it.
+  string accept_url = 5;
 }
 
 message InviteMemberResponse {

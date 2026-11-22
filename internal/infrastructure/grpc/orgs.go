@@ -28,7 +28,7 @@ type OrgService interface {
 	RemoveMember(ctx context.Context, orgID, callerID, userID string) error
 	SetMemberRole(ctx context.Context, orgID, callerID, userID string, role domain.MembershipRole) (domain.Membership, error)
 	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
-	InviteMember(ctx context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole) (domain.Invite, string, error)
+	InviteMember(ctx context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole, acceptURL string) (domain.Invite, string, error)
 	AcceptInvite(ctx context.Context, userID, token string) (domain.Invite, error)
 	RevokeInvite(ctx context.Context, orgID, inviteID, callerID string) error
 	ListInvites(ctx context.Context, orgID, callerID string) ([]domain.Invite, error)
@@ -228,7 +228,7 @@ func (s *OrgServer) InviteMember(ctx context.Context, req *authv1.InviteMemberRe
 		}
 	}
 	target := domain.InviteTarget{Email: req.GetEmail(), Phone: req.GetPhone()}
-	invite, token, err := s.svc.InviteMember(ctx, orgID, callerID, target, role)
+	invite, token, err := s.svc.InviteMember(ctx, orgID, callerID, target, role, req.GetAcceptUrl())
 	if err != nil {
 		return nil, orgError(err)
 	}
@@ -254,7 +254,7 @@ type InviteServer struct {
 // application layer.
 type InviteService interface {
 	GetInvitePreview(ctx context.Context, token string) (domain.InvitePreview, error)
-	AcceptInviteWithSignup(ctx context.Context, token, password, displayName string) (userID, orgID string, err error)
+	AcceptInviteWithSignup(ctx context.Context, token, password, displayName string) (application.InviteSignupResult, error)
 }
 
 func NewInvite(svc InviteService) *InviteServer {
@@ -269,11 +269,13 @@ func (s *InviteServer) GetInvitePreview(ctx context.Context, req *authv1.GetInvi
 		return nil, inviteTokenError(err)
 	}
 	return &authv1.InvitePreview{
-		OrgId:     preview.OrgID,
-		OrgName:   preview.OrgName,
-		OrgSlug:   preview.OrgSlug,
-		Role:      string(preview.Role),
-		ExpiresAt: preview.ExpiresAt.Format(time.RFC3339),
+		OrgId:         preview.OrgID,
+		OrgName:       preview.OrgName,
+		OrgSlug:       preview.OrgSlug,
+		Role:          string(preview.Role),
+		ExpiresAt:     preview.ExpiresAt.Format(time.RFC3339),
+		Channel:       preview.Channel,
+		AccountExists: preview.AccountExists,
 	}, nil
 }
 
@@ -281,7 +283,7 @@ func (s *InviteServer) GetInvitePreview(ctx context.Context, req *authv1.GetInvi
 // that already uses the number is AlreadyExists: that person must sign in and
 // accept with AcceptInvite.
 func (s *InviteServer) AcceptInviteWithSignup(ctx context.Context, req *authv1.AcceptInviteWithSignupRequest) (*authv1.AcceptInviteWithSignupResponse, error) {
-	userID, orgID, err := s.svc.AcceptInviteWithSignup(ctx, req.GetToken(), req.GetPassword(), req.GetDisplayName())
+	result, err := s.svc.AcceptInviteWithSignup(ctx, req.GetToken(), req.GetPassword(), req.GetDisplayName())
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInviteSignupDisabled):
@@ -299,7 +301,13 @@ func (s *InviteServer) AcceptInviteWithSignup(ctx context.Context, req *authv1.A
 			return nil, status.Error(codes.Internal, "internal error")
 		}
 	}
-	return &authv1.AcceptInviteWithSignupResponse{UserId: userID, OrgId: orgID}, nil
+	return &authv1.AcceptInviteWithSignupResponse{
+		UserId:     result.UserID,
+		OrgId:      result.OrgID,
+		InviteId:   result.InviteID,
+		Role:       string(result.Role),
+		Identifier: result.Identifier,
+	}, nil
 }
 
 // inviteTokenError is the generic NotFound for an invitation token that cannot
@@ -460,6 +468,8 @@ func orgError(err error) error {
 		return status.Error(codes.InvalidArgument, domain.ErrInvalidInviteTarget.Error())
 	case errors.Is(err, domain.ErrInviteNotFound):
 		return status.Error(codes.NotFound, "invite not found")
+	case errors.Is(err, domain.ErrInvalidAcceptURL):
+		return status.Error(codes.InvalidArgument, "invalid accept_url")
 	case errors.Is(err, domain.ErrOrgSuspended):
 		return status.Error(codes.FailedPrecondition, "organization suspended")
 	default:

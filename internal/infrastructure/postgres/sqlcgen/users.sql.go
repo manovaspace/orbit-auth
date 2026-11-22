@@ -365,6 +365,38 @@ func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const takeOverPendingSignupUser = `-- name: TakeOverPendingSignupUser :one
+UPDATE users
+SET password_hash = $1::text,
+    display_name = $2::text,
+    status = 'active',
+    email_verified_at = $3::timestamptz,
+    updated_at = NOW()
+WHERE email = $4::text
+  AND status = 'signup_pending'
+  AND email_verified_at IS NULL
+RETURNING id::text AS id
+`
+
+type TakeOverPendingSignupUserParams struct {
+	PasswordHash    string
+	DisplayName     string
+	EmailVerifiedAt pgtype.Timestamptz
+	Email           string
+}
+
+func (q *Queries) TakeOverPendingSignupUser(ctx context.Context, arg TakeOverPendingSignupUserParams) (string, error) {
+	row := q.db.QueryRow(ctx, takeOverPendingSignupUser,
+		arg.PasswordHash,
+		arg.DisplayName,
+		arg.EmailVerifiedAt,
+		arg.Email,
+	)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const updateLastLogin = `-- name: UpdateLastLogin :exec
 UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1::uuid
 `

@@ -659,12 +659,15 @@ type InviteServiceClient interface {
 	// in: the organization, its tier and the expiry. It never returns the
 	// recipient's email address or phone number.
 	GetInvitePreview(ctx context.Context, in *GetInvitePreviewRequest, opts ...grpc.CallOption) (*InvitePreview, error)
-	// AcceptInviteWithSignup creates the account for a phone invitation, sets
-	// its password and display name, joins the organization with the invited
-	// tier and returns the new user. The account's mobile number is the invited
-	// number and is not verified: no OTP proved it. If an account already uses
-	// the number, the call is AlreadyExists and the person must sign in and call
-	// AcceptInvite instead. Email invitations are not accepted here.
+	// AcceptInviteWithSignup creates the account for an invitation, sets its
+	// password and display name, joins the organization with the invited tier
+	// and returns the new user. A phone invitation gets an account whose mobile
+	// number is the invited number and is not verified: no OTP proved it. An
+	// email invitation gets an account whose email is verified, because the
+	// token reached only that mailbox. If an active account already uses the
+	// number or email, the call is AlreadyExists and the person must sign in and
+	// call AcceptInvite instead. A signup_pending account with the invited email
+	// is taken over with the new password and becomes active.
 	AcceptInviteWithSignup(ctx context.Context, in *AcceptInviteWithSignupRequest, opts ...grpc.CallOption) (*AcceptInviteWithSignupResponse, error)
 }
 
@@ -708,12 +711,15 @@ type InviteServiceServer interface {
 	// in: the organization, its tier and the expiry. It never returns the
 	// recipient's email address or phone number.
 	GetInvitePreview(context.Context, *GetInvitePreviewRequest) (*InvitePreview, error)
-	// AcceptInviteWithSignup creates the account for a phone invitation, sets
-	// its password and display name, joins the organization with the invited
-	// tier and returns the new user. The account's mobile number is the invited
-	// number and is not verified: no OTP proved it. If an account already uses
-	// the number, the call is AlreadyExists and the person must sign in and call
-	// AcceptInvite instead. Email invitations are not accepted here.
+	// AcceptInviteWithSignup creates the account for an invitation, sets its
+	// password and display name, joins the organization with the invited tier
+	// and returns the new user. A phone invitation gets an account whose mobile
+	// number is the invited number and is not verified: no OTP proved it. An
+	// email invitation gets an account whose email is verified, because the
+	// token reached only that mailbox. If an active account already uses the
+	// number or email, the call is AlreadyExists and the person must sign in and
+	// call AcceptInvite instead. A signup_pending account with the invited email
+	// is taken over with the new password and becomes active.
 	AcceptInviteWithSignup(context.Context, *AcceptInviteWithSignupRequest) (*AcceptInviteWithSignupResponse, error)
 	mustEmbedUnimplementedInviteServiceServer()
 }

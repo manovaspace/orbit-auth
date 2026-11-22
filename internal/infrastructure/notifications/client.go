@@ -71,18 +71,24 @@ func (c *Client) SendOrgInvite(ctx context.Context, invite domain.InviteNotifica
 	if locale != "fa" && locale != "en" {
 		locale = "fa"
 	}
+	vars := map[string]string{
+		"org_name":     invite.OrgName,
+		"inviter_name": invite.InviterName,
+		"accept_token": invite.AcceptToken,
+		"expires_at":   invite.ExpiresAt.UTC().Format(time.RFC3339),
+		"locale":       locale,
+	}
+	// accept_url is optional: the template shows the link only when it is sent.
+	// It carries the token in its fragment and is never logged.
+	if invite.AcceptURL != "" {
+		vars["accept_url"] = invite.AcceptURL
+	}
 	_, err := c.api.Send(ctx, &notificationsv1.SendRequest{
 		Template:      "org_invite",
 		Channel:       "email",
 		Recipient:     invite.Recipient,
 		CorrelationId: invite.CorrelationID,
-		Vars: map[string]string{
-			"org_name":     invite.OrgName,
-			"inviter_name": invite.InviterName,
-			"accept_token": invite.AcceptToken,
-			"expires_at":   invite.ExpiresAt.UTC().Format(time.RFC3339),
-			"locale":       locale,
-		},
+		Vars:          vars,
 	})
 	return err
 }

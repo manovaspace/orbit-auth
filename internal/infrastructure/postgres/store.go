@@ -131,9 +131,14 @@ func (s *Store) FindOrCreateByEmail(ctx context.Context, email string) (domain.U
 	return user, nil
 }
 
-// FindByEmail returns the user with email or pgx.ErrNoRows.
+// FindByEmail returns the user with email. A missing user is an error that
+// matches both domain.ErrUserNotFound and pgx.ErrNoRows.
 func (s *Store) FindByEmail(ctx context.Context, email string) (domain.User, error) {
-	return s.findByEmail(ctx, email)
+	user, err := s.findByEmail(ctx, email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.User{}, fmt.Errorf("%w: %w", domain.ErrUserNotFound, err)
+	}
+	return user, err
 }
 
 func (s *Store) findByEmail(ctx context.Context, email string) (domain.User, error) {
@@ -154,9 +159,14 @@ func (s *Store) findByEmail(ctx context.Context, email string) (domain.User, err
 	}, nil
 }
 
-// FindByMobile returns the user with mobile or pgx.ErrNoRows.
+// FindByMobile returns the user with mobile. A missing user is an error that
+// matches both domain.ErrUserNotFound and pgx.ErrNoRows.
 func (s *Store) FindByMobile(ctx context.Context, mobile string) (domain.User, error) {
-	return s.findByMobile(ctx, mobile)
+	user, err := s.findByMobile(ctx, mobile)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.User{}, fmt.Errorf("%w: %w", domain.ErrUserNotFound, err)
+	}
+	return user, err
 }
 
 // MarkMobileVerified sets mobile_verified_at to verifiedAt unless it is already

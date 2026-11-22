@@ -56,14 +56,20 @@ type SignupStore interface {
 	ReissuePendingSignup(ctx context.Context, user User, challenge *OTPChallenge, invite *Invite, acceptedAt time.Time) (userID string, reissued bool, err error)
 	VerifySignup(ctx context.Context, userID string, verifiedAt time.Time) error
 	PurgeUnverifiedSignups(ctx context.Context, before time.Time) (int64, error)
-	// CreatePhoneInviteSignup writes an active account for the invite's phone
-	// number with user.Mobile and password hash, and in the same transaction
-	// emits user.created, accepts the invitation and adds the membership with
-	// the invited role. The mobile number is not marked verified. It returns
-	// created=false when the number already belongs to an account, and
+	// CreateInviteSignup writes the active account for an invitation and, in the
+	// same transaction, accepts the invitation and adds the membership with the
+	// invited role. A phone invitation writes user.Mobile, leaves the number
+	// unverified and emits user.created. An email invitation writes user.Email
+	// with email_verified_at set to acceptedAt and emits user.created when it
+	// inserts the row. If the email belongs to a signup_pending account, that
+	// account is taken over instead: its password hash and display name are
+	// replaced and it becomes active, no user.created is emitted, and userID is
+	// the existing account's id. It returns created=false when the number or an
+	// active account's email already belongs to an account, and
 	// ErrInviteNotFound when the invitation is no longer pending. Either way
-	// nothing is written.
-	CreatePhoneInviteSignup(ctx context.Context, user User, invite Invite, acceptedAt time.Time) (created bool, err error)
+	// nothing is written. userID is the id of the account that now holds the
+	// invitation.
+	CreateInviteSignup(ctx context.Context, user User, invite Invite, acceptedAt time.Time) (userID string, created bool, err error)
 }
 
 // RefreshTokenStore persists refresh tokens by their hash. A stored token

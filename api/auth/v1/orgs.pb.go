@@ -151,8 +151,13 @@ type InvitePreview struct {
 	OrgName string                 `protobuf:"bytes,2,opt,name=org_name,json=orgName,proto3" json:"org_name,omitempty"`
 	OrgSlug string                 `protobuf:"bytes,3,opt,name=org_slug,json=orgSlug,proto3" json:"org_slug,omitempty"`
 	// owner, admin or member.
-	Role          string `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
-	ExpiresAt     string `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	Role      string `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
+	ExpiresAt string `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// channel is how the invitation was delivered: "email" or "phone".
+	Channel string `protobuf:"bytes,6,opt,name=channel,proto3" json:"channel,omitempty"`
+	// account_exists is true when an active account already uses the invited
+	// phone number or email. It never reveals whose account it is.
+	AccountExists bool `protobuf:"varint,7,opt,name=account_exists,json=accountExists,proto3" json:"account_exists,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -222,6 +227,20 @@ func (x *InvitePreview) GetExpiresAt() string {
 	return ""
 }
 
+func (x *InvitePreview) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *InvitePreview) GetAccountExists() bool {
+	if x != nil {
+		return x.AccountExists
+	}
+	return false
+}
+
 type AcceptInviteWithSignupRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
@@ -283,9 +302,15 @@ func (x *AcceptInviteWithSignupRequest) GetDisplayName() string {
 }
 
 type AcceptInviteWithSignupResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	OrgId         string                 `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	UserId   string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	OrgId    string                 `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	InviteId string                 `protobuf:"bytes,3,opt,name=invite_id,json=inviteId,proto3" json:"invite_id,omitempty"`
+	// owner, admin or member: the tier the account joined with.
+	Role string `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
+	// identifier is what the person signs in with: the account's phone number in
+	// E.164 for a phone invitation, or its email address for an email invitation.
+	Identifier    string `protobuf:"bytes,5,opt,name=identifier,proto3" json:"identifier,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -330,6 +355,27 @@ func (x *AcceptInviteWithSignupResponse) GetUserId() string {
 func (x *AcceptInviteWithSignupResponse) GetOrgId() string {
 	if x != nil {
 		return x.OrgId
+	}
+	return ""
+}
+
+func (x *AcceptInviteWithSignupResponse) GetInviteId() string {
+	if x != nil {
+		return x.InviteId
+	}
+	return ""
+}
+
+func (x *AcceptInviteWithSignupResponse) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *AcceptInviteWithSignupResponse) GetIdentifier() string {
+	if x != nil {
+		return x.Identifier
 	}
 	return ""
 }
@@ -1401,7 +1447,15 @@ type InviteMemberRequest struct {
 	// phone is an E.164 number. Set exactly one of email and phone.
 	Phone string `protobuf:"bytes,3,opt,name=phone,proto3" json:"phone,omitempty"`
 	// role is owner, admin or member. Empty means member.
-	Role          string `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
+	Role string `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
+	// accept_url is optional: the https URL of the product's acceptance page,
+	// for example "https://{slug}.app.example.com/invite". "{slug}" is
+	// replaced with the organization's current slug. No userinfo, query or
+	// fragment; the host must be, or be a subdomain of, an entry of
+	// AUTH_INVITE_ACCEPT_HOSTS. http is allowed only for localhost. An invalid
+	// value is INVALID_ARGUMENT. An email invitation sends the link with the
+	// token in its fragment; a phone invitation validates it and ignores it.
+	AcceptUrl     string `protobuf:"bytes,5,opt,name=accept_url,json=acceptUrl,proto3" json:"accept_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1460,6 +1514,13 @@ func (x *InviteMemberRequest) GetPhone() string {
 func (x *InviteMemberRequest) GetRole() string {
 	if x != nil {
 		return x.Role
+	}
+	return ""
+}
+
+func (x *InviteMemberRequest) GetAcceptUrl() string {
+	if x != nil {
+		return x.AcceptUrl
 	}
 	return ""
 }
@@ -1895,21 +1956,28 @@ const file_auth_v1_orgs_proto_rawDesc = "" +
 	"updated_at\x18\x04 \x01(\tR\tupdatedAt\x12\x12\n" +
 	"\x04slug\x18\x05 \x01(\tR\x04slug\"/\n" +
 	"\x17GetInvitePreviewRequest\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\"\x8f\x01\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\"\xd0\x01\n" +
 	"\rInvitePreview\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x19\n" +
 	"\borg_name\x18\x02 \x01(\tR\aorgName\x12\x19\n" +
 	"\borg_slug\x18\x03 \x01(\tR\aorgSlug\x12\x12\n" +
 	"\x04role\x18\x04 \x01(\tR\x04role\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x05 \x01(\tR\texpiresAt\"t\n" +
+	"expires_at\x18\x05 \x01(\tR\texpiresAt\x12\x18\n" +
+	"\achannel\x18\x06 \x01(\tR\achannel\x12%\n" +
+	"\x0eaccount_exists\x18\a \x01(\bR\raccountExists\"t\n" +
 	"\x1dAcceptInviteWithSignupRequest\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12!\n" +
-	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\"P\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\"\xa1\x01\n" +
 	"\x1eAcceptInviteWithSignupResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x15\n" +
-	"\x06org_id\x18\x02 \x01(\tR\x05orgId\"*\n" +
+	"\x06org_id\x18\x02 \x01(\tR\x05orgId\x12\x1b\n" +
+	"\tinvite_id\x18\x03 \x01(\tR\binviteId\x12\x12\n" +
+	"\x04role\x18\x04 \x01(\tR\x04role\x12\x1e\n" +
+	"\n" +
+	"identifier\x18\x05 \x01(\tR\n" +
+	"identifier\"*\n" +
 	"\x14ResolveTenantRequest\x12\x12\n" +
 	"\x04slug\x18\x01 \x01(\tR\x04slug\"\x8e\x01\n" +
 	"\x15ResolveTenantResponse\x12\x15\n" +
@@ -1980,12 +2048,14 @@ const file_auth_v1_orgs_proto_rawDesc = "" +
 	"\x15SetMemberRoleResponse\x123\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2\x13.auth.v1.MembershipR\n" +
-	"membership\"l\n" +
+	"membership\"\x8b\x01\n" +
 	"\x13InviteMemberRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x14\n" +
 	"\x05phone\x18\x03 \x01(\tR\x05phone\x12\x12\n" +
-	"\x04role\x18\x04 \x01(\tR\x04role\"U\n" +
+	"\x04role\x18\x04 \x01(\tR\x04role\x12\x1d\n" +
+	"\n" +
+	"accept_url\x18\x05 \x01(\tR\tacceptUrl\"U\n" +
 	"\x14InviteMemberResponse\x12'\n" +
 	"\x06invite\x18\x01 \x01(\v2\x0f.auth.v1.InviteR\x06invite\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\"+\n" +

@@ -22,7 +22,7 @@ type StaffService interface {
 	StaffSuspendOrganization(ctx context.Context, actor domain.StaffActor, orgID string) (domain.StaffOrgSummary, error)
 	StaffReactivateOrganization(ctx context.Context, actor domain.StaffActor, orgID string) (domain.StaffOrgSummary, error)
 	StaffSetOrganizationSlug(ctx context.Context, actor domain.StaffActor, orgID, slug string) (domain.StaffOrgSummary, error)
-	StaffReinviteOwner(ctx context.Context, actor domain.StaffActor, orgID string, target domain.InviteTarget) (domain.Invite, string, error)
+	StaffReinviteOwner(ctx context.Context, actor domain.StaffActor, orgID string, target domain.InviteTarget, acceptURL string) (domain.Invite, string, error)
 }
 
 // StaffOrgServer implements StaffOrgService. It is reachable only through the
@@ -93,6 +93,7 @@ func (s *StaffOrgServer) ProvisionOrganization(ctx context.Context, req *authv1.
 		Slug:           req.GetSlug(),
 		IdempotencyKey: req.GetIdempotencyKey(),
 		Target:         domain.InviteTarget{Email: req.GetOwnerEmail(), Phone: req.GetOwnerPhone()},
+		AcceptURL:      req.GetAcceptUrl(),
 	})
 	if err != nil {
 		return nil, staffError(err)
@@ -161,7 +162,7 @@ func (s *StaffOrgServer) ReinviteOwner(ctx context.Context, req *authv1.Reinvite
 	if err != nil {
 		return nil, err
 	}
-	invite, token, err := s.svc.StaffReinviteOwner(ctx, actor, orgID, domain.InviteTarget{Email: req.GetOwnerEmail(), Phone: req.GetOwnerPhone()})
+	invite, token, err := s.svc.StaffReinviteOwner(ctx, actor, orgID, domain.InviteTarget{Email: req.GetOwnerEmail(), Phone: req.GetOwnerPhone()}, req.GetAcceptUrl())
 	if err != nil {
 		return nil, staffError(err)
 	}
@@ -200,6 +201,8 @@ func staffError(err error) error {
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, domain.ErrInvalidAcceptURL):
+		return status.Error(codes.InvalidArgument, "invalid accept_url")
 	default:
 		return orgError(err)
 	}

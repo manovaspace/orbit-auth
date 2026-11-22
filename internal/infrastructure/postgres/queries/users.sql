@@ -89,6 +89,18 @@ WHERE email = sqlc.arg('email')::text
   AND email_verified_at IS NULL
 RETURNING id::text AS id;
 
+-- name: TakeOverPendingSignupUser :one
+UPDATE users
+SET password_hash = sqlc.arg('password_hash')::text,
+    display_name = sqlc.arg('display_name')::text,
+    status = 'active',
+    email_verified_at = sqlc.arg('email_verified_at')::timestamptz,
+    updated_at = NOW()
+WHERE email = sqlc.arg('email')::text
+  AND status = 'signup_pending'
+  AND email_verified_at IS NULL
+RETURNING id::text AS id;
+
 -- name: VerifySignupUser :execrows
 UPDATE users
 SET status = 'active',
