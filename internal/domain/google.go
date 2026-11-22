@@ -31,6 +31,21 @@ var (
 	// subject, the account is not active, or the sign-in would create an account
 	// while self-serve sign-up is closed.
 	ErrGoogleAccountNotAllowed = errors.New("account not allowed")
+	// ErrInviteNeedsPassword is returned when a Google sign-in is started for a
+	// phone invitation. Only an email invitation can be accepted with Google.
+	ErrInviteNeedsPassword = errors.New("google cannot accept a phone invitation")
+	// ErrInviteEmailMismatch is returned when the account or the verified Google
+	// email does not match the invited email. Nothing is written.
+	ErrInviteEmailMismatch = errors.New("invite email mismatch")
+	// ErrGoogleAlreadyLinked is returned when the account already has a Google
+	// identity, or the Google subject is already linked to this account.
+	ErrGoogleAlreadyLinked = errors.New("google is already linked")
+	// ErrGoogleIdentityTaken is returned when the Google subject is linked to
+	// another account.
+	ErrGoogleIdentityTaken = errors.New("google account is linked to another user")
+	// ErrGoogleNotLinked is returned when unlinking an account with no Google
+	// identity.
+	ErrGoogleNotLinked = errors.New("google is not linked")
 )
 
 // OAuthStateTTL is how long a started Google sign-in may take to complete.
@@ -58,19 +73,61 @@ type GoogleProvider interface {
 	Exchange(ctx context.Context, redirectURI, code, codeVerifier, nonce string) (GoogleIdentity, error)
 }
 
+// Purposes of a Google sign-in state. The stored values are the contract of
+// oauth_sign_in_states.purpose (migration 018).
+const (
+	// OAuthPurposeSignIn is a plain sign-in. It carries no invitation or user.
+	OAuthPurposeSignIn = "sign_in"
+	// OAuthPurposeInvite is a sign-in that accepts one invitation. It carries
+	// the invitation id, never the token.
+	OAuthPurposeInvite = "invite"
+	// OAuthPurposeLink links a Google identity to the signed-in account. It
+	// carries that account's user id.
+	OAuthPurposeLink = "link"
+)
+
+// OAuthState is what Start stored for one state. Purpose decides which
+// Complete RPC may consume it; InviteID and UserID are set only for the
+// purposes that need them.
+type OAuthState struct {
+	RedirectURI string
+	ReturnTo    string
+	Purpose     string
+	InviteID    string
+	UserID      string
+}
+
+// InviteAcceptance is the outcome of accepting an invitation with a Google
+// identity. AlreadyMember is true when the account was an active member of the
+// organization before, and Role is the stored tier in that case.
+type InviteAcceptance struct {
+	User          User
+	OrgID         string
+	Role          MembershipRole
+	AlreadyMember bool
+}
+
 // OAuthStore persists Google sign-in states and linked identities.
 type OAuthStore interface {
-	// CreateOAuthState stores a state by its SHA-256 hex digest.
-	CreateOAuthState(ctx context.Context, stateHash string, redirectURI, returnTo string, expiresAt time.Time) error
+	// CreateOAuthState stores a state by its SHA-256 hex digest, with the
+	// purpose and the ids it carries.
+	CreateOAuthState(ctx context.Context, stateHash string, state OAuthState, expiresAt time.Time) error
 	// ConsumeOAuthState deletes a live state and returns what Start stored for
 	// it. An unknown, used or expired state is ErrInvalidGoogleState.
-	ConsumeOAuthState(ctx context.Context, stateHash string, now time.Time) (redirectURI, returnTo string, err error)
+	ConsumeOAuthState(ctx context.Context, stateHash string, now time.Time) (OAuthState, error)
 	// DeleteExpiredOAuthStates removes states that expired at or before now.
 	DeleteExpiredOAuthStates(ctx context.Context, now time.Time) error
 	// SignInWithIdentity returns the user for a verified identity, linking or
 	// creating one as the sign-in rules allow. allowCreate says whether a new
 	// account may be created.
 	SignInWithIdentity(ctx context.Context, provider string, id GoogleIdentity, now time.Time, allowCreate bool) (User, error)
+	// AcceptInviteWithIdentity accepts the pending invitation inviteID for the
+	// account that the verified identity signs in to, creating or linking that
+	// account by the invitation's email as the invitation rules allow. Nothing
+	// is written when it returns an error. allowSignup is false when invite
+	// sign-up is switched off; a new account or a signup_pending takeover is then
+	// ErrInviteSignupDisabled. newUserID is the id of an account created here.
+	AcceptInviteWithIdentity(ctx context.Context, provider string, id GoogleIdentity, inviteID string, now time.Time, newUserID string, allowSignup bool) (InviteAcceptance, error)
 }
 
 // maxReturnToBytes bounds return_to; a longer value is refused.

@@ -109,7 +109,8 @@ func (s *Service) StaffListOrganizations(ctx context.Context, in StaffListInput)
 }
 
 // StaffGetOrganization returns one organization with its members and its
-// pending invitations. Token hashes are never returned.
+// pending invitations. Token hashes are never returned. An invitation stored as
+// pending but past its expiry is listed with status expired.
 func (s *Service) StaffGetOrganization(ctx context.Context, orgID string) (StaffOrgDetail, error) {
 	if err := s.staffReady(); err != nil {
 		return StaffOrgDetail{}, err
@@ -130,12 +131,14 @@ func (s *Service) StaffGetOrganization(ctx context.Context, orgID string) (Staff
 	if err != nil {
 		return StaffOrgDetail{}, err
 	}
+	now := s.clock.Now()
 	pending := make([]domain.Invite, 0, len(invites))
 	for _, invite := range invites {
 		if invite.Status != domain.InvitePending {
 			continue
 		}
 		invite.TokenHash = ""
+		invite.Status = domain.EffectiveInviteStatus(invite.Status, invite.ExpiresAt, now)
 		pending = append(pending, invite)
 	}
 	return StaffOrgDetail{

@@ -181,7 +181,9 @@ func main() {
 		AutoSelectSingleOrg: !strings.EqualFold(envOr("AUTH_AUTO_SELECT_SINGLE_ORG", "true"), "false"),
 		// Google sign-in: nil when off.
 		Google: googleSignIn,
-		Logger: func(msg string, args ...any) { log.Info(msg, args...) },
+		// The account owner's sign-in methods are served whether or not Google is on.
+		Account: store,
+		Logger:  func(msg string, args ...any) { log.Info(msg, args...) },
 	})
 	if err := svc.SeedDemoUsers(ctx); err != nil {
 		log.Error("demo seed failed", "error", err)
@@ -205,6 +207,7 @@ func main() {
 
 	gs := googlegrpc.NewServer(serverOptions(signer, staffServiceToken)...)
 	authv1.RegisterAuthServiceServer(gs, grpchandlers.New(svc))
+	authv1.RegisterAccountServiceServer(gs, grpchandlers.NewAccount(svc))
 	authv1.RegisterOrgServiceServer(gs, grpchandlers.NewOrg(svc))
 	authv1.RegisterTenantServiceServer(gs, grpchandlers.NewTenant(svc))
 	authv1.RegisterInviteServiceServer(gs, grpchandlers.NewInvite(svc))

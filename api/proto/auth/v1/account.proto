@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/manovaspace/orbit-auth/api/auth/v1;authv1";
+
+// AccountService changes how the caller's own account signs in. Every RPC acts
+// on the subject of the verified bearer access token; a request never names the
+// account, and the interceptor rejects a missing or invalid token before the
+// handler runs. Every RPC needs an active account.
+service AccountService {
+  // GetSignInMethods returns how the account signs in. It never returns a
+  // password hash, a token or a Google subject.
+  rpc GetSignInMethods(GetSignInMethodsRequest) returns (GetSignInMethodsResponse);
+  // SetPassword sets or changes the password. When the account has a password,
+  // current_password must match it; when it has none, current_password is
+  // ignored. Every other live session of the account is revoked; the session
+  // named by refresh_token stays valid.
+  rpc SetPassword(SetPasswordRequest) returns (SetPasswordResponse);
+  // StartGoogleLink starts linking a Google account to this account. The
+  // redirect_uri and return_to rules are those of StartGoogleSignIn.
+  rpc StartGoogleLink(StartGoogleLinkRequest) returns (StartGoogleLinkResponse);
+  // CompleteGoogleLink exchanges the code and links the Google account. It
+  // issues no tokens.
+  rpc CompleteGoogleLink(CompleteGoogleLinkRequest) returns (CompleteGoogleLinkResponse);
+  // UnlinkGoogle removes the Google account. The account must keep a password
+  // it can sign in with.
+  rpc UnlinkGoogle(UnlinkGoogleRequest) returns (UnlinkGoogleResponse);
+  // RevokeAllSessions revokes every refresh token of the account, except the
+  // one named by refresh_token when it is given.
+  rpc RevokeAllSessions(RevokeAllSessionsRequest) returns (RevokeAllSessionsResponse);
+}
+
+message GetSignInMethodsRequest {}
+
+message GetSignInMethodsResponse {
+  bool has_password = 1;
+  // The linked Google account, at most one.
+  repeated GoogleLink google = 2;
+  string username = 3;
+  string email = 4;
+  bool email_verified = 5;
+  string mobile = 6;
+  bool mobile_verified = 7;
+}
+
+message GoogleLink {
+  string email = 1;
+  string linked_at = 2;
+  string last_login_at = 3;
+}
+
+message SetPasswordRequest {
+  // Required when the account already has a password.
+  string current_password = 1;
+  // At least eight characters after trimming.
+  string new_password = 2;
+  // The refresh token of the session to keep. Optional; when given it must be a
+  // live token of this account.
+  string refresh_token = 3;
+}
+
+message SetPasswordResponse {}
+
+message StartGoogleLinkRequest {
+  string redirect_uri = 1;
+  string return_to = 2;
+}
+
+message StartGoogleLinkResponse {
+  string authorization_url = 1;
+  string state = 2;
+}
+
+message CompleteGoogleLinkRequest {
+  string state = 1;
+  string code = 2;
+}
+
+message CompleteGoogleLinkResponse {
+  string return_to = 1;
+  // The Google email that was linked.
+  string email = 2;
+}
+
+message UnlinkGoogleRequest {}
+
+message UnlinkGoogleResponse {}
+
+message RevokeAllSessionsRequest {
+  // Optional. The session to keep; must be a live token of this account.
+  string refresh_token = 1;
+}
+
+message RevokeAllSessionsResponse {}

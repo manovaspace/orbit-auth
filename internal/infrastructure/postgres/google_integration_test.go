@@ -27,22 +27,22 @@ func TestOAuthStateIsSingleUseAndExpires(t *testing.T) {
 	now := time.Now().UTC()
 
 	hash := stateHashOf("state-one")
-	if err := store.CreateOAuthState(ctx, hash, "https://app.example.com/cb", "/inbox", now.Add(domain.OAuthStateTTL)); err != nil {
+	if err := store.CreateOAuthState(ctx, hash, domain.OAuthState{RedirectURI: "https://app.example.com/cb", ReturnTo: "/inbox", Purpose: domain.OAuthPurposeSignIn}, now.Add(domain.OAuthStateTTL)); err != nil {
 		t.Fatal(err)
 	}
-	redirect, returnTo, err := store.ConsumeOAuthState(ctx, hash, now)
-	if err != nil || redirect != "https://app.example.com/cb" || returnTo != "/inbox" {
-		t.Fatalf("consume = %q, %q, %v", redirect, returnTo, err)
+	st, err := store.ConsumeOAuthState(ctx, hash, now)
+	if err != nil || st.RedirectURI != "https://app.example.com/cb" || st.ReturnTo != "/inbox" || st.Purpose != domain.OAuthPurposeSignIn {
+		t.Fatalf("consume = %+v, %v", st, err)
 	}
-	if _, _, err := store.ConsumeOAuthState(ctx, hash, now); !errors.Is(err, domain.ErrInvalidGoogleState) {
+	if _, err := store.ConsumeOAuthState(ctx, hash, now); !errors.Is(err, domain.ErrInvalidGoogleState) {
 		t.Fatalf("second consume err = %v, want ErrInvalidGoogleState", err)
 	}
 
 	expired := stateHashOf("state-two")
-	if err := store.CreateOAuthState(ctx, expired, "https://app.example.com/cb", "/", now.Add(-time.Second)); err != nil {
+	if err := store.CreateOAuthState(ctx, expired, domain.OAuthState{RedirectURI: "https://app.example.com/cb", ReturnTo: "/", Purpose: domain.OAuthPurposeSignIn}, now.Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ConsumeOAuthState(ctx, expired, now); !errors.Is(err, domain.ErrInvalidGoogleState) {
+	if _, err := store.ConsumeOAuthState(ctx, expired, now); !errors.Is(err, domain.ErrInvalidGoogleState) {
 		t.Fatalf("expired consume err = %v, want ErrInvalidGoogleState", err)
 	}
 	if err := store.DeleteExpiredOAuthStates(ctx, now); err != nil {
@@ -54,7 +54,7 @@ func TestOAuthStateIsSingleUseAndExpires(t *testing.T) {
 	}
 
 	// The database pins the hash to 64 lower-case hex characters.
-	err = store.CreateOAuthState(ctx, "not-a-hash", "https://app.example.com/cb", "/", now.Add(time.Minute))
+	err = store.CreateOAuthState(ctx, "not-a-hash", domain.OAuthState{RedirectURI: "https://app.example.com/cb", ReturnTo: "/", Purpose: domain.OAuthPurposeSignIn}, now.Add(time.Minute))
 	if err == nil || !strings.Contains(err.Error(), "oauth_sign_in_states_state_hash_check") {
 		t.Fatalf("bad hash err = %v, want the state_hash check", err)
 	}

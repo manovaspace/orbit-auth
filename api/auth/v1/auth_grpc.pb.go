@@ -51,7 +51,8 @@ type AuthServiceClient interface {
 	SetUsername(ctx context.Context, in *SetUsernameRequest, opts ...grpc.CallOption) (*SetUsernameResponse, error)
 	// Google sign-in, off unless GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET_FILE and
 	// GOOGLE_REDIRECT_URIS are all set. Both run before any sign-in, so neither
-	// carries a bearer token.
+	// carries a bearer token. The state of a sign-in is a sign_in or an invite
+	// state; a link state is refused here (see AccountService).
 	StartGoogleSignIn(ctx context.Context, in *StartGoogleSignInRequest, opts ...grpc.CallOption) (*StartGoogleSignInResponse, error)
 	CompleteGoogleSignIn(ctx context.Context, in *CompleteGoogleSignInRequest, opts ...grpc.CallOption) (*CompleteGoogleSignInResponse, error)
 }
@@ -202,7 +203,8 @@ type AuthServiceServer interface {
 	SetUsername(context.Context, *SetUsernameRequest) (*SetUsernameResponse, error)
 	// Google sign-in, off unless GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET_FILE and
 	// GOOGLE_REDIRECT_URIS are all set. Both run before any sign-in, so neither
-	// carries a bearer token.
+	// carries a bearer token. The state of a sign-in is a sign_in or an invite
+	// state; a link state is refused here (see AccountService).
 	StartGoogleSignIn(context.Context, *StartGoogleSignInRequest) (*StartGoogleSignInResponse, error)
 	CompleteGoogleSignIn(context.Context, *CompleteGoogleSignInRequest) (*CompleteGoogleSignInResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()

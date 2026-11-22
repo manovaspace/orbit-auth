@@ -574,3 +574,21 @@ func TestStaffProvisionRepeatThatLosesTheSlugRaceReturnsItsOrganization(t *testi
 		t.Fatalf("repeat returned organization %s, want %s", repeat.Summary.Organization.ID, first.Summary.Organization.ID)
 	}
 }
+
+func TestStaffGetOrganizationShowsAnExpiredPendingInvite(t *testing.T) {
+	f := newStaffFixture(t)
+	result := provisionPhone(t, f, "Lambda", "req-expired", "+989125550000")
+	// The fixture clock is 2026-11-08 12:00 UTC.
+	f.invites.setExpiry(t, result.Invite.ID, time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC))
+
+	detail, err := f.svc.StaffGetOrganization(context.Background(), result.Summary.Organization.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.PendingInvites) != 1 || detail.PendingInvites[0].ID != result.Invite.ID {
+		t.Fatalf("pending invites = %+v", detail.PendingInvites)
+	}
+	if got := detail.PendingInvites[0].Status; got != domain.InviteExpired {
+		t.Fatalf("status = %q, want expired", got)
+	}
+}

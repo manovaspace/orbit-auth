@@ -15,6 +15,9 @@ const (
 	InvitePending  InviteStatus = "pending"
 	InviteAccepted InviteStatus = "accepted"
 	InviteRevoked  InviteStatus = "revoked"
+	// InviteExpired is derived, never stored: a pending invite whose expires_at
+	// is at or before the clock. See EffectiveInviteStatus.
+	InviteExpired InviteStatus = "expired"
 
 	// InviteTTL is how long an invitation stays acceptable.
 	InviteTTL = 7 * 24 * time.Hour
@@ -37,6 +40,9 @@ var (
 	// ErrInvalidInviteTarget reports an invitation that names both an email
 	// address and a phone number. An invitation targets exactly one of them.
 	ErrInvalidInviteTarget = errors.New("invite target must be exactly one of email or phone")
+	// ErrInviteSignupDisabled is returned while AUTH_INVITE_SIGNUP is off and an
+	// invitation would create an account. Nothing is written.
+	ErrInviteSignupDisabled = errors.New("invite sign-up is disabled")
 )
 
 var inviteEmailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -51,6 +57,18 @@ func NormalizeEmail(email string) string {
 // prove deliverability; orbit-notifications owns delivery.
 func IsEmail(value string) bool {
 	return inviteEmailPattern.MatchString(value)
+}
+
+// EffectiveInviteStatus returns the status an invitation shows at now. A
+// pending invitation whose expiry is not after now (now is not before
+// expiresAt) is expired; any other status is returned unchanged. The stored
+// status is never rewritten, and the database check admits only pending,
+// accepted and revoked.
+func EffectiveInviteStatus(status InviteStatus, expiresAt, now time.Time) InviteStatus {
+	if status == InvitePending && !now.Before(expiresAt) {
+		return InviteExpired
+	}
+	return status
 }
 
 // InviteTarget is the one recipient of an invitation: an email address or an

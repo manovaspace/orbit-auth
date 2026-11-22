@@ -216,8 +216,7 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 	if err != nil {
 		return err
 	}
-	user, err := uuid.Parse(userID)
-	if err != nil {
+	if _, err := uuid.Parse(userID); err != nil {
 		return fmt.Errorf("postgres: user id %q: %w", userID, err)
 	}
 	if _, err := domain.ParseMembershipRole(string(role)); err != nil {
@@ -237,15 +236,36 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 	if err := lockOrganization(ctx, queries, org); err != nil {
 		return err
 	}
+	if _, _, err := acceptInviteUnderLock(ctx, tx, queries, org, id, userID, role, acceptedAt); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit accept invite: %w", err)
+	}
+	return nil
+}
+
+// acceptInviteUnderLock accepts one pending invite for userID and makes the
+// user an active member of org. The caller holds the organization lock and the
+// transaction tx, and commits. It returns the role the user holds afterwards
+// and whether the membership is new. A suspended membership is ErrInvalidInvite,
+// which the invitation keeps pending; an invite that is no longer pending is
+// ErrInviteNotFound. The acceptance, membership, audit and event rows are
+// written here, so AcceptInvite and the Google invitation path cannot differ.
+func acceptInviteUnderLock(ctx context.Context, tx pgx.Tx, queries *sqlcgen.Queries, org, id uuid.UUID, userID string, role domain.MembershipRole, acceptedAt time.Time) (domain.MembershipRole, bool, error) {
+	user, err := uuid.Parse(userID)
+	if err != nil {
+		return "", false, fmt.Errorf("postgres: user id %q: %w", userID, err)
+	}
 	current, err := getMembership(ctx, queries, org, user)
 	newMember := errors.Is(err, domain.ErrNotMember)
 	switch {
 	case err == nil && current.Status == domain.MembershipSuspended:
 		// A suspended member cannot use an invitation to reactivate
 		// themselves. The invitation stays pending for an admin to resolve.
-		return domain.ErrInvalidInvite
-	case err != nil && !errors.Is(err, domain.ErrNotMember):
-		return err
+		return "", false, domain.ErrInvalidInvite
+	case err != nil && !newMember:
+		return "", false, err
 	}
 	affected, err := queries.AcceptOrganizationInvite(ctx, sqlcgen.AcceptOrganizationInviteParams{
 		ID:         id,
@@ -253,38 +273,35 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 		AcceptedAt: timestamptz(acceptedAt),
 	})
 	if err != nil {
-		return fmt.Errorf("postgres: accept invite: %w", err)
+		return "", false, fmt.Errorf("postgres: accept invite: %w", err)
 	}
 	if affected == 0 {
-		return domain.ErrInviteNotFound
+		return "", false, domain.ErrInviteNotFound
 	}
 	if err := queries.AddActiveOrganizationMembership(ctx, sqlcgen.AddActiveOrganizationMembershipParams{
 		OrgID:  org,
 		UserID: user,
 		Role:   string(role),
 	}); err != nil {
-		return fmt.Errorf("postgres: add invited member: %w", err)
+		return "", false, fmt.Errorf("postgres: add invited member: %w", err)
 	}
 	// An owner or admin who accepts an invitation sent to their own address is
 	// already an active member and keeps their role, so report the stored role
 	// rather than assuming a new plain member.
 	joined, err := getMembership(ctx, queries, org, user)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	actor := domain.UserAuditActor(userID)
-	if err := inviteAcceptedAudit(ctx, queries, orgID, id.String(), userID, role, newMember, actor, acceptedAt); err != nil {
-		return err
+	if err := inviteAcceptedAudit(ctx, queries, org.String(), id.String(), userID, role, newMember, actor, acceptedAt); err != nil {
+		return "", false, err
 	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewMembershipAddedEvent(orgID, userID, domain.MembershipActive, joined.Role, acceptedAt),
+		domain.NewMembershipAddedEvent(org.String(), userID, domain.MembershipActive, joined.Role, acceptedAt),
 	); err != nil {
-		return err
+		return "", false, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("postgres: commit accept invite: %w", err)
-	}
-	return nil
+	return joined.Role, newMember, nil
 }
 
 func inviteIDs(orgID, inviteID string) (uuid.UUID, uuid.UUID, error) {

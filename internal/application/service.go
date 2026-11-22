@@ -64,6 +64,10 @@ type Deps struct {
 	// Google is the Google sign-in wiring. Nil means Google sign-in is off.
 	Google *GoogleSignIn
 
+	// Account is the store of the account owner's sign-in methods: Google links,
+	// the password and the sessions. It is needed whether or not Google is on.
+	Account domain.SignInMethodStore
+
 	Logger func(msg string, args ...any)
 }
 
@@ -92,6 +96,7 @@ type Service struct {
 	autoSelectSingleOrg bool
 	defaultCallingCode  string
 	google              *GoogleSignIn
+	account             domain.SignInMethodStore
 	logger              func(msg string, args ...any)
 	// dummyHash is compared for password logins with no usable hash.
 	dummyHash  string
@@ -128,6 +133,7 @@ func NewService(deps Deps) *Service {
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,
 		defaultCallingCode:  deps.DefaultCallingCode,
 		google:              deps.Google,
+		account:             deps.Account,
 		dummyHash:           dummyPasswordHash(deps.Hasher),
 		staffUsers:          deps.StaffUsers,
 		logger:              logger,
