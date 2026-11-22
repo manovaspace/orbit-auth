@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0](https://github.com/manovaspace/orbit-auth/compare/v0.10.3...v0.11.0) (2026-11-22)
+
+
+### Features
+
+* sign in with a username or a local mobile number ([#114](https://github.com/manovaspace/orbit-auth/issues/114)) ([9018229](https://github.com/manovaspace/orbit-auth/commit/9018229b3686ccafc1d0a393a20ca5a89f4ae1d8))
+* sign in with Google ([#116](https://github.com/manovaspace/orbit-auth/issues/116)) ([3a9c872](https://github.com/manovaspace/orbit-auth/commit/3a9c8726fb598dc6ebbdcfde7fae9b946f395128))
+
 ## [0.10.3](https://github.com/manovaspace/orbit-auth/compare/v0.10.2...v0.10.3) (2026-11-21)
 
 
