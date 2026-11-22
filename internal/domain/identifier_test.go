@@ -22,7 +22,7 @@ func TestNormalizeUsername(t *testing.T) {
 	}
 	invalid := []string{
 		"", "ab", "1abc", "a b", "+abc", "a@b.com", "_abc", "-abc", "abc!",
-		"a" + strings.Repeat("b", 32), "چef", "abc‍",
+		"a" + strings.Repeat("b", 32), "چef", "abc\u200d",
 	}
 	for _, in := range invalid {
 		if got, ok := NormalizeUsername(in); ok {
