@@ -13,7 +13,8 @@ Requires Postgres and the [orbit-notifications](https://github.com/manovaspace/o
 
 ```bash
 export DEPLOYMENT_ENVIRONMENT=dev
-export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10000/auth?sslmode=disable
+# The `auth` database is production; never use it for development.
+export DATABASE_URL=postgres://auth_dev:<password>@127.0.0.1:10000/auth_dev?sslmode=disable
 export NOTIFICATIONS_GRPC_ADDR=localhost:10012
 export GRPC_PORT=10010
 export HEALTH_PORT=10011
@@ -23,7 +24,7 @@ export JWT_PUBLIC_KEYS_DIR=./secrets/jwt-public-keys
 export AUTH_AUTO_SELECT_SINGLE_ORG=true
 export AUTH_SIGNUP=off
 export BUS_TRANSPORT=inproc
-# export BUS_NATS_URL=nats://localhost:10006
+# export BUS_NATS_URL=nats://localhost:4222
 go run ./cmd/auth
 ```
 

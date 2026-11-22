@@ -14,7 +14,8 @@ Tier 2 product user authentication — OTP login, password login, JWT sessions, 
 
 ```bash
 export DEPLOYMENT_ENVIRONMENT=dev
-export DATABASE_URL=postgres://auth:<password>@127.0.0.1:10000/auth?sslmode=disable
+# The `auth` database is production; never use it for development.
+export DATABASE_URL=postgres://auth_dev:<password>@127.0.0.1:10000/auth_dev?sslmode=disable
 export NOTIFICATIONS_GRPC_ADDR=localhost:10012
 export GRPC_PORT=10010
 export HEALTH_PORT=10011
