@@ -157,6 +157,7 @@ type fakeStaff struct {
 	orgID      string
 	input      application.ProvisionOrgInput
 	target     domain.InviteTarget
+	acceptURL  string
 	page       application.StaffOrgPage
 	provResult application.ProvisionOrgResult
 	invite     domain.Invite
@@ -196,8 +197,8 @@ func (f *fakeStaff) StaffSetOrganizationSlug(_ context.Context, actor domain.Sta
 	return f.summary, f.err
 }
 
-func (f *fakeStaff) StaffReinviteOwner(_ context.Context, actor domain.StaffActor, orgID string, target domain.InviteTarget) (domain.Invite, string, error) {
-	f.actor, f.orgID, f.target = actor, orgID, target
+func (f *fakeStaff) StaffReinviteOwner(_ context.Context, actor domain.StaffActor, orgID string, target domain.InviteTarget, acceptURL string) (domain.Invite, string, error) {
+	f.actor, f.orgID, f.target, f.acceptURL = actor, orgID, target, acceptURL
 	return f.invite, f.token, f.err
 }
 
@@ -282,6 +283,17 @@ func TestStaffServerNeverReturnsTokensForEmailOwners(t *testing.T) {
 	}
 	if resp.GetToken() != "" || resp.GetInvite().GetEmail() != "owner@example.com" || resp.GetInvite().GetRole() != "owner" {
 		t.Fatalf("response = %+v", resp)
+	}
+}
+
+func TestStaffServerMapsInvalidAcceptURL(t *testing.T) {
+	app := &fakeStaff{err: domain.ErrInvalidAcceptURL}
+	srv := NewStaffOrg(app)
+	actor := domain.StaffActor{Subject: "staff-1", Reason: "r"}
+	_, err := srv.ReinviteOwner(staffActorCtx(actor), &authv1.ReinviteOwnerRequest{OrgId: uuid.NewString(), OwnerEmail: "owner@example.com", AcceptUrl: "https://evil.example.com"})
+	assertCode(t, err, codes.InvalidArgument, "invalid accept_url")
+	if app.acceptURL != "https://evil.example.com" {
+		t.Fatalf("accept_url forwarded = %q", app.acceptURL)
 	}
 }
 

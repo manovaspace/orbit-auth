@@ -40,6 +40,11 @@ type Deps struct {
 	// disabled flag so the zero value keeps invite sign-up on.
 	InviteSignupDisabled bool
 
+	// InviteAcceptHosts is AUTH_INVITE_ACCEPT_HOSTS: the hosts an invitation's
+	// accept_url may point at, each matching itself and its subdomains. Empty
+	// refuses every accept_url.
+	InviteAcceptHosts []string
+
 	// DemoMode enables seeding on start; DemoUsers is the parsed
 	// AUTH_DEMO_USERS array. Both are resolved by cmd from the environment.
 	DemoMode  bool
@@ -79,6 +84,7 @@ type Service struct {
 	secrets             domain.SecretGenerator
 	signupOpen          bool
 	inviteSignupOff     bool
+	inviteAcceptHosts   []string
 	demoMode            bool
 	demoUsers           []domain.DemoUser
 	autoSelectSingleOrg bool
@@ -111,6 +117,7 @@ func NewService(deps Deps) *Service {
 		secrets:             deps.Secrets,
 		signupOpen:          deps.SignupOpen,
 		inviteSignupOff:     deps.InviteSignupDisabled,
+		inviteAcceptHosts:   deps.InviteAcceptHosts,
 		demoMode:            deps.DemoMode,
 		demoUsers:           deps.DemoUsers,
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,

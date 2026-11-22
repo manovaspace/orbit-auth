@@ -218,23 +218,51 @@ func (s *signupStore) ReissuePendingSignup(ctx context.Context, user domain.User
 	return id, true, nil
 }
 
-// CreatePhoneInviteSignup models the store transaction: the user row, the
+// CreateInviteSignup models the store transaction: the account row, the
 // accepted invitation and the membership are written together or not at all.
-func (s *signupStore) CreatePhoneInviteSignup(ctx context.Context, user domain.User, invite domain.Invite, acceptedAt time.Time) (bool, error) {
+// A phone invitation is refused when the number belongs to any account. An
+// email invitation is refused when an active account has the email, and takes
+// over a signup_pending account with that email (same id, new password, active,
+// no new account row).
+func (s *signupStore) CreateInviteSignup(ctx context.Context, user domain.User, invite domain.Invite, acceptedAt time.Time) (string, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.phoneCalls++
-	for _, existing := range s.users {
-		if existing.Mobile != "" && existing.Mobile == user.Mobile {
-			return false, nil
+	holder := user.ID
+	if invite.Phone != "" {
+		for _, existing := range s.users {
+			if existing.Mobile != "" && existing.Mobile == user.Mobile {
+				return "", false, nil
+			}
+		}
+		s.users[user.ID] = user
+	} else {
+		if id, ok := s.emails[user.Email]; ok {
+			existing := s.users[id]
+			if existing.Status == domain.UserActive || existing.EmailVerified {
+				return "", false, nil
+			}
+			existing.PasswordHash = user.PasswordHash
+			existing.DisplayName = user.DisplayName
+			existing.Status = domain.UserActive
+			existing.EmailVerified = true
+			s.users[id] = existing
+			holder = id
+		} else {
+			user.Status = domain.UserActive
+			user.EmailVerified = true
+			s.users[user.ID] = user
+			s.emails[user.Email] = user.ID
+			s.createdAt[user.ID] = acceptedAt
 		}
 	}
-	s.users[user.ID] = user
-	if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, user.ID, invite.Role, acceptedAt); err != nil {
-		delete(s.users, user.ID)
-		return false, err
+	if err := s.invites.AcceptInvite(ctx, invite.ID, invite.OrgID, holder, invite.Role, acceptedAt); err != nil {
+		if invite.Phone != "" {
+			delete(s.users, user.ID)
+		}
+		return "", false, err
 	}
-	return true, nil
+	return holder, true, nil
 }
 
 func (s *signupStore) VerifySignup(_ context.Context, userID string, _ time.Time) error {

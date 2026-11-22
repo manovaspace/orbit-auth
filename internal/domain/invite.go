@@ -115,10 +115,14 @@ type Invite struct {
 // InviteNotification is the org_invite email orbit-notifications renders. The
 // application never sends email itself.
 type InviteNotification struct {
-	Recipient     string
-	OrgName       string
-	InviterName   string
-	AcceptToken   string
+	Recipient   string
+	OrgName     string
+	InviterName string
+	AcceptToken string
+	// AcceptURL is the link the email shows: the resolved accept_url with the
+	// raw token in its fragment. Empty when the inviter gave no accept_url. It is
+	// a bearer link and is never logged.
+	AcceptURL     string
 	ExpiresAt     time.Time
 	Locale        string
 	CorrelationID string
@@ -133,4 +137,9 @@ type InvitePreview struct {
 	Role      MembershipRole
 	Status    InviteStatus
 	ExpiresAt time.Time
+	// Channel is "email" or "phone": the kind of target the invitation names.
+	Channel string
+	// AccountExists is true when an active account already uses the invited
+	// phone number or email. The preview never says whose account it is.
+	AccountExists bool
 }

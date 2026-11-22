@@ -522,8 +522,12 @@ type ProvisionOrganizationRequest struct {
 	// Required. A repeat must carry the same name and owner as the request that
 	// first used the key; otherwise it is refused with ALREADY_EXISTS.
 	IdempotencyKey string `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Optional acceptance page for an email owner, with the same rules as
+	// InviteMemberRequest.accept_url; "{slug}" is the organization's allocated
+	// slug. A phone owner validates it and ignores it.
+	AcceptUrl     string `protobuf:"bytes,6,opt,name=accept_url,json=acceptUrl,proto3" json:"accept_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProvisionOrganizationRequest) Reset() {
@@ -587,6 +591,13 @@ func (x *ProvisionOrganizationRequest) GetOwnerPhone() string {
 func (x *ProvisionOrganizationRequest) GetIdempotencyKey() string {
 	if x != nil {
 		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *ProvisionOrganizationRequest) GetAcceptUrl() string {
+	if x != nil {
+		return x.AcceptUrl
 	}
 	return ""
 }
@@ -929,8 +940,10 @@ type ReinviteOwnerRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	OrgId string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	// Exactly one of owner_email and owner_phone.
-	OwnerEmail    string `protobuf:"bytes,2,opt,name=owner_email,json=ownerEmail,proto3" json:"owner_email,omitempty"`
-	OwnerPhone    string `protobuf:"bytes,3,opt,name=owner_phone,json=ownerPhone,proto3" json:"owner_phone,omitempty"`
+	OwnerEmail string `protobuf:"bytes,2,opt,name=owner_email,json=ownerEmail,proto3" json:"owner_email,omitempty"`
+	OwnerPhone string `protobuf:"bytes,3,opt,name=owner_phone,json=ownerPhone,proto3" json:"owner_phone,omitempty"`
+	// Optional acceptance page, with the same rules as InviteMemberRequest.accept_url.
+	AcceptUrl     string `protobuf:"bytes,4,opt,name=accept_url,json=acceptUrl,proto3" json:"accept_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -982,6 +995,13 @@ func (x *ReinviteOwnerRequest) GetOwnerEmail() string {
 func (x *ReinviteOwnerRequest) GetOwnerPhone() string {
 	if x != nil {
 		return x.OwnerPhone
+	}
+	return ""
+}
+
+func (x *ReinviteOwnerRequest) GetAcceptUrl() string {
+	if x != nil {
+		return x.AcceptUrl
 	}
 	return ""
 }
@@ -1081,7 +1101,7 @@ const file_auth_v1_staff_proto_rawDesc = "" +
 	"\x17GetOrganizationResponse\x12>\n" +
 	"\forganization\x18\x01 \x01(\v2\x1a.auth.v1.StaffOrganizationR\forganization\x12.\n" +
 	"\amembers\x18\x02 \x03(\v2\x14.auth.v1.StaffMemberR\amembers\x12=\n" +
-	"\x0fpending_invites\x18\x03 \x03(\v2\x14.auth.v1.StaffInviteR\x0ependingInvites\"\xb1\x01\n" +
+	"\x0fpending_invites\x18\x03 \x03(\v2\x14.auth.v1.StaffInviteR\x0ependingInvites\"\xd0\x01\n" +
 	"\x1cProvisionOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04slug\x18\x02 \x01(\tR\x04slug\x12\x1f\n" +
@@ -1089,7 +1109,9 @@ const file_auth_v1_staff_proto_rawDesc = "" +
 	"ownerEmail\x12\x1f\n" +
 	"\vowner_phone\x18\x04 \x01(\tR\n" +
 	"ownerPhone\x12'\n" +
-	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\"\xae\x01\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
+	"\n" +
+	"accept_url\x18\x06 \x01(\tR\tacceptUrl\"\xae\x01\n" +
 	"\x1dProvisionOrganizationResponse\x12>\n" +
 	"\forganization\x18\x01 \x01(\v2\x1a.auth.v1.StaffOrganizationR\forganization\x127\n" +
 	"\fowner_invite\x18\x02 \x01(\v2\x14.auth.v1.StaffInviteR\vownerInvite\x12\x14\n" +
@@ -1106,13 +1128,15 @@ const file_auth_v1_staff_proto_rawDesc = "" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x12\n" +
 	"\x04slug\x18\x02 \x01(\tR\x04slug\"]\n" +
 	"\x1bSetOrganizationSlugResponse\x12>\n" +
-	"\forganization\x18\x01 \x01(\v2\x1a.auth.v1.StaffOrganizationR\forganization\"o\n" +
+	"\forganization\x18\x01 \x01(\v2\x1a.auth.v1.StaffOrganizationR\forganization\"\x8e\x01\n" +
 	"\x14ReinviteOwnerRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x1f\n" +
 	"\vowner_email\x18\x02 \x01(\tR\n" +
 	"ownerEmail\x12\x1f\n" +
 	"\vowner_phone\x18\x03 \x01(\tR\n" +
-	"ownerPhone\"[\n" +
+	"ownerPhone\x12\x1d\n" +
+	"\n" +
+	"accept_url\x18\x04 \x01(\tR\tacceptUrl\"[\n" +
 	"\x15ReinviteOwnerResponse\x12,\n" +
 	"\x06invite\x18\x01 \x01(\v2\x14.auth.v1.StaffInviteR\x06invite\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token2\xaa\x05\n" +

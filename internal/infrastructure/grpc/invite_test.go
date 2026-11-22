@@ -24,8 +24,7 @@ type fakeInviteService struct {
 	acceptToken    string
 	acceptPassword string
 	acceptName     string
-	acceptUserID   string
-	acceptOrgID    string
+	acceptResult   application.InviteSignupResult
 	acceptErr      error
 }
 
@@ -34,9 +33,9 @@ func (f *fakeInviteService) GetInvitePreview(_ context.Context, token string) (d
 	return f.preview, f.previewErr
 }
 
-func (f *fakeInviteService) AcceptInviteWithSignup(_ context.Context, token, password, displayName string) (string, string, error) {
+func (f *fakeInviteService) AcceptInviteWithSignup(_ context.Context, token, password, displayName string) (application.InviteSignupResult, error) {
 	f.acceptToken, f.acceptPassword, f.acceptName = token, password, displayName
-	return f.acceptUserID, f.acceptOrgID, f.acceptErr
+	return f.acceptResult, f.acceptErr
 }
 
 func TestInviteMemberPhoneInviteMapsRoleAndReturnsToken(t *testing.T) {
@@ -85,6 +84,26 @@ func TestInviteMemberEmailInviteNeverReturnsToken(t *testing.T) {
 	}
 }
 
+func TestInviteMemberForwardsAcceptURLAndMapsInvalidOne(t *testing.T) {
+	orgID := uuid.NewString()
+	app := &fakeOrgService{active: true, inviteResult: domain.Invite{ID: uuid.NewString(), OrgID: orgID, Email: "member@example.com", Role: domain.RoleMember}}
+	srv := NewOrg(app)
+	ctx := authenticatedOrgContext("caller-1")
+
+	if _, err := srv.InviteMember(ctx, &authv1.InviteMemberRequest{
+		OrgId: orgID, Email: "member@example.com", AcceptUrl: "https://{slug}.app.example.com/invite",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if app.inviteAcceptURL != "https://{slug}.app.example.com/invite" {
+		t.Fatalf("accept_url forwarded = %q", app.inviteAcceptURL)
+	}
+
+	app.inviteErr = domain.ErrInvalidAcceptURL
+	_, err := srv.InviteMember(ctx, &authv1.InviteMemberRequest{OrgId: orgID, Email: "member@example.com", AcceptUrl: "https://evil.example.com"})
+	assertCode(t, err, codes.InvalidArgument, "invalid accept_url")
+}
+
 func TestInviteMemberInviteErrorCodes(t *testing.T) {
 	orgID := uuid.NewString()
 	app := &fakeOrgService{active: true}
@@ -114,7 +133,7 @@ func TestInviteServicePreviewMapsGrantAndHidesRecipient(t *testing.T) {
 	expires := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 	app := &fakeInviteService{preview: domain.InvitePreview{
 		OrgID: "org-1", OrgName: "Acme", OrgSlug: "acme", Role: domain.RoleAdmin,
-		Status: domain.InvitePending, ExpiresAt: expires,
+		Status: domain.InvitePending, ExpiresAt: expires, Channel: "email", AccountExists: true,
 	}}
 	srv := NewInvite(app)
 
@@ -128,6 +147,9 @@ func TestInviteServicePreviewMapsGrantAndHidesRecipient(t *testing.T) {
 	if resp.GetOrgId() != "org-1" || resp.GetOrgName() != "Acme" || resp.GetOrgSlug() != "acme" ||
 		resp.GetRole() != "admin" || resp.GetExpiresAt() != expires.Format(time.RFC3339) {
 		t.Fatalf("preview = %+v", resp)
+	}
+	if resp.GetChannel() != "email" || !resp.GetAccountExists() {
+		t.Fatalf("channel = %q account_exists = %v", resp.GetChannel(), resp.GetAccountExists())
 	}
 
 	fields := resp.ProtoReflect().Descriptor().Fields()
@@ -152,7 +174,9 @@ func TestInviteServicePreviewErrorCodes(t *testing.T) {
 }
 
 func TestInviteServiceAcceptWithSignupReturnsIDsAndMapsErrors(t *testing.T) {
-	app := &fakeInviteService{acceptUserID: "user-1", acceptOrgID: "org-1"}
+	app := &fakeInviteService{acceptResult: application.InviteSignupResult{
+		UserID: "user-1", OrgID: "org-1", InviteID: "invite-1", Role: domain.RoleAdmin, Identifier: "sara@example.com",
+	}}
 	srv := NewInvite(app)
 
 	resp, err := srv.AcceptInviteWithSignup(context.Background(), &authv1.AcceptInviteWithSignupRequest{
@@ -161,7 +185,8 @@ func TestInviteServiceAcceptWithSignupReturnsIDsAndMapsErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.GetUserId() != "user-1" || resp.GetOrgId() != "org-1" {
+	if resp.GetUserId() != "user-1" || resp.GetOrgId() != "org-1" || resp.GetInviteId() != "invite-1" ||
+		resp.GetRole() != "admin" || resp.GetIdentifier() != "sara@example.com" {
 		t.Fatalf("response = %+v", resp)
 	}
 	if app.acceptToken != "raw-token" || app.acceptPassword != "correct horse" || app.acceptName != "Sara" {

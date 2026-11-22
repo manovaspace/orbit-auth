@@ -55,7 +55,7 @@ func TestPhoneInviteSignupCreatesUnverifiedMemberAtomically(t *testing.T) {
 	usersBefore := countOutbox(t, store, domain.SubjectUserCreated)
 	membershipsBefore := countOutbox(t, store, domain.SubjectMembershipAdded)
 	user := phoneSignupUser(signupPhone)
-	created, err := store.CreatePhoneInviteSignup(ctx, user, invite, now)
+	_, created, err := store.CreateInviteSignup(ctx, user, invite, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestPhoneInviteSignupRollsBackWhenInviteIsNotPending(t *testing.T) {
 
 	usersBefore := countOutbox(t, store, domain.SubjectUserCreated)
 	user := phoneSignupUser(signupPhone)
-	created, err := store.CreatePhoneInviteSignup(ctx, user, invite, now)
+	_, created, err := store.CreateInviteSignup(ctx, user, invite, now)
 	if !errors.Is(err, domain.ErrInviteNotFound) {
 		t.Fatalf("err = %v, want ErrInviteNotFound", err)
 	}
@@ -151,7 +151,7 @@ func TestPhoneInviteSignupExistingMobileIsNoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	created, err := store.CreatePhoneInviteSignup(ctx, phoneSignupUser(signupPhone), invite, now)
+	_, created, err := store.CreateInviteSignup(ctx, phoneSignupUser(signupPhone), invite, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,5 +225,192 @@ func TestDemoSeededMobileCountsAsVerified(t *testing.T) {
 	}
 	if !found.MobileVerified {
 		t.Fatal("a seeded demo mobile number was not marked verified")
+	}
+}
+
+// emailSignupUser is the account an email invitation writes. The application
+// sets the status; the store sets the verification time.
+func emailSignupUser(email string) domain.User {
+	return domain.User{
+		ID:           uuid.NewString(),
+		Email:        email,
+		PasswordHash: "new-hash",
+		DisplayName:  "Sara",
+		Status:       domain.UserActive,
+	}
+}
+
+// emailInviteFixtureStore returns a store with one organization owned by the
+// "owner@example.com" account and one pending email invitation to email.
+func emailInviteFixtureStore(t *testing.T, email, token string) (*Store, domain.Organization, domain.Invite, time.Time) {
+	t.Helper()
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	inviter, err := store.FindOrCreateByEmail(ctx, "owner@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	org := testOrg("Acme", now)
+	if err := store.CreateOrg(ctx, org, inviter.ID); err != nil {
+		t.Fatal(err)
+	}
+	invite := pendingInvite(org.ID, inviter.ID, email, token)
+	if err := store.CreateInvite(ctx, invite); err != nil {
+		t.Fatal(err)
+	}
+	return store, org, invite, now
+}
+
+func TestEmailInviteSignupCreatesVerifiedActiveMemberAtomically(t *testing.T) {
+	store, org, invite, now := emailInviteFixtureStore(t, "member@example.com", "email-signup-token")
+	ctx := context.Background()
+
+	usersBefore := countOutbox(t, store, domain.SubjectUserCreated)
+	membershipsBefore := countOutbox(t, store, domain.SubjectMembershipAdded)
+	user := emailSignupUser("member@example.com")
+	holderID, created, err := store.CreateInviteSignup(ctx, user, invite, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created || holderID != user.ID {
+		t.Fatalf("holder = %q created = %v, want the new account", holderID, created)
+	}
+
+	found, err := store.FindByEmail(ctx, "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID || found.Status != domain.UserActive || !found.EmailVerified || found.Mobile != "" || found.DisplayName != "Sara" {
+		t.Fatalf("created user = %+v", found)
+	}
+	membership, err := store.GetMembership(ctx, org.ID, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.Status != domain.MembershipActive || membership.Role != domain.RoleMember {
+		t.Fatalf("membership = %+v, want active member", membership)
+	}
+	accepted, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("email-signup-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Status != domain.InviteAccepted {
+		t.Fatalf("invite status = %q, want accepted", accepted.Status)
+	}
+	if got := countOutbox(t, store, domain.SubjectUserCreated) - usersBefore; got != 1 {
+		t.Fatalf("user.created events = %d, want 1", got)
+	}
+	if got := countOutbox(t, store, domain.SubjectMembershipAdded) - membershipsBefore; got != 1 {
+		t.Fatalf("membership.added events = %d, want 1", got)
+	}
+}
+
+func TestEmailInviteSignupTakesOverPendingAccount(t *testing.T) {
+	store, org, invite, now := emailInviteFixtureStore(t, "member@example.com", "takeover-token")
+	ctx := context.Background()
+
+	pendingID := uuid.NewString()
+	if created, err := store.CreateSignupUser(ctx, domain.User{
+		ID: pendingID, Email: "member@example.com", PasswordHash: "old-hash", DisplayName: "Old", Status: domain.UserSignupPending,
+	}, nil, nil, now); err != nil || !created {
+		t.Fatalf("pending account: created=%v err=%v", created, err)
+	}
+	usersBefore := countOutbox(t, store, domain.SubjectUserCreated)
+
+	holderID, created, err := store.CreateInviteSignup(ctx, emailSignupUser("member@example.com"), invite, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created || holderID != pendingID {
+		t.Fatalf("holder = %q created = %v, want the pending account %q", holderID, created, pendingID)
+	}
+	found, err := store.FindByEmail(ctx, "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != pendingID || found.Status != domain.UserActive || !found.EmailVerified || found.DisplayName != "Sara" {
+		t.Fatalf("taken-over account = %+v", found)
+	}
+	var hash string
+	if err := store.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, pendingID).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	if hash != "new-hash" {
+		t.Fatal("takeover kept the pending password hash")
+	}
+	if got := countOutbox(t, store, domain.SubjectUserCreated) - usersBefore; got != 0 {
+		t.Fatalf("user.created events on takeover = %d, want 0", got)
+	}
+	membership, err := store.GetMembership(ctx, org.ID, pendingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if membership.Status != domain.MembershipActive {
+		t.Fatalf("membership = %+v, want active", membership)
+	}
+}
+
+func TestEmailInviteSignupRefusesActiveAccount(t *testing.T) {
+	store, _, invite, now := emailInviteFixtureStore(t, "member@example.com", "active-email-token")
+	ctx := context.Background()
+
+	existingID := uuid.NewString()
+	if created, err := store.CreateSignupUser(ctx, domain.User{
+		ID: existingID, Email: "member@example.com", PasswordHash: "hash", DisplayName: "Existing", Status: domain.UserActive, EmailVerified: true,
+	}, nil, nil, now); err != nil || !created {
+		t.Fatalf("existing account: created=%v err=%v", created, err)
+	}
+
+	holderID, created, err := store.CreateInviteSignup(ctx, emailSignupUser("member@example.com"), invite, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created || holderID != "" {
+		t.Fatalf("holder = %q created = %v, want nothing written", holderID, created)
+	}
+	found, err := store.FindByEmail(ctx, "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != existingID || found.DisplayName != "Existing" {
+		t.Fatalf("active account changed: %+v", found)
+	}
+	still, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("active-email-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if still.Status != domain.InvitePending {
+		t.Fatalf("invite status = %q, want pending", still.Status)
+	}
+}
+
+func TestEmailInviteSignupRollsBackTakeoverWhenInviteIsNotPending(t *testing.T) {
+	store, org, _, now := emailInviteFixtureStore(t, "member@example.com", "unwritten-token")
+	ctx := context.Background()
+
+	pendingID := uuid.NewString()
+	if created, err := store.CreateSignupUser(ctx, domain.User{
+		ID: pendingID, Email: "member@example.com", PasswordHash: "old-hash", DisplayName: "Old", Status: domain.UserSignupPending,
+	}, nil, nil, now); err != nil || !created {
+		t.Fatalf("pending account: created=%v err=%v", created, err)
+	}
+	// The invitation is never written, so the accept step fails after the
+	// takeover ran in the same transaction.
+	missing := pendingInvite(org.ID, pendingID, "member@example.com", "missing-email-token")
+
+	_, created, err := store.CreateInviteSignup(ctx, emailSignupUser("member@example.com"), missing, now)
+	if !errors.Is(err, domain.ErrInviteNotFound) {
+		t.Fatalf("err = %v, want ErrInviteNotFound", err)
+	}
+	if created {
+		t.Fatal("created = true after a failed accept")
+	}
+	found, err := store.FindByEmail(ctx, "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.Status != domain.UserSignupPending || found.EmailVerified || found.DisplayName != "Old" {
+		t.Fatalf("pending account changed after rollback: %+v", found)
 	}
 }

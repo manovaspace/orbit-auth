@@ -23,6 +23,13 @@ type staffFixture struct {
 
 func newStaffFixture(t *testing.T) staffFixture {
 	t.Helper()
+	return newStaffFixtureWithHosts(t, nil)
+}
+
+// newStaffFixtureWithHosts is newStaffFixture with AUTH_INVITE_ACCEPT_HOSTS set
+// to hosts.
+func newStaffFixtureWithHosts(t *testing.T, hosts []string) staffFixture {
+	t.Helper()
 	orgs := newFakeOrgStore()
 	invites := newFakeInviteStore(orgs)
 	orgs.invites = invites
@@ -39,6 +46,7 @@ func newStaffFixture(t *testing.T) staffFixture {
 		Signer:              testSigner{},
 		Secrets:             testSecrets{},
 		AutoSelectSingleOrg: true,
+		InviteAcceptHosts:   hosts,
 		Logger:              func(string, ...any) {},
 	})
 	return staffFixture{svc: svc, orgs: orgs, invites: invites, refresh: refresh, notifier: notifier}
@@ -393,7 +401,7 @@ func TestStaffReinviteOwnerRotatesAndReturnsTokenOnlyForPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, token, err := f.svc.StaffReinviteOwner(ctx, staffAlice, org.ID, domain.InviteTarget{Email: "next@example.com"})
+	first, token, err := f.svc.StaffReinviteOwner(ctx, staffAlice, org.ID, domain.InviteTarget{Email: "next@example.com"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +412,7 @@ func TestStaffReinviteOwnerRotatesAndReturnsTokenOnlyForPhone(t *testing.T) {
 		t.Fatalf("email reinvite must send one invitation, sent %d", f.notifier.inviteCalls)
 	}
 
-	second, token, err := f.svc.StaffReinviteOwner(ctx, staffAlice, org.ID, domain.InviteTarget{Email: "NEXT@example.com"})
+	second, token, err := f.svc.StaffReinviteOwner(ctx, staffAlice, org.ID, domain.InviteTarget{Email: "NEXT@example.com"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +423,7 @@ func TestStaffReinviteOwnerRotatesAndReturnsTokenOnlyForPhone(t *testing.T) {
 		t.Fatal("token is returned for phone owners only")
 	}
 
-	phone, token, err := f.svc.StaffReinviteOwner(ctx, staffAlice, org.ID, domain.InviteTarget{Phone: "+989121112222"})
+	phone, token, err := f.svc.StaffReinviteOwner(ctx, staffAlice, org.ID, domain.InviteTarget{Phone: "+989121112222"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +440,7 @@ func TestStaffGetOrganizationOmitsTokenHashesAndAcceptedInvites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := f.svc.InviteMember(ctx, org.ID, "owner-1", domain.InviteTarget{Phone: "+989124440000"}, domain.RoleMember); err != nil {
+	if _, _, err := f.svc.InviteMember(ctx, org.ID, "owner-1", domain.InviteTarget{Phone: "+989124440000"}, domain.RoleMember, ""); err != nil {
 		t.Fatal(err)
 	}
 

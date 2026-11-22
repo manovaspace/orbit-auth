@@ -78,14 +78,15 @@ type fakeOrgService struct {
 	selectExpires time.Time
 	selectErr     error
 
-	inviteOrgID   string
-	inviteInviter string
-	inviteEmail   string
-	invitePhone   string
-	inviteToken   string
-	inviteRole    domain.MembershipRole
-	inviteResult  domain.Invite
-	inviteErr     error
+	inviteOrgID     string
+	inviteInviter   string
+	inviteEmail     string
+	invitePhone     string
+	inviteAcceptURL string
+	inviteToken     string
+	inviteRole      domain.MembershipRole
+	inviteResult    domain.Invite
+	inviteErr       error
 
 	acceptUserID string
 	acceptToken  string
@@ -169,9 +170,9 @@ func (f *fakeOrgService) SelectOrg(_ context.Context, userID, refreshToken, orgI
 	return f.selectAccess, f.selectRefresh, f.selectExpires, f.selectErr
 }
 
-func (f *fakeOrgService) InviteMember(_ context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole) (domain.Invite, string, error) {
+func (f *fakeOrgService) InviteMember(_ context.Context, orgID, inviterID string, target domain.InviteTarget, role domain.MembershipRole, acceptURL string) (domain.Invite, string, error) {
 	f.inviteOrgID, f.inviteInviter, f.inviteEmail, f.inviteRole = orgID, inviterID, target.Email, role
-	f.invitePhone = target.Phone
+	f.invitePhone, f.inviteAcceptURL = target.Phone, acceptURL
 	return f.inviteResult, f.inviteToken, f.inviteErr
 }
 
