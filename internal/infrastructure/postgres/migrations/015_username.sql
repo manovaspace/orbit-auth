@@ -10,9 +10,11 @@ ALTER TABLE users
     ADD COLUMN IF NOT EXISTS username TEXT
         CONSTRAINT users_username_format
         CHECK (username IS NULL OR username ~ '^[a-z][a-z0-9._-]{2,31}$');
+-- squawk-ignore require-concurrent-index-creation -- goose runs this file in one transaction, where CONCURRENTLY cannot run; every row is NULL in the new column and the table is small
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users (username);
 
 -- +goose Down
+-- squawk-ignore require-concurrent-index-deletion -- rollback of the index added by this migration; no code reads it after down
 DROP INDEX IF EXISTS users_username_idx;
 -- squawk-ignore ban-drop-column -- rollback of the column added by this migration; no code reads it after down
 ALTER TABLE users DROP COLUMN IF EXISTS username;
