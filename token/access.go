@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -268,6 +269,30 @@ type RemoteVerifier struct {
 	lastUnknownRefresh time.Time
 }
 
+// containerHostPattern matches a single DNS label such as a Docker container
+// name: lowercase or uppercase letters, digits and inner hyphens, 1 to 63 characters.
+var containerHostPattern = regexp.MustCompile(`(?i)^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// plainHTTPAllowed reports whether a JWKS URL host may use plain HTTP. HTTPS
+// is required for every other host, because a public host reached over HTTP
+// can be spoofed or read in transit. A single-label container name (no dot,
+// no colon) resolves only on a private container network, so plain HTTP there
+// stays on that network. An all-digit label is refused because it is a bare
+// decimal IPv4 address, such as 2130706433 for 127.0.0.1.
+func plainHTTPAllowed(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "host.docker.internal":
+		return true
+	}
+	if strings.ContainsAny(host, ".:") {
+		return false
+	}
+	if strings.Trim(host, "0123456789") == "" {
+		return false
+	}
+	return containerHostPattern.MatchString(host)
+}
+
 // NewRemoteVerifier loads the initial JWKS and returns a verifier. The cache
 // lifetime defaults to five minutes; known cached keys remain usable for up to
 // one hour during a JWKS endpoint outage.
@@ -280,8 +305,7 @@ func NewRemoteVerifier(jwksURL string, cacheLifetime time.Duration) (*RemoteVeri
 	if err != nil || parsedURL.Host == "" || parsedURL.Fragment != "" || parsedURL.User != nil {
 		return nil, fmt.Errorf("orbit JWKS URL must be an absolute HTTP(S) URL without a fragment")
 	}
-	localHTTP := parsedURL.Scheme == "http" && (parsedURL.Hostname() == "localhost" || parsedURL.Hostname() == "127.0.0.1" || parsedURL.Hostname() == "host.docker.internal")
-	if parsedURL.Scheme != "https" && !localHTTP {
+	if parsedURL.Scheme != "https" && (parsedURL.Scheme != "http" || !plainHTTPAllowed(parsedURL.Hostname())) {
 		return nil, fmt.Errorf("orbit JWKS URL must use HTTPS outside local development")
 	}
 	if cacheLifetime <= 0 {
