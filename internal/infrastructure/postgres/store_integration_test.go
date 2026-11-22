@@ -153,10 +153,10 @@ func TestUpsertDemoUserUpdatesByEmailAndMobile(t *testing.T) {
 	store, db := migrationPool(t)
 	ctx := context.Background()
 
-	if err := store.UpsertDemoUser(ctx, "demo@example.com", "", "hash-1", "Demo"); err != nil {
+	if err := store.UpsertDemoUser(ctx, "demo@example.com", "", "", "hash-1", "Demo"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertDemoUser(ctx, "demo@example.com", "", "hash-2", "Demo Two"); err != nil {
+	if err := store.UpsertDemoUser(ctx, "demo@example.com", "", "", "hash-2", "Demo Two"); err != nil {
 		t.Fatal(err)
 	}
 	var count int
@@ -168,10 +168,10 @@ func TestUpsertDemoUserUpdatesByEmailAndMobile(t *testing.T) {
 		t.Fatalf("demo user count=%d hash=%q name=%q", count, hash, name)
 	}
 
-	if err := store.UpsertDemoUser(ctx, "", "+989121234567", "hash-3", "Mobile"); err != nil {
+	if err := store.UpsertDemoUser(ctx, "", "+989121234567", "", "hash-3", "Mobile"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertDemoUser(ctx, "", "+989121234567", "hash-4", "Mobile Two"); err != nil {
+	if err := store.UpsertDemoUser(ctx, "", "+989121234567", "", "hash-4", "Mobile Two"); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Pool.QueryRow(ctx, `SELECT count(*), max(password_hash) FROM users WHERE mobile = '+989121234567'`).Scan(&count, &hash); err != nil {

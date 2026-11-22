@@ -113,6 +113,25 @@ func (f *fakeUsers) FindByMobile(_ context.Context, mobile string) (domain.User,
 	return f.user, nil
 }
 
+func (f *fakeUsers) FindByUsername(_ context.Context, username string) (domain.User, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.user.Username == "" || f.user.Username != username {
+		return domain.User{}, errors.New("not found")
+	}
+	return f.user, nil
+}
+
+func (f *fakeUsers) SetUsername(_ context.Context, userID, username string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.user.ID != userID {
+		return domain.ErrUserNotFound
+	}
+	f.user.Username = username
+	return nil
+}
+
 func (f *fakeUsers) FindByID(_ context.Context, userID string) (domain.User, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -134,7 +153,9 @@ func (f *fakeUsers) MarkMobileVerified(_ context.Context, userID string, _ time.
 	return nil
 }
 
-func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string, string) error { return nil }
+func (f *fakeUsers) UpsertDemoUser(context.Context, string, string, string, string, string) error {
+	return nil
+}
 
 type fakeApiTokens struct{}
 

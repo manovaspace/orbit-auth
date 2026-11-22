@@ -80,8 +80,8 @@ type demoUsersStore struct {
 	upserts []string
 }
 
-func (s *demoUsersStore) UpsertDemoUser(_ context.Context, email, mobile, _, _ string) error {
-	s.upserts = append(s.upserts, email+"|"+mobile)
+func (s *demoUsersStore) UpsertDemoUser(_ context.Context, email, mobile, username, _, _ string) error {
+	s.upserts = append(s.upserts, email+"|"+mobile+"|"+username)
 	return nil
 }
 
@@ -121,7 +121,7 @@ func TestSeedDemoUsersValidatesAndNormalises(t *testing.T) {
 	if err := svc.SeedDemoUsers(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.upserts) != 2 || store.upserts[0] != "demo@example.com|" || store.upserts[1] != "|+989121234567" {
+	if len(store.upserts) != 2 || store.upserts[0] != "demo@example.com||" || store.upserts[1] != "|+989121234567|" {
 		t.Fatalf("upserts = %v", store.upserts)
 	}
 }

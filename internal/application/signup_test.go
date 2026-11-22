@@ -98,6 +98,29 @@ func (s *signupStore) FindByMobile(_ context.Context, mobile string) (domain.Use
 	return domain.User{}, domain.ErrUserNotFound
 }
 
+func (s *signupStore) FindByUsername(_ context.Context, username string) (domain.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range s.users {
+		if user.Username != "" && user.Username == username {
+			return user, nil
+		}
+	}
+	return domain.User{}, domain.ErrUserNotFound
+}
+
+func (s *signupStore) SetUsername(_ context.Context, userID, username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.users[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	user.Username = username
+	s.users[userID] = user
+	return nil
+}
+
 func (s *signupStore) FindByID(_ context.Context, userID string) (domain.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,7 +145,7 @@ func (s *signupStore) MarkMobileVerified(_ context.Context, userID string, _ tim
 	return nil
 }
 
-func (s *signupStore) UpsertDemoUser(context.Context, string, string, string, string) error {
+func (s *signupStore) UpsertDemoUser(context.Context, string, string, string, string, string) error {
 	return nil
 }
 

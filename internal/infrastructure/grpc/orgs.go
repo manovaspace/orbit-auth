@@ -440,8 +440,10 @@ func orgError(err error) error {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, domain.ErrInvalidRole), errors.Is(err, domain.ErrInvalidSlug):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, domain.ErrSlugTaken):
+	case errors.Is(err, domain.ErrSlugTaken), errors.Is(err, domain.ErrUsernameTaken):
 		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, domain.ErrInvalidUsername):
+		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domain.ErrUserNotFound):
 		return status.Error(codes.NotFound, "user not found")
 	case errors.Is(err, domain.ErrOrgNotFound), errors.Is(err, domain.ErrNotMember):

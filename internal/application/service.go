@@ -45,6 +45,11 @@ type Deps struct {
 	DemoMode  bool
 	DemoUsers []domain.DemoUser
 
+	// DefaultCallingCode is AUTH_DEFAULT_CALLING_CODE: the country calling code,
+	// digits only and without "+", that completes a local mobile number such as
+	// 09121234567. Empty means local numbers are not accepted at sign-in.
+	DefaultCallingCode string
+
 	// AutoSelectSingleOrg is AUTH_AUTO_SELECT_SINGLE_ORG. When true, a login
 	// for a user with exactly one active membership carries that organization.
 	AutoSelectSingleOrg bool
@@ -74,6 +79,7 @@ type Service struct {
 	demoMode            bool
 	demoUsers           []domain.DemoUser
 	autoSelectSingleOrg bool
+	defaultCallingCode  string
 	logger              func(msg string, args ...any)
 }
 
@@ -104,6 +110,7 @@ func NewService(deps Deps) *Service {
 		demoMode:            deps.DemoMode,
 		demoUsers:           deps.DemoUsers,
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,
+		defaultCallingCode:  deps.DefaultCallingCode,
 		logger:              logger,
 	}
 }

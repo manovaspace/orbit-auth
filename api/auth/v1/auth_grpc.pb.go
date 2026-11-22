@@ -28,6 +28,7 @@ const (
 	AuthService_ListApiTokens_FullMethodName      = "/auth.v1.AuthService/ListApiTokens"
 	AuthService_RevokeApiToken_FullMethodName     = "/auth.v1.AuthService/RevokeApiToken"
 	AuthService_ValidateApiToken_FullMethodName   = "/auth.v1.AuthService/ValidateApiToken"
+	AuthService_SetUsername_FullMethodName        = "/auth.v1.AuthService/SetUsername"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -44,6 +45,8 @@ type AuthServiceClient interface {
 	ListApiTokens(ctx context.Context, in *ListApiTokensRequest, opts ...grpc.CallOption) (*ListApiTokensResponse, error)
 	RevokeApiToken(ctx context.Context, in *RevokeApiTokenRequest, opts ...grpc.CallOption) (*RevokeApiTokenResponse, error)
 	ValidateApiToken(ctx context.Context, in *ValidateApiTokenRequest, opts ...grpc.CallOption) (*ValidateApiTokenResponse, error)
+	// Sets the username of the caller. Requires a verified bearer access token.
+	SetUsername(ctx context.Context, in *SetUsernameRequest, opts ...grpc.CallOption) (*SetUsernameResponse, error)
 }
 
 type authServiceClient struct {
@@ -144,6 +147,16 @@ func (c *authServiceClient) ValidateApiToken(ctx context.Context, in *ValidateAp
 	return out, nil
 }
 
+func (c *authServiceClient) SetUsername(ctx context.Context, in *SetUsernameRequest, opts ...grpc.CallOption) (*SetUsernameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetUsernameResponse)
+	err := c.cc.Invoke(ctx, AuthService_SetUsername_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -158,6 +171,8 @@ type AuthServiceServer interface {
 	ListApiTokens(context.Context, *ListApiTokensRequest) (*ListApiTokensResponse, error)
 	RevokeApiToken(context.Context, *RevokeApiTokenRequest) (*RevokeApiTokenResponse, error)
 	ValidateApiToken(context.Context, *ValidateApiTokenRequest) (*ValidateApiTokenResponse, error)
+	// Sets the username of the caller. Requires a verified bearer access token.
+	SetUsername(context.Context, *SetUsernameRequest) (*SetUsernameResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -194,6 +209,9 @@ func (UnimplementedAuthServiceServer) RevokeApiToken(context.Context, *RevokeApi
 }
 func (UnimplementedAuthServiceServer) ValidateApiToken(context.Context, *ValidateApiTokenRequest) (*ValidateApiTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ValidateApiToken not implemented")
+}
+func (UnimplementedAuthServiceServer) SetUsername(context.Context, *SetUsernameRequest) (*SetUsernameResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetUsername not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -378,6 +396,24 @@ func _AuthService_ValidateApiToken_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_SetUsername_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUsernameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).SetUsername(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_SetUsername_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).SetUsername(ctx, req.(*SetUsernameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -420,6 +456,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ValidateApiToken",
 			Handler:    _AuthService_ValidateApiToken_Handler,
+		},
+		{
+			MethodName: "SetUsername",
+			Handler:    _AuthService_SetUsername_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

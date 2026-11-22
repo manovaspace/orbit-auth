@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -144,6 +145,7 @@ func (s *Store) findByEmail(ctx context.Context, email string) (domain.User, err
 		ID:             row.ID,
 		Email:          row.Email,
 		Mobile:         row.Mobile,
+		Username:       row.Username,
 		PasswordHash:   row.PasswordHash,
 		DisplayName:    row.DisplayName,
 		Status:         row.Status,
@@ -195,6 +197,7 @@ func (s *Store) FindByID(ctx context.Context, userID string) (domain.User, error
 		ID:             row.ID,
 		Email:          row.Email,
 		Mobile:         row.Mobile,
+		Username:       row.Username,
 		PasswordHash:   row.PasswordHash,
 		DisplayName:    row.DisplayName,
 		Status:         row.Status,
@@ -212,12 +215,61 @@ func (s *Store) findByMobile(ctx context.Context, mobile string) (domain.User, e
 		ID:             row.ID,
 		Email:          row.Email,
 		Mobile:         row.Mobile,
+		Username:       row.Username,
 		PasswordHash:   row.PasswordHash,
 		DisplayName:    row.DisplayName,
 		Status:         row.Status,
 		EmailVerified:  row.EmailVerified,
 		MobileVerified: row.MobileVerified,
 	}, nil
+}
+
+// FindByUsername returns the user with the normalized username or
+// pgx.ErrNoRows.
+func (s *Store) FindByUsername(ctx context.Context, username string) (domain.User, error) {
+	row, err := s.queries.FindUserByUsername(ctx, username)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return domain.User{
+		ID:             row.ID,
+		Email:          row.Email,
+		Mobile:         row.Mobile,
+		Username:       row.Username,
+		PasswordHash:   row.PasswordHash,
+		DisplayName:    row.DisplayName,
+		Status:         row.Status,
+		EmailVerified:  row.EmailVerified,
+		MobileVerified: row.MobileVerified,
+	}, nil
+}
+
+// SetUsername stores the normalized username for userID. A username another
+// account holds is domain.ErrUsernameTaken, and a missing user is
+// domain.ErrUserNotFound.
+func (s *Store) SetUsername(ctx context.Context, userID, username string) error {
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("postgres: user id %q: %w", userID, err)
+	}
+	affected, err := s.queries.SetUsername(ctx, sqlcgen.SetUsernameParams{Username: username, ID: id})
+	if err != nil {
+		return usernameConflict(err)
+	}
+	if affected == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// usernameConflict turns a unique violation on the username index into
+// domain.ErrUsernameTaken and leaves every other error as it is.
+func usernameConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_idx" {
+		return domain.ErrUsernameTaken
+	}
+	return err
 }
 
 // FindOrCreateByMobile returns the user or creates a user with mobile. A
@@ -270,13 +322,16 @@ func (s *Store) UpdateLastLogin(ctx context.Context, userID string) error {
 
 // UpsertDemoUser seeds or updates one demo account. A newly created account
 // writes auth.user.created in the same transaction; an update does not.
-func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error {
-	var emailPtr, mobilePtr *string
+func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, username, passwordHash, displayName string) error {
+	var emailPtr, mobilePtr, usernamePtr *string
 	if email != "" {
 		emailPtr = &email
 	}
 	if mobile != "" {
 		mobilePtr = &mobile
+	}
+	if username != "" {
+		usernamePtr = &username
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -313,6 +368,7 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash,
 			ID:           id,
 			Email:        emailPtr,
 			Mobile:       mobilePtr,
+			Username:     usernamePtr,
 			PasswordHash: passwordHash,
 			DisplayName:  displayName,
 		}); err != nil {
@@ -323,6 +379,7 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, passwordHash,
 			ID:           id,
 			Email:        emailPtr,
 			Mobile:       mobilePtr,
+			Username:     usernamePtr,
 			PasswordHash: passwordHash,
 			DisplayName:  displayName,
 		}); err != nil {

@@ -120,4 +120,5 @@ type User struct {
 	LastLoginAt      pgtype.Timestamptz
 	EmailVerifiedAt  pgtype.Timestamptz
 	MobileVerifiedAt pgtype.Timestamptz
+	Username         *string
 }

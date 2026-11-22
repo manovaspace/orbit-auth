@@ -16,17 +16,27 @@ var (
 	ErrInvalidRefresh     = fmt.Errorf("invalid refresh token")
 )
 
-// LoginWithPassword authenticates by email or E.164 mobile number plus password.
+// LoginWithPassword authenticates by username, mobile number or email address
+// plus password. The identifier kind is decided by domain.ParseLoginIdentifier;
+// every failure, including an identifier that names no account, is
+// ErrInvalidCredentials.
 func (s *Service) LoginWithPassword(ctx context.Context, identifier, password string) (access, refresh string, expires time.Time, err error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" || password == "" {
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
+	kind, normalized, ok := domain.ParseLoginIdentifier(identifier, s.defaultCallingCode)
+	if !ok {
+		return "", "", time.Time{}, ErrInvalidCredentials
+	}
 	var user domain.User
-	if domain.IsE164(identifier) {
-		user, err = s.users.FindByMobile(ctx, identifier)
-	} else {
-		user, err = s.users.FindByEmail(ctx, strings.ToLower(identifier))
+	switch kind {
+	case domain.LoginIdentifierMobile:
+		user, err = s.users.FindByMobile(ctx, normalized)
+	case domain.LoginIdentifierUsername:
+		user, err = s.users.FindByUsername(ctx, normalized)
+	default:
+		user, err = s.users.FindByEmail(ctx, normalized)
 	}
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidCredentials
@@ -137,7 +147,15 @@ func (s *Service) SeedDemoUsers(ctx context.Context) error {
 		if mobile != "" && !domain.IsE164(mobile) {
 			return fmt.Errorf("demo user mobile must be E.164")
 		}
-		if err := s.users.UpsertDemoUser(ctx, email, mobile, hash, u.DisplayName); err != nil {
+		username := ""
+		if raw := strings.TrimSpace(u.Username); raw != "" {
+			normalized, ok := domain.NormalizeUsername(raw)
+			if !ok {
+				return fmt.Errorf("demo user username is invalid")
+			}
+			username = normalized
+		}
+		if err := s.users.UpsertDemoUser(ctx, email, mobile, username, hash, u.DisplayName); err != nil {
 			return err
 		}
 	}

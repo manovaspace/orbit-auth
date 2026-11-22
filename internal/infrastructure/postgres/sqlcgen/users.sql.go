@@ -118,6 +118,7 @@ const findUserByEmail = `-- name: FindUserByEmail :one
 SELECT id::text AS id,
        COALESCE(email, '') AS email,
        COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
        COALESCE(status, 'active') AS status,
@@ -131,6 +132,7 @@ type FindUserByEmailRow struct {
 	ID             string
 	Email          string
 	Mobile         string
+	Username       string
 	PasswordHash   string
 	DisplayName    string
 	Status         string
@@ -145,6 +147,7 @@ func (q *Queries) FindUserByEmail(ctx context.Context, email string) (FindUserBy
 		&i.ID,
 		&i.Email,
 		&i.Mobile,
+		&i.Username,
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.Status,
@@ -158,6 +161,7 @@ const findUserByID = `-- name: FindUserByID :one
 SELECT id::text AS id,
        COALESCE(email, '') AS email,
        COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
        COALESCE(status, 'active') AS status,
@@ -171,6 +175,7 @@ type FindUserByIDRow struct {
 	ID             string
 	Email          string
 	Mobile         string
+	Username       string
 	PasswordHash   string
 	DisplayName    string
 	Status         string
@@ -185,6 +190,7 @@ func (q *Queries) FindUserByID(ctx context.Context, id uuid.UUID) (FindUserByIDR
 		&i.ID,
 		&i.Email,
 		&i.Mobile,
+		&i.Username,
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.Status,
@@ -198,6 +204,7 @@ const findUserByMobile = `-- name: FindUserByMobile :one
 SELECT id::text AS id,
        COALESCE(email, '') AS email,
        COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
        COALESCE(status, 'active') AS status,
@@ -211,6 +218,7 @@ type FindUserByMobileRow struct {
 	ID             string
 	Email          string
 	Mobile         string
+	Username       string
 	PasswordHash   string
 	DisplayName    string
 	Status         string
@@ -225,6 +233,50 @@ func (q *Queries) FindUserByMobile(ctx context.Context, mobile string) (FindUser
 		&i.ID,
 		&i.Email,
 		&i.Mobile,
+		&i.Username,
+		&i.PasswordHash,
+		&i.DisplayName,
+		&i.Status,
+		&i.EmailVerified,
+		&i.MobileVerified,
+	)
+	return i, err
+}
+
+const findUserByUsername = `-- name: FindUserByUsername :one
+SELECT id::text AS id,
+       COALESCE(email, '') AS email,
+       COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
+       COALESCE(password_hash, '') AS password_hash,
+       COALESCE(display_name, '') AS display_name,
+       COALESCE(status, 'active') AS status,
+       (email_verified_at IS NOT NULL)::boolean AS email_verified,
+       (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
+FROM users
+WHERE username = $1::text
+`
+
+type FindUserByUsernameRow struct {
+	ID             string
+	Email          string
+	Mobile         string
+	Username       string
+	PasswordHash   string
+	DisplayName    string
+	Status         string
+	EmailVerified  bool
+	MobileVerified bool
+}
+
+func (q *Queries) FindUserByUsername(ctx context.Context, username string) (FindUserByUsernameRow, error) {
+	row := q.db.QueryRow(ctx, findUserByUsername, username)
+	var i FindUserByUsernameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Mobile,
+		&i.Username,
 		&i.PasswordHash,
 		&i.DisplayName,
 		&i.Status,
@@ -293,6 +345,26 @@ func (q *Queries) ReissueSignupUser(ctx context.Context, arg ReissueSignupUserPa
 	return id, err
 }
 
+const setUsername = `-- name: SetUsername :execrows
+UPDATE users
+SET username = $1::text,
+    updated_at = NOW()
+WHERE id = $2::uuid
+`
+
+type SetUsernameParams struct {
+	Username string
+	ID       uuid.UUID
+}
+
+func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUsername, arg.Username, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateLastLogin = `-- name: UpdateLastLogin :exec
 UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1::uuid
 `
@@ -303,13 +375,14 @@ func (q *Queries) UpdateLastLogin(ctx context.Context, id uuid.UUID) error {
 }
 
 const upsertDemoUserByEmail = `-- name: UpsertDemoUserByEmail :exec
-INSERT INTO users (id, email, mobile, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
     $3::text,
     $4::text,
     $5::text,
+    $6::text,
     'active',
     CASE WHEN $2::text IS NOT NULL THEN NOW() ELSE NULL END,
     CASE WHEN $3::text IS NOT NULL THEN NOW() ELSE NULL END
@@ -317,6 +390,7 @@ VALUES (
 ON CONFLICT (email) DO UPDATE SET
     email = COALESCE(EXCLUDED.email, users.email),
     mobile = COALESCE(EXCLUDED.mobile, users.mobile),
+    username = COALESCE(EXCLUDED.username, users.username),
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
     status = 'active',
@@ -335,6 +409,7 @@ type UpsertDemoUserByEmailParams struct {
 	ID           uuid.UUID
 	Email        *string
 	Mobile       *string
+	Username     *string
 	PasswordHash string
 	DisplayName  string
 }
@@ -344,6 +419,7 @@ func (q *Queries) UpsertDemoUserByEmail(ctx context.Context, arg UpsertDemoUserB
 		arg.ID,
 		arg.Email,
 		arg.Mobile,
+		arg.Username,
 		arg.PasswordHash,
 		arg.DisplayName,
 	)
@@ -351,13 +427,14 @@ func (q *Queries) UpsertDemoUserByEmail(ctx context.Context, arg UpsertDemoUserB
 }
 
 const upsertDemoUserByMobile = `-- name: UpsertDemoUserByMobile :exec
-INSERT INTO users (id, email, mobile, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
     $3::text,
     $4::text,
     $5::text,
+    $6::text,
     'active',
     CASE WHEN $2::text IS NOT NULL THEN NOW() ELSE NULL END,
     CASE WHEN $3::text IS NOT NULL THEN NOW() ELSE NULL END
@@ -365,6 +442,7 @@ VALUES (
 ON CONFLICT (mobile) DO UPDATE SET
     email = COALESCE(EXCLUDED.email, users.email),
     mobile = COALESCE(EXCLUDED.mobile, users.mobile),
+    username = COALESCE(EXCLUDED.username, users.username),
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
     status = 'active',
@@ -383,6 +461,7 @@ type UpsertDemoUserByMobileParams struct {
 	ID           uuid.UUID
 	Email        *string
 	Mobile       *string
+	Username     *string
 	PasswordHash string
 	DisplayName  string
 }
@@ -392,6 +471,7 @@ func (q *Queries) UpsertDemoUserByMobile(ctx context.Context, arg UpsertDemoUser
 		arg.ID,
 		arg.Email,
 		arg.Mobile,
+		arg.Username,
 		arg.PasswordHash,
 		arg.DisplayName,
 	)

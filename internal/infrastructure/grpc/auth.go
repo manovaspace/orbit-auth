@@ -127,13 +127,22 @@ func callerIDFromContext(ctx context.Context) (string, bool) {
 	return callerID, true
 }
 
+// authenticatedAuthMethods are the AuthService RPCs that act on the caller's
+// own account. They need a verified access token, which supplies the subject.
+// Every other AuthService RPC keeps its unauthenticated contract.
+var authenticatedAuthMethods = map[string]struct{}{
+	"/auth.v1.AuthService/SetUsername": {},
+}
+
 // AccessTokenUnaryServerInterceptor verifies the bearer access token on
-// OrgService calls before the handler runs. It puts the verified subject in the
-// context, so a handler never reads the acting user from the request body.
-// AuthService calls keep their existing unauthenticated contract.
+// OrgService calls and on the authenticated AuthService methods before the
+// handler runs. It puts the verified subject in the context, so a handler never
+// reads the acting user from the request body. Other AuthService calls keep
+// their existing unauthenticated contract.
 func AccessTokenUnaryServerInterceptor(keys orbittoken.KeySet) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if !strings.HasPrefix(info.FullMethod, "/auth.v1.OrgService/") {
+		_, authenticated := authenticatedAuthMethods[info.FullMethod]
+		if !strings.HasPrefix(info.FullMethod, "/auth.v1.OrgService/") && !authenticated {
 			return handler(ctx, req)
 		}
 		raw, err := bearerToken(ctx)

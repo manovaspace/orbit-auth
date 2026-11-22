@@ -24,6 +24,7 @@ type AuthService interface {
 	ListApiTokens(ctx context.Context, userID string) ([]domain.APITokenInfo, error)
 	RevokeApiToken(ctx context.Context, userID, tokenID string) error
 	ValidateApiToken(ctx context.Context, secret string) (userID string, scopes []string, err error)
+	SetUsername(ctx context.Context, userID, username string) (string, error)
 }
 
 // Server implements the AuthService gRPC API. Status codes and error strings
@@ -150,6 +151,23 @@ func (s *Server) ValidateApiToken(ctx context.Context, req *authv1.ValidateApiTo
 		return nil, status.Error(codes.Unauthenticated, "invalid token")
 	}
 	return &authv1.ValidateApiTokenResponse{UserId: userID, Scopes: scopes}, nil
+}
+
+// SetUsername sets the username of the verified access-token subject. The
+// interceptor rejects a missing or invalid token before this runs.
+func (s *Server) SetUsername(ctx context.Context, req *authv1.SetUsernameRequest) (*authv1.SetUsernameResponse, error) {
+	userID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !isUUID(userID) {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+	username, err := s.svc.SetUsername(ctx, userID, req.GetUsername())
+	if err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.SetUsernameResponse{Username: username}, nil
 }
 
 func tokenResponse(access, refresh string, exp time.Time) *authv1.TokenResponse {

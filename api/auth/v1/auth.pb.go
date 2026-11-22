@@ -254,7 +254,7 @@ type LoginWithPasswordRequest struct {
 	// Deprecated: Marked as deprecated in auth/v1/auth.proto.
 	Email    string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
-	// Email address or E.164 mobile number. Takes precedence over email.
+	// Username, mobile number or email address. Takes precedence over email.
 	Identifier    string `protobuf:"bytes,3,opt,name=identifier,proto3" json:"identifier,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -980,6 +980,96 @@ func (x *ValidateApiTokenResponse) GetScopes() []string {
 	return nil
 }
 
+type SetUsernameRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The account is the verified access-token subject.
+	Username      string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUsernameRequest) Reset() {
+	*x = SetUsernameRequest{}
+	mi := &file_auth_v1_auth_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUsernameRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUsernameRequest) ProtoMessage() {}
+
+func (x *SetUsernameRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUsernameRequest.ProtoReflect.Descriptor instead.
+func (*SetUsernameRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *SetUsernameRequest) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+type SetUsernameResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The stored form: trimmed and lower case.
+	Username      string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUsernameResponse) Reset() {
+	*x = SetUsernameResponse{}
+	mi := &file_auth_v1_auth_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUsernameResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUsernameResponse) ProtoMessage() {}
+
+func (x *SetUsernameResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUsernameResponse.ProtoReflect.Descriptor instead.
+func (*SetUsernameResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *SetUsernameResponse) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
 var File_auth_v1_auth_proto protoreflect.FileDescriptor
 
 const file_auth_v1_auth_proto_rawDesc = "" +
@@ -1051,7 +1141,11 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\"K\n" +
 	"\x18ValidateApiTokenResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
-	"\x06scopes\x18\x02 \x03(\tR\x06scopes2\xdc\x05\n" +
+	"\x06scopes\x18\x02 \x03(\tR\x06scopes\"0\n" +
+	"\x12SetUsernameRequest\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername\"1\n" +
+	"\x13SetUsernameResponse\x12\x1a\n" +
+	"\busername\x18\x01 \x01(\tR\busername2\xa6\x06\n" +
 	"\vAuthService\x12E\n" +
 	"\n" +
 	"RequestOTP\x12\x1a.auth.v1.RequestOTPRequest\x1a\x1b.auth.v1.RequestOTPResponse\x12B\n" +
@@ -1062,7 +1156,8 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\x0eCreateApiToken\x12\x1e.auth.v1.CreateApiTokenRequest\x1a\x1f.auth.v1.CreateApiTokenResponse\x12N\n" +
 	"\rListApiTokens\x12\x1d.auth.v1.ListApiTokensRequest\x1a\x1e.auth.v1.ListApiTokensResponse\x12Q\n" +
 	"\x0eRevokeApiToken\x12\x1e.auth.v1.RevokeApiTokenRequest\x1a\x1f.auth.v1.RevokeApiTokenResponse\x12W\n" +
-	"\x10ValidateApiToken\x12 .auth.v1.ValidateApiTokenRequest\x1a!.auth.v1.ValidateApiTokenResponseB6Z4github.com/manovaspace/orbit-auth/api/auth/v1;authv1b\x06proto3"
+	"\x10ValidateApiToken\x12 .auth.v1.ValidateApiTokenRequest\x1a!.auth.v1.ValidateApiTokenResponse\x12H\n" +
+	"\vSetUsername\x12\x1b.auth.v1.SetUsernameRequest\x1a\x1c.auth.v1.SetUsernameResponseB6Z4github.com/manovaspace/orbit-auth/api/auth/v1;authv1b\x06proto3"
 
 var (
 	file_auth_v1_auth_proto_rawDescOnce sync.Once
@@ -1076,7 +1171,7 @@ func file_auth_v1_auth_proto_rawDescGZIP() []byte {
 	return file_auth_v1_auth_proto_rawDescData
 }
 
-var file_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_auth_v1_auth_proto_goTypes = []any{
 	(*RequestOTPRequest)(nil),          // 0: auth.v1.RequestOTPRequest
 	(*RequestOTPResponse)(nil),         // 1: auth.v1.RequestOTPResponse
@@ -1096,6 +1191,8 @@ var file_auth_v1_auth_proto_goTypes = []any{
 	(*RevokeApiTokenResponse)(nil),     // 15: auth.v1.RevokeApiTokenResponse
 	(*ValidateApiTokenRequest)(nil),    // 16: auth.v1.ValidateApiTokenRequest
 	(*ValidateApiTokenResponse)(nil),   // 17: auth.v1.ValidateApiTokenResponse
+	(*SetUsernameRequest)(nil),         // 18: auth.v1.SetUsernameRequest
+	(*SetUsernameResponse)(nil),        // 19: auth.v1.SetUsernameResponse
 }
 var file_auth_v1_auth_proto_depIdxs = []int32{
 	8,  // 0: auth.v1.VerifyOTPResponse.tokens:type_name -> auth.v1.TokenResponse
@@ -1109,17 +1206,19 @@ var file_auth_v1_auth_proto_depIdxs = []int32{
 	11, // 8: auth.v1.AuthService.ListApiTokens:input_type -> auth.v1.ListApiTokensRequest
 	14, // 9: auth.v1.AuthService.RevokeApiToken:input_type -> auth.v1.RevokeApiTokenRequest
 	16, // 10: auth.v1.AuthService.ValidateApiToken:input_type -> auth.v1.ValidateApiTokenRequest
-	1,  // 11: auth.v1.AuthService.RequestOTP:output_type -> auth.v1.RequestOTPResponse
-	3,  // 12: auth.v1.AuthService.VerifyOTP:output_type -> auth.v1.VerifyOTPResponse
-	8,  // 13: auth.v1.AuthService.LoginWithPassword:output_type -> auth.v1.TokenResponse
-	8,  // 14: auth.v1.AuthService.RefreshToken:output_type -> auth.v1.TokenResponse
-	7,  // 15: auth.v1.AuthService.RevokeRefreshToken:output_type -> auth.v1.RevokeRefreshTokenResponse
-	10, // 16: auth.v1.AuthService.CreateApiToken:output_type -> auth.v1.CreateApiTokenResponse
-	13, // 17: auth.v1.AuthService.ListApiTokens:output_type -> auth.v1.ListApiTokensResponse
-	15, // 18: auth.v1.AuthService.RevokeApiToken:output_type -> auth.v1.RevokeApiTokenResponse
-	17, // 19: auth.v1.AuthService.ValidateApiToken:output_type -> auth.v1.ValidateApiTokenResponse
-	11, // [11:20] is the sub-list for method output_type
-	2,  // [2:11] is the sub-list for method input_type
+	18, // 11: auth.v1.AuthService.SetUsername:input_type -> auth.v1.SetUsernameRequest
+	1,  // 12: auth.v1.AuthService.RequestOTP:output_type -> auth.v1.RequestOTPResponse
+	3,  // 13: auth.v1.AuthService.VerifyOTP:output_type -> auth.v1.VerifyOTPResponse
+	8,  // 14: auth.v1.AuthService.LoginWithPassword:output_type -> auth.v1.TokenResponse
+	8,  // 15: auth.v1.AuthService.RefreshToken:output_type -> auth.v1.TokenResponse
+	7,  // 16: auth.v1.AuthService.RevokeRefreshToken:output_type -> auth.v1.RevokeRefreshTokenResponse
+	10, // 17: auth.v1.AuthService.CreateApiToken:output_type -> auth.v1.CreateApiTokenResponse
+	13, // 18: auth.v1.AuthService.ListApiTokens:output_type -> auth.v1.ListApiTokensResponse
+	15, // 19: auth.v1.AuthService.RevokeApiToken:output_type -> auth.v1.RevokeApiTokenResponse
+	17, // 20: auth.v1.AuthService.ValidateApiToken:output_type -> auth.v1.ValidateApiTokenResponse
+	19, // 21: auth.v1.AuthService.SetUsername:output_type -> auth.v1.SetUsernameResponse
+	12, // [12:22] is the sub-list for method output_type
+	2,  // [2:12] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -1136,7 +1235,7 @@ func file_auth_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_v1_auth_proto_rawDesc), len(file_auth_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

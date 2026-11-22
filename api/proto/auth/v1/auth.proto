@@ -15,6 +15,8 @@ service AuthService {
   rpc ListApiTokens(ListApiTokensRequest) returns (ListApiTokensResponse);
   rpc RevokeApiToken(RevokeApiTokenRequest) returns (RevokeApiTokenResponse);
   rpc ValidateApiToken(ValidateApiTokenRequest) returns (ValidateApiTokenResponse);
+  // Sets the username of the caller. Requires a verified bearer access token.
+  rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse);
 }
 
 message RequestOTPRequest {
@@ -42,7 +44,7 @@ message VerifyOTPResponse {
 message LoginWithPasswordRequest {
   string email = 1 [deprecated = true];
   string password = 2;
-  // Email address or E.164 mobile number. Takes precedence over email.
+  // Username, mobile number or email address. Takes precedence over email.
   string identifier = 3;
 }
 
@@ -106,4 +108,14 @@ message ValidateApiTokenRequest {
 message ValidateApiTokenResponse {
   string user_id = 1;
   repeated string scopes = 2;
+}
+
+message SetUsernameRequest {
+  // The account is the verified access-token subject.
+  string username = 1;
+}
+
+message SetUsernameResponse {
+  // The stored form: trimmed and lower case.
+  string username = 1;
 }
