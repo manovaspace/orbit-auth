@@ -17,6 +17,11 @@ service AuthService {
   rpc ValidateApiToken(ValidateApiTokenRequest) returns (ValidateApiTokenResponse);
   // Sets the username of the caller. Requires a verified bearer access token.
   rpc SetUsername(SetUsernameRequest) returns (SetUsernameResponse);
+  // Google sign-in, off unless GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET_FILE and
+  // GOOGLE_REDIRECT_URIS are all set. Both run before any sign-in, so neither
+  // carries a bearer token.
+  rpc StartGoogleSignIn(StartGoogleSignInRequest) returns (StartGoogleSignInResponse);
+  rpc CompleteGoogleSignIn(CompleteGoogleSignInRequest) returns (CompleteGoogleSignInResponse);
 }
 
 message RequestOTPRequest {
@@ -118,4 +123,31 @@ message SetUsernameRequest {
 message SetUsernameResponse {
   // The stored form: trimmed and lower case.
   string username = 1;
+}
+
+message StartGoogleSignInRequest {
+  // Must equal one of GOOGLE_REDIRECT_URIS exactly.
+  string redirect_uri = 1;
+  // A path on this product's origin, or empty for "/".
+  string return_to = 2;
+}
+
+message StartGoogleSignInResponse {
+  // Send the browser here. It carries the state and the PKCE challenge.
+  string authorization_url = 1;
+  // Opaque, single use, valid for ten minutes. The caller keeps it and
+  // compares it with the state Google returns.
+  string state = 2;
+}
+
+message CompleteGoogleSignInRequest {
+  string state = 1;
+  // The authorization code Google returned to the redirect URI.
+  string code = 2;
+}
+
+message CompleteGoogleSignInResponse {
+  TokenResponse tokens = 1;
+  // The return_to given to StartGoogleSignIn, "/" when it was empty.
+  string return_to = 2;
 }

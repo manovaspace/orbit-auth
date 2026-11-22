@@ -54,6 +54,9 @@ type Deps struct {
 	// for a user with exactly one active membership carries that organization.
 	AutoSelectSingleOrg bool
 
+	// Google is the Google sign-in wiring. Nil means Google sign-in is off.
+	Google *GoogleSignIn
+
 	Logger func(msg string, args ...any)
 }
 
@@ -80,6 +83,7 @@ type Service struct {
 	demoUsers           []domain.DemoUser
 	autoSelectSingleOrg bool
 	defaultCallingCode  string
+	google              *GoogleSignIn
 	logger              func(msg string, args ...any)
 }
 
@@ -111,6 +115,7 @@ func NewService(deps Deps) *Service {
 		demoUsers:           deps.DemoUsers,
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,
 		defaultCallingCode:  deps.DefaultCallingCode,
+		google:              deps.Google,
 		logger:              logger,
 	}
 }

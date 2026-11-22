@@ -16,6 +16,7 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/clock"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/credentials"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/featureflags"
+	"github.com/manovaspace/orbit-auth/internal/infrastructure/google"
 	grpchandlers "github.com/manovaspace/orbit-auth/internal/infrastructure/grpc"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/httpapi"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/ids"
@@ -98,6 +99,24 @@ func main() {
 	}
 
 	store := postgres.New(pool)
+	// Google sign-in is off unless all three GOOGLE_* settings are present. The
+	// state key is derived once here from the client secret.
+	googleCfg, googleOn, err := googleConfigFromEnv()
+	if err != nil {
+		log.Error("google sign-in config failed", "error", err)
+		os.Exit(1)
+	}
+	var googleSignIn *application.GoogleSignIn
+	if googleOn {
+		googleSignIn = &application.GoogleSignIn{
+			Provider:     google.NewProvider(googleCfg.clientID, googleCfg.clientSecret),
+			States:       store,
+			RedirectURIs: googleCfg.redirectURIs,
+			StateKey:     application.DeriveGoogleStateKey(googleCfg.clientSecret),
+		}
+	} else {
+		log.Info("google sign-in disabled", "reason", "GOOGLE_CLIENT_ID is empty")
+	}
 	// Platform flags are read over HTTP before sign-in; writes arrive with the
 	// admin surface later.
 	flagService := application.NewFeatureFlags(store)
@@ -157,7 +176,9 @@ func main() {
 		// AUTH_AUTO_SELECT_SINGLE_ORG defaults to true; only an explicit
 		// false disables it.
 		AutoSelectSingleOrg: !strings.EqualFold(envOr("AUTH_AUTO_SELECT_SINGLE_ORG", "true"), "false"),
-		Logger:              func(msg string, args ...any) { log.Info(msg, args...) },
+		// Google sign-in: nil when off.
+		Google: googleSignIn,
+		Logger: func(msg string, args ...any) { log.Info(msg, args...) },
 	})
 	if err := svc.SeedDemoUsers(ctx); err != nil {
 		log.Error("demo seed failed", "error", err)

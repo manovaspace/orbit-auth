@@ -25,6 +25,8 @@ type AuthService interface {
 	RevokeApiToken(ctx context.Context, userID, tokenID string) error
 	ValidateApiToken(ctx context.Context, secret string) (userID string, scopes []string, err error)
 	SetUsername(ctx context.Context, userID, username string) (string, error)
+	StartGoogleSignIn(ctx context.Context, redirectURI, returnTo string) (authorizationURL, state string, err error)
+	CompleteGoogleSignIn(ctx context.Context, state, code string) (access, refresh string, expires time.Time, returnTo string, err error)
 }
 
 // Server implements the AuthService gRPC API. Status codes and error strings
