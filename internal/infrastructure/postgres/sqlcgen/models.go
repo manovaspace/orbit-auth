@@ -28,6 +28,14 @@ type FeatureFlag struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+type OauthSignInState struct {
+	StateHash   string
+	RedirectUri string
+	ReturnTo    string
+	ExpiresAt   pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+}
+
 type Organization struct {
 	ID              uuid.UUID
 	Name            string
@@ -121,4 +129,13 @@ type User struct {
 	EmailVerifiedAt  pgtype.Timestamptz
 	MobileVerifiedAt pgtype.Timestamptz
 	Username         *string
+}
+
+type UserIdentity struct {
+	Provider    string
+	Subject     string
+	UserID      uuid.UUID
+	Email       *string
+	CreatedAt   pgtype.Timestamptz
+	LastLoginAt pgtype.Timestamptz
 }

@@ -19,16 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_RequestOTP_FullMethodName         = "/auth.v1.AuthService/RequestOTP"
-	AuthService_VerifyOTP_FullMethodName          = "/auth.v1.AuthService/VerifyOTP"
-	AuthService_LoginWithPassword_FullMethodName  = "/auth.v1.AuthService/LoginWithPassword"
-	AuthService_RefreshToken_FullMethodName       = "/auth.v1.AuthService/RefreshToken"
-	AuthService_RevokeRefreshToken_FullMethodName = "/auth.v1.AuthService/RevokeRefreshToken"
-	AuthService_CreateApiToken_FullMethodName     = "/auth.v1.AuthService/CreateApiToken"
-	AuthService_ListApiTokens_FullMethodName      = "/auth.v1.AuthService/ListApiTokens"
-	AuthService_RevokeApiToken_FullMethodName     = "/auth.v1.AuthService/RevokeApiToken"
-	AuthService_ValidateApiToken_FullMethodName   = "/auth.v1.AuthService/ValidateApiToken"
-	AuthService_SetUsername_FullMethodName        = "/auth.v1.AuthService/SetUsername"
+	AuthService_RequestOTP_FullMethodName           = "/auth.v1.AuthService/RequestOTP"
+	AuthService_VerifyOTP_FullMethodName            = "/auth.v1.AuthService/VerifyOTP"
+	AuthService_LoginWithPassword_FullMethodName    = "/auth.v1.AuthService/LoginWithPassword"
+	AuthService_RefreshToken_FullMethodName         = "/auth.v1.AuthService/RefreshToken"
+	AuthService_RevokeRefreshToken_FullMethodName   = "/auth.v1.AuthService/RevokeRefreshToken"
+	AuthService_CreateApiToken_FullMethodName       = "/auth.v1.AuthService/CreateApiToken"
+	AuthService_ListApiTokens_FullMethodName        = "/auth.v1.AuthService/ListApiTokens"
+	AuthService_RevokeApiToken_FullMethodName       = "/auth.v1.AuthService/RevokeApiToken"
+	AuthService_ValidateApiToken_FullMethodName     = "/auth.v1.AuthService/ValidateApiToken"
+	AuthService_SetUsername_FullMethodName          = "/auth.v1.AuthService/SetUsername"
+	AuthService_StartGoogleSignIn_FullMethodName    = "/auth.v1.AuthService/StartGoogleSignIn"
+	AuthService_CompleteGoogleSignIn_FullMethodName = "/auth.v1.AuthService/CompleteGoogleSignIn"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -47,6 +49,11 @@ type AuthServiceClient interface {
 	ValidateApiToken(ctx context.Context, in *ValidateApiTokenRequest, opts ...grpc.CallOption) (*ValidateApiTokenResponse, error)
 	// Sets the username of the caller. Requires a verified bearer access token.
 	SetUsername(ctx context.Context, in *SetUsernameRequest, opts ...grpc.CallOption) (*SetUsernameResponse, error)
+	// Google sign-in, off unless GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET_FILE and
+	// GOOGLE_REDIRECT_URIS are all set. Both run before any sign-in, so neither
+	// carries a bearer token.
+	StartGoogleSignIn(ctx context.Context, in *StartGoogleSignInRequest, opts ...grpc.CallOption) (*StartGoogleSignInResponse, error)
+	CompleteGoogleSignIn(ctx context.Context, in *CompleteGoogleSignInRequest, opts ...grpc.CallOption) (*CompleteGoogleSignInResponse, error)
 }
 
 type authServiceClient struct {
@@ -157,6 +164,26 @@ func (c *authServiceClient) SetUsername(ctx context.Context, in *SetUsernameRequ
 	return out, nil
 }
 
+func (c *authServiceClient) StartGoogleSignIn(ctx context.Context, in *StartGoogleSignInRequest, opts ...grpc.CallOption) (*StartGoogleSignInResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartGoogleSignInResponse)
+	err := c.cc.Invoke(ctx, AuthService_StartGoogleSignIn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) CompleteGoogleSignIn(ctx context.Context, in *CompleteGoogleSignInRequest, opts ...grpc.CallOption) (*CompleteGoogleSignInResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteGoogleSignInResponse)
+	err := c.cc.Invoke(ctx, AuthService_CompleteGoogleSignIn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -173,6 +200,11 @@ type AuthServiceServer interface {
 	ValidateApiToken(context.Context, *ValidateApiTokenRequest) (*ValidateApiTokenResponse, error)
 	// Sets the username of the caller. Requires a verified bearer access token.
 	SetUsername(context.Context, *SetUsernameRequest) (*SetUsernameResponse, error)
+	// Google sign-in, off unless GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET_FILE and
+	// GOOGLE_REDIRECT_URIS are all set. Both run before any sign-in, so neither
+	// carries a bearer token.
+	StartGoogleSignIn(context.Context, *StartGoogleSignInRequest) (*StartGoogleSignInResponse, error)
+	CompleteGoogleSignIn(context.Context, *CompleteGoogleSignInRequest) (*CompleteGoogleSignInResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -212,6 +244,12 @@ func (UnimplementedAuthServiceServer) ValidateApiToken(context.Context, *Validat
 }
 func (UnimplementedAuthServiceServer) SetUsername(context.Context, *SetUsernameRequest) (*SetUsernameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetUsername not implemented")
+}
+func (UnimplementedAuthServiceServer) StartGoogleSignIn(context.Context, *StartGoogleSignInRequest) (*StartGoogleSignInResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartGoogleSignIn not implemented")
+}
+func (UnimplementedAuthServiceServer) CompleteGoogleSignIn(context.Context, *CompleteGoogleSignInRequest) (*CompleteGoogleSignInResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteGoogleSignIn not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -414,6 +452,42 @@ func _AuthService_SetUsername_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_StartGoogleSignIn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartGoogleSignInRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).StartGoogleSignIn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_StartGoogleSignIn_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).StartGoogleSignIn(ctx, req.(*StartGoogleSignInRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_CompleteGoogleSignIn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteGoogleSignInRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).CompleteGoogleSignIn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_CompleteGoogleSignIn_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).CompleteGoogleSignIn(ctx, req.(*CompleteGoogleSignInRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -460,6 +534,14 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetUsername",
 			Handler:    _AuthService_SetUsername_Handler,
+		},
+		{
+			MethodName: "StartGoogleSignIn",
+			Handler:    _AuthService_StartGoogleSignIn_Handler,
+		},
+		{
+			MethodName: "CompleteGoogleSignIn",
+			Handler:    _AuthService_CompleteGoogleSignIn_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

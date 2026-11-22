@@ -20,7 +20,8 @@ type SignupService interface {
 }
 
 // SignupServer implements the SignupService gRPC API. Both calls are
-// unauthenticated; the access-token interceptor only protects OrgService.
+// unauthenticated; the access-token interceptor covers OrgService and
+// AuthService.SetUsername only.
 type SignupServer struct {
 	authv1.UnimplementedSignupServiceServer
 	svc SignupService

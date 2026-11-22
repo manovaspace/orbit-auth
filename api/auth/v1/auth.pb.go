@@ -1070,6 +1070,221 @@ func (x *SetUsernameResponse) GetUsername() string {
 	return ""
 }
 
+type StartGoogleSignInRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Must equal one of GOOGLE_REDIRECT_URIS exactly.
+	RedirectUri string `protobuf:"bytes,1,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	// A path on this product's origin, or empty for "/".
+	ReturnTo      string `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartGoogleSignInRequest) Reset() {
+	*x = StartGoogleSignInRequest{}
+	mi := &file_auth_v1_auth_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartGoogleSignInRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartGoogleSignInRequest) ProtoMessage() {}
+
+func (x *StartGoogleSignInRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartGoogleSignInRequest.ProtoReflect.Descriptor instead.
+func (*StartGoogleSignInRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *StartGoogleSignInRequest) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *StartGoogleSignInRequest) GetReturnTo() string {
+	if x != nil {
+		return x.ReturnTo
+	}
+	return ""
+}
+
+type StartGoogleSignInResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Send the browser here. It carries the state and the PKCE challenge.
+	AuthorizationUrl string `protobuf:"bytes,1,opt,name=authorization_url,json=authorizationUrl,proto3" json:"authorization_url,omitempty"`
+	// Opaque, single use, valid for ten minutes. The caller keeps it and
+	// compares it with the state Google returns.
+	State         string `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartGoogleSignInResponse) Reset() {
+	*x = StartGoogleSignInResponse{}
+	mi := &file_auth_v1_auth_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartGoogleSignInResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartGoogleSignInResponse) ProtoMessage() {}
+
+func (x *StartGoogleSignInResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartGoogleSignInResponse.ProtoReflect.Descriptor instead.
+func (*StartGoogleSignInResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *StartGoogleSignInResponse) GetAuthorizationUrl() string {
+	if x != nil {
+		return x.AuthorizationUrl
+	}
+	return ""
+}
+
+func (x *StartGoogleSignInResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type CompleteGoogleSignInRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	State string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	// The authorization code Google returned to the redirect URI.
+	Code          string `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteGoogleSignInRequest) Reset() {
+	*x = CompleteGoogleSignInRequest{}
+	mi := &file_auth_v1_auth_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteGoogleSignInRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteGoogleSignInRequest) ProtoMessage() {}
+
+func (x *CompleteGoogleSignInRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteGoogleSignInRequest.ProtoReflect.Descriptor instead.
+func (*CompleteGoogleSignInRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *CompleteGoogleSignInRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *CompleteGoogleSignInRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+type CompleteGoogleSignInResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Tokens *TokenResponse         `protobuf:"bytes,1,opt,name=tokens,proto3" json:"tokens,omitempty"`
+	// The return_to given to StartGoogleSignIn, "/" when it was empty.
+	ReturnTo      string `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteGoogleSignInResponse) Reset() {
+	*x = CompleteGoogleSignInResponse{}
+	mi := &file_auth_v1_auth_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteGoogleSignInResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteGoogleSignInResponse) ProtoMessage() {}
+
+func (x *CompleteGoogleSignInResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_auth_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteGoogleSignInResponse.ProtoReflect.Descriptor instead.
+func (*CompleteGoogleSignInResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_auth_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *CompleteGoogleSignInResponse) GetTokens() *TokenResponse {
+	if x != nil {
+		return x.Tokens
+	}
+	return nil
+}
+
+func (x *CompleteGoogleSignInResponse) GetReturnTo() string {
+	if x != nil {
+		return x.ReturnTo
+	}
+	return ""
+}
+
 var File_auth_v1_auth_proto protoreflect.FileDescriptor
 
 const file_auth_v1_auth_proto_rawDesc = "" +
@@ -1145,7 +1360,19 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\x12SetUsernameRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\"1\n" +
 	"\x13SetUsernameResponse\x12\x1a\n" +
-	"\busername\x18\x01 \x01(\tR\busername2\xa6\x06\n" +
+	"\busername\x18\x01 \x01(\tR\busername\"Z\n" +
+	"\x18StartGoogleSignInRequest\x12!\n" +
+	"\fredirect_uri\x18\x01 \x01(\tR\vredirectUri\x12\x1b\n" +
+	"\treturn_to\x18\x02 \x01(\tR\breturnTo\"^\n" +
+	"\x19StartGoogleSignInResponse\x12+\n" +
+	"\x11authorization_url\x18\x01 \x01(\tR\x10authorizationUrl\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\"G\n" +
+	"\x1bCompleteGoogleSignInRequest\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\"k\n" +
+	"\x1cCompleteGoogleSignInResponse\x12.\n" +
+	"\x06tokens\x18\x01 \x01(\v2\x16.auth.v1.TokenResponseR\x06tokens\x12\x1b\n" +
+	"\treturn_to\x18\x02 \x01(\tR\breturnTo2\xe7\a\n" +
 	"\vAuthService\x12E\n" +
 	"\n" +
 	"RequestOTP\x12\x1a.auth.v1.RequestOTPRequest\x1a\x1b.auth.v1.RequestOTPResponse\x12B\n" +
@@ -1157,7 +1384,9 @@ const file_auth_v1_auth_proto_rawDesc = "" +
 	"\rListApiTokens\x12\x1d.auth.v1.ListApiTokensRequest\x1a\x1e.auth.v1.ListApiTokensResponse\x12Q\n" +
 	"\x0eRevokeApiToken\x12\x1e.auth.v1.RevokeApiTokenRequest\x1a\x1f.auth.v1.RevokeApiTokenResponse\x12W\n" +
 	"\x10ValidateApiToken\x12 .auth.v1.ValidateApiTokenRequest\x1a!.auth.v1.ValidateApiTokenResponse\x12H\n" +
-	"\vSetUsername\x12\x1b.auth.v1.SetUsernameRequest\x1a\x1c.auth.v1.SetUsernameResponseB6Z4github.com/manovaspace/orbit-auth/api/auth/v1;authv1b\x06proto3"
+	"\vSetUsername\x12\x1b.auth.v1.SetUsernameRequest\x1a\x1c.auth.v1.SetUsernameResponse\x12Z\n" +
+	"\x11StartGoogleSignIn\x12!.auth.v1.StartGoogleSignInRequest\x1a\".auth.v1.StartGoogleSignInResponse\x12c\n" +
+	"\x14CompleteGoogleSignIn\x12$.auth.v1.CompleteGoogleSignInRequest\x1a%.auth.v1.CompleteGoogleSignInResponseB6Z4github.com/manovaspace/orbit-auth/api/auth/v1;authv1b\x06proto3"
 
 var (
 	file_auth_v1_auth_proto_rawDescOnce sync.Once
@@ -1171,57 +1400,66 @@ func file_auth_v1_auth_proto_rawDescGZIP() []byte {
 	return file_auth_v1_auth_proto_rawDescData
 }
 
-var file_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_auth_v1_auth_proto_goTypes = []any{
-	(*RequestOTPRequest)(nil),          // 0: auth.v1.RequestOTPRequest
-	(*RequestOTPResponse)(nil),         // 1: auth.v1.RequestOTPResponse
-	(*VerifyOTPRequest)(nil),           // 2: auth.v1.VerifyOTPRequest
-	(*VerifyOTPResponse)(nil),          // 3: auth.v1.VerifyOTPResponse
-	(*LoginWithPasswordRequest)(nil),   // 4: auth.v1.LoginWithPasswordRequest
-	(*RefreshTokenRequest)(nil),        // 5: auth.v1.RefreshTokenRequest
-	(*RevokeRefreshTokenRequest)(nil),  // 6: auth.v1.RevokeRefreshTokenRequest
-	(*RevokeRefreshTokenResponse)(nil), // 7: auth.v1.RevokeRefreshTokenResponse
-	(*TokenResponse)(nil),              // 8: auth.v1.TokenResponse
-	(*CreateApiTokenRequest)(nil),      // 9: auth.v1.CreateApiTokenRequest
-	(*CreateApiTokenResponse)(nil),     // 10: auth.v1.CreateApiTokenResponse
-	(*ListApiTokensRequest)(nil),       // 11: auth.v1.ListApiTokensRequest
-	(*ApiTokenInfo)(nil),               // 12: auth.v1.ApiTokenInfo
-	(*ListApiTokensResponse)(nil),      // 13: auth.v1.ListApiTokensResponse
-	(*RevokeApiTokenRequest)(nil),      // 14: auth.v1.RevokeApiTokenRequest
-	(*RevokeApiTokenResponse)(nil),     // 15: auth.v1.RevokeApiTokenResponse
-	(*ValidateApiTokenRequest)(nil),    // 16: auth.v1.ValidateApiTokenRequest
-	(*ValidateApiTokenResponse)(nil),   // 17: auth.v1.ValidateApiTokenResponse
-	(*SetUsernameRequest)(nil),         // 18: auth.v1.SetUsernameRequest
-	(*SetUsernameResponse)(nil),        // 19: auth.v1.SetUsernameResponse
+	(*RequestOTPRequest)(nil),            // 0: auth.v1.RequestOTPRequest
+	(*RequestOTPResponse)(nil),           // 1: auth.v1.RequestOTPResponse
+	(*VerifyOTPRequest)(nil),             // 2: auth.v1.VerifyOTPRequest
+	(*VerifyOTPResponse)(nil),            // 3: auth.v1.VerifyOTPResponse
+	(*LoginWithPasswordRequest)(nil),     // 4: auth.v1.LoginWithPasswordRequest
+	(*RefreshTokenRequest)(nil),          // 5: auth.v1.RefreshTokenRequest
+	(*RevokeRefreshTokenRequest)(nil),    // 6: auth.v1.RevokeRefreshTokenRequest
+	(*RevokeRefreshTokenResponse)(nil),   // 7: auth.v1.RevokeRefreshTokenResponse
+	(*TokenResponse)(nil),                // 8: auth.v1.TokenResponse
+	(*CreateApiTokenRequest)(nil),        // 9: auth.v1.CreateApiTokenRequest
+	(*CreateApiTokenResponse)(nil),       // 10: auth.v1.CreateApiTokenResponse
+	(*ListApiTokensRequest)(nil),         // 11: auth.v1.ListApiTokensRequest
+	(*ApiTokenInfo)(nil),                 // 12: auth.v1.ApiTokenInfo
+	(*ListApiTokensResponse)(nil),        // 13: auth.v1.ListApiTokensResponse
+	(*RevokeApiTokenRequest)(nil),        // 14: auth.v1.RevokeApiTokenRequest
+	(*RevokeApiTokenResponse)(nil),       // 15: auth.v1.RevokeApiTokenResponse
+	(*ValidateApiTokenRequest)(nil),      // 16: auth.v1.ValidateApiTokenRequest
+	(*ValidateApiTokenResponse)(nil),     // 17: auth.v1.ValidateApiTokenResponse
+	(*SetUsernameRequest)(nil),           // 18: auth.v1.SetUsernameRequest
+	(*SetUsernameResponse)(nil),          // 19: auth.v1.SetUsernameResponse
+	(*StartGoogleSignInRequest)(nil),     // 20: auth.v1.StartGoogleSignInRequest
+	(*StartGoogleSignInResponse)(nil),    // 21: auth.v1.StartGoogleSignInResponse
+	(*CompleteGoogleSignInRequest)(nil),  // 22: auth.v1.CompleteGoogleSignInRequest
+	(*CompleteGoogleSignInResponse)(nil), // 23: auth.v1.CompleteGoogleSignInResponse
 }
 var file_auth_v1_auth_proto_depIdxs = []int32{
 	8,  // 0: auth.v1.VerifyOTPResponse.tokens:type_name -> auth.v1.TokenResponse
 	12, // 1: auth.v1.ListApiTokensResponse.tokens:type_name -> auth.v1.ApiTokenInfo
-	0,  // 2: auth.v1.AuthService.RequestOTP:input_type -> auth.v1.RequestOTPRequest
-	2,  // 3: auth.v1.AuthService.VerifyOTP:input_type -> auth.v1.VerifyOTPRequest
-	4,  // 4: auth.v1.AuthService.LoginWithPassword:input_type -> auth.v1.LoginWithPasswordRequest
-	5,  // 5: auth.v1.AuthService.RefreshToken:input_type -> auth.v1.RefreshTokenRequest
-	6,  // 6: auth.v1.AuthService.RevokeRefreshToken:input_type -> auth.v1.RevokeRefreshTokenRequest
-	9,  // 7: auth.v1.AuthService.CreateApiToken:input_type -> auth.v1.CreateApiTokenRequest
-	11, // 8: auth.v1.AuthService.ListApiTokens:input_type -> auth.v1.ListApiTokensRequest
-	14, // 9: auth.v1.AuthService.RevokeApiToken:input_type -> auth.v1.RevokeApiTokenRequest
-	16, // 10: auth.v1.AuthService.ValidateApiToken:input_type -> auth.v1.ValidateApiTokenRequest
-	18, // 11: auth.v1.AuthService.SetUsername:input_type -> auth.v1.SetUsernameRequest
-	1,  // 12: auth.v1.AuthService.RequestOTP:output_type -> auth.v1.RequestOTPResponse
-	3,  // 13: auth.v1.AuthService.VerifyOTP:output_type -> auth.v1.VerifyOTPResponse
-	8,  // 14: auth.v1.AuthService.LoginWithPassword:output_type -> auth.v1.TokenResponse
-	8,  // 15: auth.v1.AuthService.RefreshToken:output_type -> auth.v1.TokenResponse
-	7,  // 16: auth.v1.AuthService.RevokeRefreshToken:output_type -> auth.v1.RevokeRefreshTokenResponse
-	10, // 17: auth.v1.AuthService.CreateApiToken:output_type -> auth.v1.CreateApiTokenResponse
-	13, // 18: auth.v1.AuthService.ListApiTokens:output_type -> auth.v1.ListApiTokensResponse
-	15, // 19: auth.v1.AuthService.RevokeApiToken:output_type -> auth.v1.RevokeApiTokenResponse
-	17, // 20: auth.v1.AuthService.ValidateApiToken:output_type -> auth.v1.ValidateApiTokenResponse
-	19, // 21: auth.v1.AuthService.SetUsername:output_type -> auth.v1.SetUsernameResponse
-	12, // [12:22] is the sub-list for method output_type
-	2,  // [2:12] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	8,  // 2: auth.v1.CompleteGoogleSignInResponse.tokens:type_name -> auth.v1.TokenResponse
+	0,  // 3: auth.v1.AuthService.RequestOTP:input_type -> auth.v1.RequestOTPRequest
+	2,  // 4: auth.v1.AuthService.VerifyOTP:input_type -> auth.v1.VerifyOTPRequest
+	4,  // 5: auth.v1.AuthService.LoginWithPassword:input_type -> auth.v1.LoginWithPasswordRequest
+	5,  // 6: auth.v1.AuthService.RefreshToken:input_type -> auth.v1.RefreshTokenRequest
+	6,  // 7: auth.v1.AuthService.RevokeRefreshToken:input_type -> auth.v1.RevokeRefreshTokenRequest
+	9,  // 8: auth.v1.AuthService.CreateApiToken:input_type -> auth.v1.CreateApiTokenRequest
+	11, // 9: auth.v1.AuthService.ListApiTokens:input_type -> auth.v1.ListApiTokensRequest
+	14, // 10: auth.v1.AuthService.RevokeApiToken:input_type -> auth.v1.RevokeApiTokenRequest
+	16, // 11: auth.v1.AuthService.ValidateApiToken:input_type -> auth.v1.ValidateApiTokenRequest
+	18, // 12: auth.v1.AuthService.SetUsername:input_type -> auth.v1.SetUsernameRequest
+	20, // 13: auth.v1.AuthService.StartGoogleSignIn:input_type -> auth.v1.StartGoogleSignInRequest
+	22, // 14: auth.v1.AuthService.CompleteGoogleSignIn:input_type -> auth.v1.CompleteGoogleSignInRequest
+	1,  // 15: auth.v1.AuthService.RequestOTP:output_type -> auth.v1.RequestOTPResponse
+	3,  // 16: auth.v1.AuthService.VerifyOTP:output_type -> auth.v1.VerifyOTPResponse
+	8,  // 17: auth.v1.AuthService.LoginWithPassword:output_type -> auth.v1.TokenResponse
+	8,  // 18: auth.v1.AuthService.RefreshToken:output_type -> auth.v1.TokenResponse
+	7,  // 19: auth.v1.AuthService.RevokeRefreshToken:output_type -> auth.v1.RevokeRefreshTokenResponse
+	10, // 20: auth.v1.AuthService.CreateApiToken:output_type -> auth.v1.CreateApiTokenResponse
+	13, // 21: auth.v1.AuthService.ListApiTokens:output_type -> auth.v1.ListApiTokensResponse
+	15, // 22: auth.v1.AuthService.RevokeApiToken:output_type -> auth.v1.RevokeApiTokenResponse
+	17, // 23: auth.v1.AuthService.ValidateApiToken:output_type -> auth.v1.ValidateApiTokenResponse
+	19, // 24: auth.v1.AuthService.SetUsername:output_type -> auth.v1.SetUsernameResponse
+	21, // 25: auth.v1.AuthService.StartGoogleSignIn:output_type -> auth.v1.StartGoogleSignInResponse
+	23, // 26: auth.v1.AuthService.CompleteGoogleSignIn:output_type -> auth.v1.CompleteGoogleSignInResponse
+	15, // [15:27] is the sub-list for method output_type
+	3,  // [3:15] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_auth_v1_auth_proto_init() }
@@ -1235,7 +1473,7 @@ func file_auth_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_v1_auth_proto_rawDesc), len(file_auth_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
