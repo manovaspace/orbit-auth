@@ -210,3 +210,30 @@ func TestRemoteVerifierRefreshesForNewKeyID(t *testing.T) {
 		t.Fatalf("subject = %q, want user-1", claims.Subject)
 	}
 }
+
+func TestPlainHTTPAllowed(t *testing.T) {
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{host: "demo-gateway-1", want: true},
+		{host: "gateway", want: true},
+		{host: "Gateway-1", want: true},
+		{host: "localhost", want: true},
+		{host: "127.0.0.1", want: true},
+		{host: "host.docker.internal", want: true},
+		{host: "example.com", want: false},
+		{host: "10.0.0.1", want: false},
+		{host: "::1", want: false},
+		{host: "2130706433", want: false},
+		{host: "gateway.", want: false},
+		{host: "-bad", want: false},
+		{host: "a_b", want: false},
+		{host: "", want: false},
+	}
+	for _, test := range tests {
+		if got := plainHTTPAllowed(test.host); got != test.want {
+			t.Errorf("plainHTTPAllowed(%q) = %v, want %v", test.host, got, test.want)
+		}
+	}
+}

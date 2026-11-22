@@ -55,5 +55,8 @@ organization the user selected as active ([ADR-045 D3](/decisions/045-tenancy-an
    both public-key directories and restart Auth and the gateway.
 
 The JWKS endpoint is public key material, but production consumers must fetch it
-over HTTPS. Unknown keys fail closed when refresh fails. Known cached keys can
-be used for up to one hour during a JWKS endpoint outage.
+over HTTPS. `NewRemoteVerifier` accepts plain HTTP only for `localhost`,
+`127.0.0.1`, `host.docker.internal` and a single-label container name (no dot,
+no colon, not all digits), for local development and Docker networks. Unknown
+keys fail closed when refresh fails. Known cached keys can be used for up to one
+hour during a JWKS endpoint outage.
