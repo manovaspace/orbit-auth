@@ -203,6 +203,10 @@ func staffError(err error) error {
 		return status.Error(codes.AlreadyExists, err.Error())
 	case errors.Is(err, domain.ErrInvalidAcceptURL):
 		return status.Error(codes.InvalidArgument, "invalid accept_url")
+	case errors.Is(err, domain.ErrInvalidUserStatus), errors.Is(err, domain.ErrAuditFilterRequired):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, domain.ErrAccountNotActive):
+		return status.Error(codes.FailedPrecondition, "account is not active")
 	default:
 		return orgError(err)
 	}

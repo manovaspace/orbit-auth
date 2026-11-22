@@ -85,7 +85,7 @@ func (s *Service) InviteMember(ctx context.Context, orgID, inviterID string, tar
 		ExpiresAt: now.Add(domain.InviteTTL),
 		CreatedAt: now,
 	}
-	if err := s.invites.CreateInvite(ctx, invite); err != nil {
+	if err := s.invites.CreateInvite(ctx, invite, domain.UserAuditActor(inviterID)); err != nil {
 		return domain.Invite{}, "", err
 	}
 	if target.Phone != "" {
@@ -111,7 +111,7 @@ func (s *Service) InviteMember(ctx context.Context, orgID, inviterID string, tar
 	if err := s.notifier.SendOrgInvite(ctx, notification); err != nil {
 		// A pending invite nobody received is unusable, so revoke it. If the
 		// revoke also fails, both failures are reported.
-		if revokeErr := s.invites.RevokeInvite(ctx, orgID, invite.ID); revokeErr != nil {
+		if revokeErr := s.invites.RevokeInvite(ctx, orgID, invite.ID, domain.SystemAuditActor()); revokeErr != nil {
 			return domain.Invite{}, "", fmt.Errorf("send invite: %w (revoke failed: %v)", err, revokeErr)
 		}
 		return domain.Invite{}, "", err
@@ -400,7 +400,7 @@ func (s *Service) RevokeInvite(ctx context.Context, orgID, inviteID, callerID st
 	if err := s.authorizeMembership(ctx, orgID, callerID, domain.ActionRevokeInvite, "", ""); err != nil {
 		return err
 	}
-	return s.invites.RevokeInvite(ctx, orgID, inviteID)
+	return s.invites.RevokeInvite(ctx, orgID, inviteID, domain.UserAuditActor(callerID))
 }
 
 // ListInvites returns every invitation of orgID to an owner or admin. The token

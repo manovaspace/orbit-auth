@@ -21,6 +21,904 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// StaffUser is an account as staff see it. It carries no password hash, token or
+// hash of either.
+type StaffUser struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Email       string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	Mobile      string                 `protobuf:"bytes,3,opt,name=mobile,proto3" json:"mobile,omitempty"`
+	Username    string                 `protobuf:"bytes,4,opt,name=username,proto3" json:"username,omitempty"`
+	DisplayName string                 `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// active, disabled or signup_pending.
+	Status          string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	EmailVerified   bool   `protobuf:"varint,7,opt,name=email_verified,json=emailVerified,proto3" json:"email_verified,omitempty"`
+	MobileVerified  bool   `protobuf:"varint,8,opt,name=mobile_verified,json=mobileVerified,proto3" json:"mobile_verified,omitempty"`
+	HasPassword     bool   `protobuf:"varint,9,opt,name=has_password,json=hasPassword,proto3" json:"has_password,omitempty"`
+	GoogleLinked    bool   `protobuf:"varint,10,opt,name=google_linked,json=googleLinked,proto3" json:"google_linked,omitempty"`
+	CreatedAt       string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	LastLoginAt     string `protobuf:"bytes,12,opt,name=last_login_at,json=lastLoginAt,proto3" json:"last_login_at,omitempty"`
+	DisabledAt      string `protobuf:"bytes,13,opt,name=disabled_at,json=disabledAt,proto3" json:"disabled_at,omitempty"`
+	DisabledReason  string `protobuf:"bytes,14,opt,name=disabled_reason,json=disabledReason,proto3" json:"disabled_reason,omitempty"`
+	MembershipCount int64  `protobuf:"varint,15,opt,name=membership_count,json=membershipCount,proto3" json:"membership_count,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *StaffUser) Reset() {
+	*x = StaffUser{}
+	mi := &file_auth_v1_staff_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StaffUser) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StaffUser) ProtoMessage() {}
+
+func (x *StaffUser) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StaffUser.ProtoReflect.Descriptor instead.
+func (*StaffUser) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *StaffUser) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *StaffUser) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *StaffUser) GetMobile() string {
+	if x != nil {
+		return x.Mobile
+	}
+	return ""
+}
+
+func (x *StaffUser) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *StaffUser) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *StaffUser) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *StaffUser) GetEmailVerified() bool {
+	if x != nil {
+		return x.EmailVerified
+	}
+	return false
+}
+
+func (x *StaffUser) GetMobileVerified() bool {
+	if x != nil {
+		return x.MobileVerified
+	}
+	return false
+}
+
+func (x *StaffUser) GetHasPassword() bool {
+	if x != nil {
+		return x.HasPassword
+	}
+	return false
+}
+
+func (x *StaffUser) GetGoogleLinked() bool {
+	if x != nil {
+		return x.GoogleLinked
+	}
+	return false
+}
+
+func (x *StaffUser) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *StaffUser) GetLastLoginAt() string {
+	if x != nil {
+		return x.LastLoginAt
+	}
+	return ""
+}
+
+func (x *StaffUser) GetDisabledAt() string {
+	if x != nil {
+		return x.DisabledAt
+	}
+	return ""
+}
+
+func (x *StaffUser) GetDisabledReason() string {
+	if x != nil {
+		return x.DisabledReason
+	}
+	return ""
+}
+
+func (x *StaffUser) GetMembershipCount() int64 {
+	if x != nil {
+		return x.MembershipCount
+	}
+	return 0
+}
+
+// StaffUserMembership is one organization membership of an account.
+type StaffUserMembership struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	OrgId   string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	OrgName string                 `protobuf:"bytes,2,opt,name=org_name,json=orgName,proto3" json:"org_name,omitempty"`
+	OrgSlug string                 `protobuf:"bytes,3,opt,name=org_slug,json=orgSlug,proto3" json:"org_slug,omitempty"`
+	// active or suspended.
+	OrgStatus string `protobuf:"bytes,4,opt,name=org_status,json=orgStatus,proto3" json:"org_status,omitempty"`
+	// owner, admin or member.
+	Role string `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
+	// active, invited or suspended.
+	Status        string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	JoinedAt      string `protobuf:"bytes,7,opt,name=joined_at,json=joinedAt,proto3" json:"joined_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StaffUserMembership) Reset() {
+	*x = StaffUserMembership{}
+	mi := &file_auth_v1_staff_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StaffUserMembership) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StaffUserMembership) ProtoMessage() {}
+
+func (x *StaffUserMembership) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StaffUserMembership.ProtoReflect.Descriptor instead.
+func (*StaffUserMembership) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StaffUserMembership) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *StaffUserMembership) GetOrgName() string {
+	if x != nil {
+		return x.OrgName
+	}
+	return ""
+}
+
+func (x *StaffUserMembership) GetOrgSlug() string {
+	if x != nil {
+		return x.OrgSlug
+	}
+	return ""
+}
+
+func (x *StaffUserMembership) GetOrgStatus() string {
+	if x != nil {
+		return x.OrgStatus
+	}
+	return ""
+}
+
+func (x *StaffUserMembership) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *StaffUserMembership) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *StaffUserMembership) GetJoinedAt() string {
+	if x != nil {
+		return x.JoinedAt
+	}
+	return ""
+}
+
+// AuditEvent is one durable audit row. details is a JSON object. It never holds
+// an email address, a mobile number, a password, a token or a hash.
+type AuditEvent struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	OccurredAt string                 `protobuf:"bytes,2,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	Action     string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
+	// user, staff or system.
+	ActorKind string `protobuf:"bytes,4,opt,name=actor_kind,json=actorKind,proto3" json:"actor_kind,omitempty"`
+	// The user id for a user actor, the staff subject for a staff actor; empty for
+	// a system actor.
+	ActorId       string `protobuf:"bytes,5,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	OrgId         string `protobuf:"bytes,6,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	SubjectUserId string `protobuf:"bytes,7,opt,name=subject_user_id,json=subjectUserId,proto3" json:"subject_user_id,omitempty"`
+	InviteId      string `protobuf:"bytes,8,opt,name=invite_id,json=inviteId,proto3" json:"invite_id,omitempty"`
+	Reason        string `protobuf:"bytes,9,opt,name=reason,proto3" json:"reason,omitempty"`
+	Details       string `protobuf:"bytes,10,opt,name=details,proto3" json:"details,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditEvent) Reset() {
+	*x = AuditEvent{}
+	mi := &file_auth_v1_staff_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditEvent) ProtoMessage() {}
+
+func (x *AuditEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditEvent.ProtoReflect.Descriptor instead.
+func (*AuditEvent) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AuditEvent) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *AuditEvent) GetOccurredAt() string {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetActorKind() string {
+	if x != nil {
+		return x.ActorKind
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetActorId() string {
+	if x != nil {
+		return x.ActorId
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetSubjectUserId() string {
+	if x != nil {
+		return x.SubjectUserId
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetInviteId() string {
+	if x != nil {
+		return x.InviteId
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetDetails() string {
+	if x != nil {
+		return x.Details
+	}
+	return ""
+}
+
+type ListUsersRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Query string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// "", active, disabled or signup_pending.
+	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// At most 100. Zero means the default page size.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The next_page_token of the previous page. Empty starts at the beginning.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUsersRequest) Reset() {
+	*x = ListUsersRequest{}
+	mi := &file_auth_v1_staff_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUsersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUsersRequest) ProtoMessage() {}
+
+func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
+func (*ListUsersRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ListUsersRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *ListUsersRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListUsersRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListUsersRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListUsersResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Users []*StaffUser           `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
+	// Empty when there is no further page.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUsersResponse) Reset() {
+	*x = ListUsersResponse{}
+	mi := &file_auth_v1_staff_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUsersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUsersResponse) ProtoMessage() {}
+
+func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
+func (*ListUsersResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListUsersResponse) GetUsers() []*StaffUser {
+	if x != nil {
+		return x.Users
+	}
+	return nil
+}
+
+func (x *ListUsersResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type GetUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserRequest) Reset() {
+	*x = GetUserRequest{}
+	mi := &file_auth_v1_staff_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserRequest) ProtoMessage() {}
+
+func (x *GetUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserRequest.ProtoReflect.Descriptor instead.
+func (*GetUserRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetUserRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type GetUserResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	User          *StaffUser             `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	Memberships   []*StaffUserMembership `protobuf:"bytes,2,rep,name=memberships,proto3" json:"memberships,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserResponse) Reset() {
+	*x = GetUserResponse{}
+	mi := &file_auth_v1_staff_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserResponse) ProtoMessage() {}
+
+func (x *GetUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserResponse.ProtoReflect.Descriptor instead.
+func (*GetUserResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetUserResponse) GetUser() *StaffUser {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+func (x *GetUserResponse) GetMemberships() []*StaffUserMembership {
+	if x != nil {
+		return x.Memberships
+	}
+	return nil
+}
+
+type DisableUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisableUserRequest) Reset() {
+	*x = DisableUserRequest{}
+	mi := &file_auth_v1_staff_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisableUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisableUserRequest) ProtoMessage() {}
+
+func (x *DisableUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisableUserRequest.ProtoReflect.Descriptor instead.
+func (*DisableUserRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DisableUserRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type DisableUserResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// false when the account was already disabled.
+	Changed       bool `protobuf:"varint,1,opt,name=changed,proto3" json:"changed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisableUserResponse) Reset() {
+	*x = DisableUserResponse{}
+	mi := &file_auth_v1_staff_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisableUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisableUserResponse) ProtoMessage() {}
+
+func (x *DisableUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisableUserResponse.ProtoReflect.Descriptor instead.
+func (*DisableUserResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DisableUserResponse) GetChanged() bool {
+	if x != nil {
+		return x.Changed
+	}
+	return false
+}
+
+type EnableUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableUserRequest) Reset() {
+	*x = EnableUserRequest{}
+	mi := &file_auth_v1_staff_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableUserRequest) ProtoMessage() {}
+
+func (x *EnableUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableUserRequest.ProtoReflect.Descriptor instead.
+func (*EnableUserRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *EnableUserRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type EnableUserResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// false when the account was already active.
+	Changed       bool `protobuf:"varint,1,opt,name=changed,proto3" json:"changed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableUserResponse) Reset() {
+	*x = EnableUserResponse{}
+	mi := &file_auth_v1_staff_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableUserResponse) ProtoMessage() {}
+
+func (x *EnableUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableUserResponse.ProtoReflect.Descriptor instead.
+func (*EnableUserResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *EnableUserResponse) GetChanged() bool {
+	if x != nil {
+		return x.Changed
+	}
+	return false
+}
+
+type ListAuditEventsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// At least one of org_id and user_id is required.
+	OrgId  string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	UserId string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// At most 100. Zero means the default page size.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The next_page_token of the previous page. Empty starts at the beginning.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAuditEventsRequest) Reset() {
+	*x = ListAuditEventsRequest{}
+	mi := &file_auth_v1_staff_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAuditEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAuditEventsRequest) ProtoMessage() {}
+
+func (x *ListAuditEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAuditEventsRequest.ProtoReflect.Descriptor instead.
+func (*ListAuditEventsRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListAuditEventsRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ListAuditEventsRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ListAuditEventsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListAuditEventsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListAuditEventsResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Events []*AuditEvent          `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	// Empty when there is no further page.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAuditEventsResponse) Reset() {
+	*x = ListAuditEventsResponse{}
+	mi := &file_auth_v1_staff_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAuditEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAuditEventsResponse) ProtoMessage() {}
+
+func (x *ListAuditEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_staff_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAuditEventsResponse.ProtoReflect.Descriptor instead.
+func (*ListAuditEventsResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListAuditEventsResponse) GetEvents() []*AuditEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *ListAuditEventsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 // StaffOrganization is an organization as staff see it.
 type StaffOrganization struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -44,7 +942,7 @@ type StaffOrganization struct {
 
 func (x *StaffOrganization) Reset() {
 	*x = StaffOrganization{}
-	mi := &file_auth_v1_staff_proto_msgTypes[0]
+	mi := &file_auth_v1_staff_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -56,7 +954,7 @@ func (x *StaffOrganization) String() string {
 func (*StaffOrganization) ProtoMessage() {}
 
 func (x *StaffOrganization) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[0]
+	mi := &file_auth_v1_staff_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -69,7 +967,7 @@ func (x *StaffOrganization) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StaffOrganization.ProtoReflect.Descriptor instead.
 func (*StaffOrganization) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{0}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *StaffOrganization) GetId() string {
@@ -149,7 +1047,7 @@ type StaffMember struct {
 
 func (x *StaffMember) Reset() {
 	*x = StaffMember{}
-	mi := &file_auth_v1_staff_proto_msgTypes[1]
+	mi := &file_auth_v1_staff_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -161,7 +1059,7 @@ func (x *StaffMember) String() string {
 func (*StaffMember) ProtoMessage() {}
 
 func (x *StaffMember) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[1]
+	mi := &file_auth_v1_staff_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -174,7 +1072,7 @@ func (x *StaffMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StaffMember.ProtoReflect.Descriptor instead.
 func (*StaffMember) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{1}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StaffMember) GetUserId() string {
@@ -220,7 +1118,7 @@ type StaffInvite struct {
 
 func (x *StaffInvite) Reset() {
 	*x = StaffInvite{}
-	mi := &file_auth_v1_staff_proto_msgTypes[2]
+	mi := &file_auth_v1_staff_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -232,7 +1130,7 @@ func (x *StaffInvite) String() string {
 func (*StaffInvite) ProtoMessage() {}
 
 func (x *StaffInvite) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[2]
+	mi := &file_auth_v1_staff_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -245,7 +1143,7 @@ func (x *StaffInvite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StaffInvite.ProtoReflect.Descriptor instead.
 func (*StaffInvite) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{2}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *StaffInvite) GetId() string {
@@ -298,7 +1196,7 @@ type ListOrganizationsRequest struct {
 
 func (x *ListOrganizationsRequest) Reset() {
 	*x = ListOrganizationsRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[3]
+	mi := &file_auth_v1_staff_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -310,7 +1208,7 @@ func (x *ListOrganizationsRequest) String() string {
 func (*ListOrganizationsRequest) ProtoMessage() {}
 
 func (x *ListOrganizationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[3]
+	mi := &file_auth_v1_staff_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -323,7 +1221,7 @@ func (x *ListOrganizationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrganizationsRequest.ProtoReflect.Descriptor instead.
 func (*ListOrganizationsRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{3}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListOrganizationsRequest) GetQuery() string {
@@ -365,7 +1263,7 @@ type ListOrganizationsResponse struct {
 
 func (x *ListOrganizationsResponse) Reset() {
 	*x = ListOrganizationsResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[4]
+	mi := &file_auth_v1_staff_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -377,7 +1275,7 @@ func (x *ListOrganizationsResponse) String() string {
 func (*ListOrganizationsResponse) ProtoMessage() {}
 
 func (x *ListOrganizationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[4]
+	mi := &file_auth_v1_staff_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -390,7 +1288,7 @@ func (x *ListOrganizationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrganizationsResponse.ProtoReflect.Descriptor instead.
 func (*ListOrganizationsResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{4}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListOrganizationsResponse) GetOrganizations() []*StaffOrganization {
@@ -416,7 +1314,7 @@ type GetOrganizationRequest struct {
 
 func (x *GetOrganizationRequest) Reset() {
 	*x = GetOrganizationRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[5]
+	mi := &file_auth_v1_staff_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -428,7 +1326,7 @@ func (x *GetOrganizationRequest) String() string {
 func (*GetOrganizationRequest) ProtoMessage() {}
 
 func (x *GetOrganizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[5]
+	mi := &file_auth_v1_staff_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -441,7 +1339,7 @@ func (x *GetOrganizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrganizationRequest.ProtoReflect.Descriptor instead.
 func (*GetOrganizationRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{5}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetOrganizationRequest) GetOrgId() string {
@@ -462,7 +1360,7 @@ type GetOrganizationResponse struct {
 
 func (x *GetOrganizationResponse) Reset() {
 	*x = GetOrganizationResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[6]
+	mi := &file_auth_v1_staff_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +1372,7 @@ func (x *GetOrganizationResponse) String() string {
 func (*GetOrganizationResponse) ProtoMessage() {}
 
 func (x *GetOrganizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[6]
+	mi := &file_auth_v1_staff_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +1385,7 @@ func (x *GetOrganizationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrganizationResponse.ProtoReflect.Descriptor instead.
 func (*GetOrganizationResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{6}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetOrganizationResponse) GetOrganization() *StaffOrganization {
@@ -532,7 +1430,7 @@ type ProvisionOrganizationRequest struct {
 
 func (x *ProvisionOrganizationRequest) Reset() {
 	*x = ProvisionOrganizationRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[7]
+	mi := &file_auth_v1_staff_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -544,7 +1442,7 @@ func (x *ProvisionOrganizationRequest) String() string {
 func (*ProvisionOrganizationRequest) ProtoMessage() {}
 
 func (x *ProvisionOrganizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[7]
+	mi := &file_auth_v1_staff_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -557,7 +1455,7 @@ func (x *ProvisionOrganizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProvisionOrganizationRequest.ProtoReflect.Descriptor instead.
 func (*ProvisionOrganizationRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{7}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ProvisionOrganizationRequest) GetName() string {
@@ -615,7 +1513,7 @@ type ProvisionOrganizationResponse struct {
 
 func (x *ProvisionOrganizationResponse) Reset() {
 	*x = ProvisionOrganizationResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[8]
+	mi := &file_auth_v1_staff_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -627,7 +1525,7 @@ func (x *ProvisionOrganizationResponse) String() string {
 func (*ProvisionOrganizationResponse) ProtoMessage() {}
 
 func (x *ProvisionOrganizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[8]
+	mi := &file_auth_v1_staff_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -640,7 +1538,7 @@ func (x *ProvisionOrganizationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProvisionOrganizationResponse.ProtoReflect.Descriptor instead.
 func (*ProvisionOrganizationResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{8}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ProvisionOrganizationResponse) GetOrganization() *StaffOrganization {
@@ -673,7 +1571,7 @@ type SuspendOrganizationRequest struct {
 
 func (x *SuspendOrganizationRequest) Reset() {
 	*x = SuspendOrganizationRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[9]
+	mi := &file_auth_v1_staff_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +1583,7 @@ func (x *SuspendOrganizationRequest) String() string {
 func (*SuspendOrganizationRequest) ProtoMessage() {}
 
 func (x *SuspendOrganizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[9]
+	mi := &file_auth_v1_staff_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +1596,7 @@ func (x *SuspendOrganizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuspendOrganizationRequest.ProtoReflect.Descriptor instead.
 func (*SuspendOrganizationRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{9}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SuspendOrganizationRequest) GetOrgId() string {
@@ -717,7 +1615,7 @@ type SuspendOrganizationResponse struct {
 
 func (x *SuspendOrganizationResponse) Reset() {
 	*x = SuspendOrganizationResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[10]
+	mi := &file_auth_v1_staff_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -729,7 +1627,7 @@ func (x *SuspendOrganizationResponse) String() string {
 func (*SuspendOrganizationResponse) ProtoMessage() {}
 
 func (x *SuspendOrganizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[10]
+	mi := &file_auth_v1_staff_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -742,7 +1640,7 @@ func (x *SuspendOrganizationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuspendOrganizationResponse.ProtoReflect.Descriptor instead.
 func (*SuspendOrganizationResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{10}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SuspendOrganizationResponse) GetOrganization() *StaffOrganization {
@@ -761,7 +1659,7 @@ type ReactivateOrganizationRequest struct {
 
 func (x *ReactivateOrganizationRequest) Reset() {
 	*x = ReactivateOrganizationRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[11]
+	mi := &file_auth_v1_staff_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -773,7 +1671,7 @@ func (x *ReactivateOrganizationRequest) String() string {
 func (*ReactivateOrganizationRequest) ProtoMessage() {}
 
 func (x *ReactivateOrganizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[11]
+	mi := &file_auth_v1_staff_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -786,7 +1684,7 @@ func (x *ReactivateOrganizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReactivateOrganizationRequest.ProtoReflect.Descriptor instead.
 func (*ReactivateOrganizationRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{11}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ReactivateOrganizationRequest) GetOrgId() string {
@@ -805,7 +1703,7 @@ type ReactivateOrganizationResponse struct {
 
 func (x *ReactivateOrganizationResponse) Reset() {
 	*x = ReactivateOrganizationResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[12]
+	mi := &file_auth_v1_staff_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -817,7 +1715,7 @@ func (x *ReactivateOrganizationResponse) String() string {
 func (*ReactivateOrganizationResponse) ProtoMessage() {}
 
 func (x *ReactivateOrganizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[12]
+	mi := &file_auth_v1_staff_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -830,7 +1728,7 @@ func (x *ReactivateOrganizationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReactivateOrganizationResponse.ProtoReflect.Descriptor instead.
 func (*ReactivateOrganizationResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{12}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ReactivateOrganizationResponse) GetOrganization() *StaffOrganization {
@@ -850,7 +1748,7 @@ type SetOrganizationSlugRequest struct {
 
 func (x *SetOrganizationSlugRequest) Reset() {
 	*x = SetOrganizationSlugRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[13]
+	mi := &file_auth_v1_staff_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -862,7 +1760,7 @@ func (x *SetOrganizationSlugRequest) String() string {
 func (*SetOrganizationSlugRequest) ProtoMessage() {}
 
 func (x *SetOrganizationSlugRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[13]
+	mi := &file_auth_v1_staff_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -875,7 +1773,7 @@ func (x *SetOrganizationSlugRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetOrganizationSlugRequest.ProtoReflect.Descriptor instead.
 func (*SetOrganizationSlugRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{13}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SetOrganizationSlugRequest) GetOrgId() string {
@@ -901,7 +1799,7 @@ type SetOrganizationSlugResponse struct {
 
 func (x *SetOrganizationSlugResponse) Reset() {
 	*x = SetOrganizationSlugResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[14]
+	mi := &file_auth_v1_staff_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -913,7 +1811,7 @@ func (x *SetOrganizationSlugResponse) String() string {
 func (*SetOrganizationSlugResponse) ProtoMessage() {}
 
 func (x *SetOrganizationSlugResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[14]
+	mi := &file_auth_v1_staff_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -926,7 +1824,7 @@ func (x *SetOrganizationSlugResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetOrganizationSlugResponse.ProtoReflect.Descriptor instead.
 func (*SetOrganizationSlugResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{14}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *SetOrganizationSlugResponse) GetOrganization() *StaffOrganization {
@@ -950,7 +1848,7 @@ type ReinviteOwnerRequest struct {
 
 func (x *ReinviteOwnerRequest) Reset() {
 	*x = ReinviteOwnerRequest{}
-	mi := &file_auth_v1_staff_proto_msgTypes[15]
+	mi := &file_auth_v1_staff_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -962,7 +1860,7 @@ func (x *ReinviteOwnerRequest) String() string {
 func (*ReinviteOwnerRequest) ProtoMessage() {}
 
 func (x *ReinviteOwnerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[15]
+	mi := &file_auth_v1_staff_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -975,7 +1873,7 @@ func (x *ReinviteOwnerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReinviteOwnerRequest.ProtoReflect.Descriptor instead.
 func (*ReinviteOwnerRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{15}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ReinviteOwnerRequest) GetOrgId() string {
@@ -1017,7 +1915,7 @@ type ReinviteOwnerResponse struct {
 
 func (x *ReinviteOwnerResponse) Reset() {
 	*x = ReinviteOwnerResponse{}
-	mi := &file_auth_v1_staff_proto_msgTypes[16]
+	mi := &file_auth_v1_staff_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1029,7 +1927,7 @@ func (x *ReinviteOwnerResponse) String() string {
 func (*ReinviteOwnerResponse) ProtoMessage() {}
 
 func (x *ReinviteOwnerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_staff_proto_msgTypes[16]
+	mi := &file_auth_v1_staff_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1042,7 +1940,7 @@ func (x *ReinviteOwnerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReinviteOwnerResponse.ProtoReflect.Descriptor instead.
 func (*ReinviteOwnerResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_staff_proto_rawDescGZIP(), []int{16}
+	return file_auth_v1_staff_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ReinviteOwnerResponse) GetInvite() *StaffInvite {
@@ -1063,7 +1961,81 @@ var File_auth_v1_staff_proto protoreflect.FileDescriptor
 
 const file_auth_v1_staff_proto_rawDesc = "" +
 	"\n" +
-	"\x13auth/v1/staff.proto\x12\aauth.v1\"\x99\x02\n" +
+	"\x13auth/v1/staff.proto\x12\aauth.v1\"\xf0\x03\n" +
+	"\tStaffUser\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12\x16\n" +
+	"\x06mobile\x18\x03 \x01(\tR\x06mobile\x12\x1a\n" +
+	"\busername\x18\x04 \x01(\tR\busername\x12!\n" +
+	"\fdisplay_name\x18\x05 \x01(\tR\vdisplayName\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12%\n" +
+	"\x0eemail_verified\x18\a \x01(\bR\remailVerified\x12'\n" +
+	"\x0fmobile_verified\x18\b \x01(\bR\x0emobileVerified\x12!\n" +
+	"\fhas_password\x18\t \x01(\bR\vhasPassword\x12#\n" +
+	"\rgoogle_linked\x18\n" +
+	" \x01(\bR\fgoogleLinked\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\x12\"\n" +
+	"\rlast_login_at\x18\f \x01(\tR\vlastLoginAt\x12\x1f\n" +
+	"\vdisabled_at\x18\r \x01(\tR\n" +
+	"disabledAt\x12'\n" +
+	"\x0fdisabled_reason\x18\x0e \x01(\tR\x0edisabledReason\x12)\n" +
+	"\x10membership_count\x18\x0f \x01(\x03R\x0fmembershipCount\"\xca\x01\n" +
+	"\x13StaffUserMembership\x12\x15\n" +
+	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x19\n" +
+	"\borg_name\x18\x02 \x01(\tR\aorgName\x12\x19\n" +
+	"\borg_slug\x18\x03 \x01(\tR\aorgSlug\x12\x1d\n" +
+	"\n" +
+	"org_status\x18\x04 \x01(\tR\torgStatus\x12\x12\n" +
+	"\x04role\x18\x05 \x01(\tR\x04role\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1b\n" +
+	"\tjoined_at\x18\a \x01(\tR\bjoinedAt\"\x9d\x02\n" +
+	"\n" +
+	"AuditEvent\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1f\n" +
+	"\voccurred_at\x18\x02 \x01(\tR\n" +
+	"occurredAt\x12\x16\n" +
+	"\x06action\x18\x03 \x01(\tR\x06action\x12\x1d\n" +
+	"\n" +
+	"actor_kind\x18\x04 \x01(\tR\tactorKind\x12\x19\n" +
+	"\bactor_id\x18\x05 \x01(\tR\aactorId\x12\x15\n" +
+	"\x06org_id\x18\x06 \x01(\tR\x05orgId\x12&\n" +
+	"\x0fsubject_user_id\x18\a \x01(\tR\rsubjectUserId\x12\x1b\n" +
+	"\tinvite_id\x18\b \x01(\tR\binviteId\x12\x16\n" +
+	"\x06reason\x18\t \x01(\tR\x06reason\x12\x18\n" +
+	"\adetails\x18\n" +
+	" \x01(\tR\adetails\"|\n" +
+	"\x10ListUsersRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"e\n" +
+	"\x11ListUsersResponse\x12(\n" +
+	"\x05users\x18\x01 \x03(\v2\x12.auth.v1.StaffUserR\x05users\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\")\n" +
+	"\x0eGetUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"y\n" +
+	"\x0fGetUserResponse\x12&\n" +
+	"\x04user\x18\x01 \x01(\v2\x12.auth.v1.StaffUserR\x04user\x12>\n" +
+	"\vmemberships\x18\x02 \x03(\v2\x1c.auth.v1.StaffUserMembershipR\vmemberships\"-\n" +
+	"\x12DisableUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"/\n" +
+	"\x13DisableUserResponse\x12\x18\n" +
+	"\achanged\x18\x01 \x01(\bR\achanged\",\n" +
+	"\x11EnableUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\".\n" +
+	"\x12EnableUserResponse\x12\x18\n" +
+	"\achanged\x18\x01 \x01(\bR\achanged\"\x84\x01\n" +
+	"\x16ListAuditEventsRequest\x12\x15\n" +
+	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"n\n" +
+	"\x17ListAuditEventsResponse\x12+\n" +
+	"\x06events\x18\x01 \x03(\v2\x13.auth.v1.AuditEventR\x06events\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x99\x02\n" +
 	"\x11StaffOrganization\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -1147,7 +2119,14 @@ const file_auth_v1_staff_proto_rawDesc = "" +
 	"\x13SuspendOrganization\x12#.auth.v1.SuspendOrganizationRequest\x1a$.auth.v1.SuspendOrganizationResponse\x12i\n" +
 	"\x16ReactivateOrganization\x12&.auth.v1.ReactivateOrganizationRequest\x1a'.auth.v1.ReactivateOrganizationResponse\x12`\n" +
 	"\x13SetOrganizationSlug\x12#.auth.v1.SetOrganizationSlugRequest\x1a$.auth.v1.SetOrganizationSlugResponse\x12N\n" +
-	"\rReinviteOwner\x12\x1d.auth.v1.ReinviteOwnerRequest\x1a\x1e.auth.v1.ReinviteOwnerResponseB6Z4github.com/manovaspace/orbit-auth/api/auth/v1;authv1b\x06proto3"
+	"\rReinviteOwner\x12\x1d.auth.v1.ReinviteOwnerRequest\x1a\x1e.auth.v1.ReinviteOwnerResponse2\xfb\x02\n" +
+	"\x10StaffUserService\x12B\n" +
+	"\tListUsers\x12\x19.auth.v1.ListUsersRequest\x1a\x1a.auth.v1.ListUsersResponse\x12<\n" +
+	"\aGetUser\x12\x17.auth.v1.GetUserRequest\x1a\x18.auth.v1.GetUserResponse\x12H\n" +
+	"\vDisableUser\x12\x1b.auth.v1.DisableUserRequest\x1a\x1c.auth.v1.DisableUserResponse\x12E\n" +
+	"\n" +
+	"EnableUser\x12\x1a.auth.v1.EnableUserRequest\x1a\x1b.auth.v1.EnableUserResponse\x12T\n" +
+	"\x0fListAuditEvents\x12\x1f.auth.v1.ListAuditEventsRequest\x1a .auth.v1.ListAuditEventsResponseB6Z4github.com/manovaspace/orbit-auth/api/auth/v1;authv1b\x06proto3"
 
 var (
 	file_auth_v1_staff_proto_rawDescOnce sync.Once
@@ -1161,56 +2140,83 @@ func file_auth_v1_staff_proto_rawDescGZIP() []byte {
 	return file_auth_v1_staff_proto_rawDescData
 }
 
-var file_auth_v1_staff_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_auth_v1_staff_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_auth_v1_staff_proto_goTypes = []any{
-	(*StaffOrganization)(nil),              // 0: auth.v1.StaffOrganization
-	(*StaffMember)(nil),                    // 1: auth.v1.StaffMember
-	(*StaffInvite)(nil),                    // 2: auth.v1.StaffInvite
-	(*ListOrganizationsRequest)(nil),       // 3: auth.v1.ListOrganizationsRequest
-	(*ListOrganizationsResponse)(nil),      // 4: auth.v1.ListOrganizationsResponse
-	(*GetOrganizationRequest)(nil),         // 5: auth.v1.GetOrganizationRequest
-	(*GetOrganizationResponse)(nil),        // 6: auth.v1.GetOrganizationResponse
-	(*ProvisionOrganizationRequest)(nil),   // 7: auth.v1.ProvisionOrganizationRequest
-	(*ProvisionOrganizationResponse)(nil),  // 8: auth.v1.ProvisionOrganizationResponse
-	(*SuspendOrganizationRequest)(nil),     // 9: auth.v1.SuspendOrganizationRequest
-	(*SuspendOrganizationResponse)(nil),    // 10: auth.v1.SuspendOrganizationResponse
-	(*ReactivateOrganizationRequest)(nil),  // 11: auth.v1.ReactivateOrganizationRequest
-	(*ReactivateOrganizationResponse)(nil), // 12: auth.v1.ReactivateOrganizationResponse
-	(*SetOrganizationSlugRequest)(nil),     // 13: auth.v1.SetOrganizationSlugRequest
-	(*SetOrganizationSlugResponse)(nil),    // 14: auth.v1.SetOrganizationSlugResponse
-	(*ReinviteOwnerRequest)(nil),           // 15: auth.v1.ReinviteOwnerRequest
-	(*ReinviteOwnerResponse)(nil),          // 16: auth.v1.ReinviteOwnerResponse
+	(*StaffUser)(nil),                      // 0: auth.v1.StaffUser
+	(*StaffUserMembership)(nil),            // 1: auth.v1.StaffUserMembership
+	(*AuditEvent)(nil),                     // 2: auth.v1.AuditEvent
+	(*ListUsersRequest)(nil),               // 3: auth.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),              // 4: auth.v1.ListUsersResponse
+	(*GetUserRequest)(nil),                 // 5: auth.v1.GetUserRequest
+	(*GetUserResponse)(nil),                // 6: auth.v1.GetUserResponse
+	(*DisableUserRequest)(nil),             // 7: auth.v1.DisableUserRequest
+	(*DisableUserResponse)(nil),            // 8: auth.v1.DisableUserResponse
+	(*EnableUserRequest)(nil),              // 9: auth.v1.EnableUserRequest
+	(*EnableUserResponse)(nil),             // 10: auth.v1.EnableUserResponse
+	(*ListAuditEventsRequest)(nil),         // 11: auth.v1.ListAuditEventsRequest
+	(*ListAuditEventsResponse)(nil),        // 12: auth.v1.ListAuditEventsResponse
+	(*StaffOrganization)(nil),              // 13: auth.v1.StaffOrganization
+	(*StaffMember)(nil),                    // 14: auth.v1.StaffMember
+	(*StaffInvite)(nil),                    // 15: auth.v1.StaffInvite
+	(*ListOrganizationsRequest)(nil),       // 16: auth.v1.ListOrganizationsRequest
+	(*ListOrganizationsResponse)(nil),      // 17: auth.v1.ListOrganizationsResponse
+	(*GetOrganizationRequest)(nil),         // 18: auth.v1.GetOrganizationRequest
+	(*GetOrganizationResponse)(nil),        // 19: auth.v1.GetOrganizationResponse
+	(*ProvisionOrganizationRequest)(nil),   // 20: auth.v1.ProvisionOrganizationRequest
+	(*ProvisionOrganizationResponse)(nil),  // 21: auth.v1.ProvisionOrganizationResponse
+	(*SuspendOrganizationRequest)(nil),     // 22: auth.v1.SuspendOrganizationRequest
+	(*SuspendOrganizationResponse)(nil),    // 23: auth.v1.SuspendOrganizationResponse
+	(*ReactivateOrganizationRequest)(nil),  // 24: auth.v1.ReactivateOrganizationRequest
+	(*ReactivateOrganizationResponse)(nil), // 25: auth.v1.ReactivateOrganizationResponse
+	(*SetOrganizationSlugRequest)(nil),     // 26: auth.v1.SetOrganizationSlugRequest
+	(*SetOrganizationSlugResponse)(nil),    // 27: auth.v1.SetOrganizationSlugResponse
+	(*ReinviteOwnerRequest)(nil),           // 28: auth.v1.ReinviteOwnerRequest
+	(*ReinviteOwnerResponse)(nil),          // 29: auth.v1.ReinviteOwnerResponse
 }
 var file_auth_v1_staff_proto_depIdxs = []int32{
-	0,  // 0: auth.v1.ListOrganizationsResponse.organizations:type_name -> auth.v1.StaffOrganization
-	0,  // 1: auth.v1.GetOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
-	1,  // 2: auth.v1.GetOrganizationResponse.members:type_name -> auth.v1.StaffMember
-	2,  // 3: auth.v1.GetOrganizationResponse.pending_invites:type_name -> auth.v1.StaffInvite
-	0,  // 4: auth.v1.ProvisionOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
-	2,  // 5: auth.v1.ProvisionOrganizationResponse.owner_invite:type_name -> auth.v1.StaffInvite
-	0,  // 6: auth.v1.SuspendOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
-	0,  // 7: auth.v1.ReactivateOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
-	0,  // 8: auth.v1.SetOrganizationSlugResponse.organization:type_name -> auth.v1.StaffOrganization
-	2,  // 9: auth.v1.ReinviteOwnerResponse.invite:type_name -> auth.v1.StaffInvite
-	3,  // 10: auth.v1.StaffOrgService.ListOrganizations:input_type -> auth.v1.ListOrganizationsRequest
-	5,  // 11: auth.v1.StaffOrgService.GetOrganization:input_type -> auth.v1.GetOrganizationRequest
-	7,  // 12: auth.v1.StaffOrgService.ProvisionOrganization:input_type -> auth.v1.ProvisionOrganizationRequest
-	9,  // 13: auth.v1.StaffOrgService.SuspendOrganization:input_type -> auth.v1.SuspendOrganizationRequest
-	11, // 14: auth.v1.StaffOrgService.ReactivateOrganization:input_type -> auth.v1.ReactivateOrganizationRequest
-	13, // 15: auth.v1.StaffOrgService.SetOrganizationSlug:input_type -> auth.v1.SetOrganizationSlugRequest
-	15, // 16: auth.v1.StaffOrgService.ReinviteOwner:input_type -> auth.v1.ReinviteOwnerRequest
-	4,  // 17: auth.v1.StaffOrgService.ListOrganizations:output_type -> auth.v1.ListOrganizationsResponse
-	6,  // 18: auth.v1.StaffOrgService.GetOrganization:output_type -> auth.v1.GetOrganizationResponse
-	8,  // 19: auth.v1.StaffOrgService.ProvisionOrganization:output_type -> auth.v1.ProvisionOrganizationResponse
-	10, // 20: auth.v1.StaffOrgService.SuspendOrganization:output_type -> auth.v1.SuspendOrganizationResponse
-	12, // 21: auth.v1.StaffOrgService.ReactivateOrganization:output_type -> auth.v1.ReactivateOrganizationResponse
-	14, // 22: auth.v1.StaffOrgService.SetOrganizationSlug:output_type -> auth.v1.SetOrganizationSlugResponse
-	16, // 23: auth.v1.StaffOrgService.ReinviteOwner:output_type -> auth.v1.ReinviteOwnerResponse
-	17, // [17:24] is the sub-list for method output_type
-	10, // [10:17] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	0,  // 0: auth.v1.ListUsersResponse.users:type_name -> auth.v1.StaffUser
+	0,  // 1: auth.v1.GetUserResponse.user:type_name -> auth.v1.StaffUser
+	1,  // 2: auth.v1.GetUserResponse.memberships:type_name -> auth.v1.StaffUserMembership
+	2,  // 3: auth.v1.ListAuditEventsResponse.events:type_name -> auth.v1.AuditEvent
+	13, // 4: auth.v1.ListOrganizationsResponse.organizations:type_name -> auth.v1.StaffOrganization
+	13, // 5: auth.v1.GetOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
+	14, // 6: auth.v1.GetOrganizationResponse.members:type_name -> auth.v1.StaffMember
+	15, // 7: auth.v1.GetOrganizationResponse.pending_invites:type_name -> auth.v1.StaffInvite
+	13, // 8: auth.v1.ProvisionOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
+	15, // 9: auth.v1.ProvisionOrganizationResponse.owner_invite:type_name -> auth.v1.StaffInvite
+	13, // 10: auth.v1.SuspendOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
+	13, // 11: auth.v1.ReactivateOrganizationResponse.organization:type_name -> auth.v1.StaffOrganization
+	13, // 12: auth.v1.SetOrganizationSlugResponse.organization:type_name -> auth.v1.StaffOrganization
+	15, // 13: auth.v1.ReinviteOwnerResponse.invite:type_name -> auth.v1.StaffInvite
+	16, // 14: auth.v1.StaffOrgService.ListOrganizations:input_type -> auth.v1.ListOrganizationsRequest
+	18, // 15: auth.v1.StaffOrgService.GetOrganization:input_type -> auth.v1.GetOrganizationRequest
+	20, // 16: auth.v1.StaffOrgService.ProvisionOrganization:input_type -> auth.v1.ProvisionOrganizationRequest
+	22, // 17: auth.v1.StaffOrgService.SuspendOrganization:input_type -> auth.v1.SuspendOrganizationRequest
+	24, // 18: auth.v1.StaffOrgService.ReactivateOrganization:input_type -> auth.v1.ReactivateOrganizationRequest
+	26, // 19: auth.v1.StaffOrgService.SetOrganizationSlug:input_type -> auth.v1.SetOrganizationSlugRequest
+	28, // 20: auth.v1.StaffOrgService.ReinviteOwner:input_type -> auth.v1.ReinviteOwnerRequest
+	3,  // 21: auth.v1.StaffUserService.ListUsers:input_type -> auth.v1.ListUsersRequest
+	5,  // 22: auth.v1.StaffUserService.GetUser:input_type -> auth.v1.GetUserRequest
+	7,  // 23: auth.v1.StaffUserService.DisableUser:input_type -> auth.v1.DisableUserRequest
+	9,  // 24: auth.v1.StaffUserService.EnableUser:input_type -> auth.v1.EnableUserRequest
+	11, // 25: auth.v1.StaffUserService.ListAuditEvents:input_type -> auth.v1.ListAuditEventsRequest
+	17, // 26: auth.v1.StaffOrgService.ListOrganizations:output_type -> auth.v1.ListOrganizationsResponse
+	19, // 27: auth.v1.StaffOrgService.GetOrganization:output_type -> auth.v1.GetOrganizationResponse
+	21, // 28: auth.v1.StaffOrgService.ProvisionOrganization:output_type -> auth.v1.ProvisionOrganizationResponse
+	23, // 29: auth.v1.StaffOrgService.SuspendOrganization:output_type -> auth.v1.SuspendOrganizationResponse
+	25, // 30: auth.v1.StaffOrgService.ReactivateOrganization:output_type -> auth.v1.ReactivateOrganizationResponse
+	27, // 31: auth.v1.StaffOrgService.SetOrganizationSlug:output_type -> auth.v1.SetOrganizationSlugResponse
+	29, // 32: auth.v1.StaffOrgService.ReinviteOwner:output_type -> auth.v1.ReinviteOwnerResponse
+	4,  // 33: auth.v1.StaffUserService.ListUsers:output_type -> auth.v1.ListUsersResponse
+	6,  // 34: auth.v1.StaffUserService.GetUser:output_type -> auth.v1.GetUserResponse
+	8,  // 35: auth.v1.StaffUserService.DisableUser:output_type -> auth.v1.DisableUserResponse
+	10, // 36: auth.v1.StaffUserService.EnableUser:output_type -> auth.v1.EnableUserResponse
+	12, // 37: auth.v1.StaffUserService.ListAuditEvents:output_type -> auth.v1.ListAuditEventsResponse
+	26, // [26:38] is the sub-list for method output_type
+	14, // [14:26] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_auth_v1_staff_proto_init() }
@@ -1224,9 +2230,9 @@ func file_auth_v1_staff_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_v1_staff_proto_rawDesc), len(file_auth_v1_staff_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   30,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_auth_v1_staff_proto_goTypes,
 		DependencyIndexes: file_auth_v1_staff_proto_depIdxs,

@@ -216,7 +216,7 @@ func (s *Service) StaffProvisionOrganization(ctx context.Context, actor domain.S
 	if err != nil {
 		return ProvisionOrgResult{}, err
 	}
-	created, wasCreated, err := s.orgs.ProvisionOrganization(ctx, org, invite, key)
+	created, wasCreated, err := s.orgs.ProvisionOrganization(ctx, org, invite, key, actor)
 	if err != nil {
 		return ProvisionOrgResult{}, err
 	}
@@ -384,7 +384,7 @@ func (s *Service) issueStaffOwnerInvite(ctx context.Context, actor domain.StaffA
 	if err != nil {
 		return domain.Invite{}, "", err
 	}
-	if err := s.invites.CreateInvite(ctx, invite); err != nil {
+	if err := s.invites.CreateInvite(ctx, invite, domain.StaffAuditActor(actor)); err != nil {
 		return domain.Invite{}, "", err
 	}
 	if err := s.deliverStaffOwnerInvite(ctx, org, invite, token, resolvedURL); err != nil {
@@ -434,7 +434,7 @@ func (s *Service) deliverStaffOwnerInvite(ctx context.Context, org domain.Organi
 		CorrelationID: invite.ID,
 	}
 	if err := s.notifier.SendOrgInvite(ctx, notification); err != nil {
-		if revokeErr := s.invites.RevokeInvite(ctx, org.ID, invite.ID); revokeErr != nil {
+		if revokeErr := s.invites.RevokeInvite(ctx, org.ID, invite.ID, domain.SystemAuditActor()); revokeErr != nil {
 			return fmt.Errorf("send invite: %w (revoke failed: %v)", err, revokeErr)
 		}
 		return err

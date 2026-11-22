@@ -1,16 +1,20 @@
--- name: RevokePendingOrganizationInvitesForEmail :exec
+-- name: RevokePendingOrganizationInvitesForEmail :many
+-- Returns the ids it revoked, so the rotation can audit each one.
 UPDATE organization_invites
 SET status = 'revoked'
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND lower(email) = lower(sqlc.arg('email')::text)
-  AND status = 'pending';
+  AND status = 'pending'
+RETURNING id;
 
--- name: RevokePendingOrganizationInvitesForPhone :exec
+-- name: RevokePendingOrganizationInvitesForPhone :many
+-- Returns the ids it revoked, so the rotation can audit each one.
 UPDATE organization_invites
 SET status = 'revoked'
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND phone = sqlc.arg('phone')::text
-  AND status = 'pending';
+  AND status = 'pending'
+RETURNING id;
 
 -- name: CreateOrganizationInvite :exec
 INSERT INTO organization_invites (

@@ -76,6 +76,10 @@ type SignupStore interface {
 // remembers the organization selected when the pair was issued; orgID is empty
 // when no organization was active.
 type RefreshTokenStore interface {
+	// Store writes a token for userID. It takes a share lock on the account in
+	// the same transaction and writes nothing when the account is not active,
+	// returning ErrAccountNotActive. A concurrent disable therefore either
+	// refuses the token or revokes it.
 	Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error
 	FindValid(ctx context.Context, tokenHash string) (userID, orgID string, err error)
 	// Consume atomically revokes a valid token and returns its owner, so two
@@ -119,7 +123,10 @@ type OrgStore interface {
 	ListOrgsForUser(ctx context.Context, userID string) ([]Organization, error)
 	// ListMembers returns every membership of orgID with its lifecycle status.
 	ListMembers(ctx context.Context, orgID string) ([]Membership, error)
-	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus, role MembershipRole) error
+	// AddMember writes the membership and auth.membership.added. An existing
+	// membership is left untouched, with no event and no audit row. by is the
+	// actor the audit row names.
+	AddMember(ctx context.Context, orgID, userID string, status MembershipStatus, role MembershipRole, by AuditActor) error
 	// ListOrganizationsForStaff returns one page of organizations with their
 	// member counts and active owners, oldest first.
 	ListOrganizationsForStaff(ctx context.Context, query StaffOrgListQuery) ([]StaffOrgSummary, error)
@@ -134,7 +141,7 @@ type OrgStore interface {
 	// written and the recorded provision is returned with created=false.
 	// created=true means the invitation was written too; the caller decides
 	// about notification.
-	ProvisionOrganization(ctx context.Context, org Organization, owner Invite, idempotencyKey string) (provision OrganizationProvision, created bool, err error)
+	ProvisionOrganization(ctx context.Context, org Organization, owner Invite, idempotencyKey string, by StaffActor) (provision OrganizationProvision, created bool, err error)
 	// SuspendOrganization suspends an organization and emits
 	// auth.org.suspended, unless it is already suspended.
 	SuspendOrganization(ctx context.Context, orgID string, by StaffActor) error
@@ -146,10 +153,16 @@ type OrgStore interface {
 	// ErrLastOwner when the change would leave no active owner, and records
 	// actorID in auth.membership.role_changed.
 	UpdateMemberRole(ctx context.Context, orgID, userID string, role MembershipRole, actorID string) error
+	// UpdateMemberStatus with MembershipSuspended revokes the member's live
+	// refresh tokens for this organization, in the same transaction. Setting
+	// MembershipActive on a suspended member emits auth.membership.reactivated.
 	// UpdateMemberStatus and RemoveMember also return ErrLastOwner when the
 	// member is the last active owner. With a non-zero actor they run
 	// AuthorizeMembershipAction again under the organization lock and return
 	// ErrForbidden when the actor no longer has the authority.
+	// RemoveMember deletes the membership and revokes the member's live refresh
+	// tokens for this organization, in the same transaction; it writes
+	// membership.removed and auth.membership.removed.
 	RemoveMember(ctx context.Context, orgID, userID string, by MembershipActor) error
 	GetMembership(ctx context.Context, orgID, userID string) (Membership, error)
 }
@@ -160,11 +173,11 @@ type InviteStore interface {
 	// CreateInvite revokes any pending invite for the same organization and
 	// email address, then writes the new pending invite in the same
 	// transaction.
-	CreateInvite(ctx context.Context, invite Invite) error
+	CreateInvite(ctx context.Context, invite Invite, by AuditActor) error
 	FindInviteByTokenHash(ctx context.Context, tokenHash string) (Invite, error)
 	ListInvites(ctx context.Context, orgID string) ([]Invite, error)
 	// RevokeInvite revokes one pending invite or returns ErrInviteNotFound.
-	RevokeInvite(ctx context.Context, orgID, inviteID string) error
+	RevokeInvite(ctx context.Context, orgID, inviteID string, by AuditActor) error
 	// AcceptInvite marks one pending invite accepted and makes the user an
 	// active member with role in the same transaction. A user who is already an
 	// active member keeps their current role. It returns ErrInviteNotFound when

@@ -184,6 +184,9 @@ func (s *Store) signInWithIdentityOnce(ctx context.Context, provider string, id 
 	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(newID.String(), now)); err != nil {
 		return domain.User{}, err
 	}
+	if err := userCreatedAudit(ctx, queries, newID.String(), domain.UserAuditActor(newID.String()), now); err != nil {
+		return domain.User{}, err
+	}
 	return finishSignIn(ctx, tx, queries, newID.String())
 }
 

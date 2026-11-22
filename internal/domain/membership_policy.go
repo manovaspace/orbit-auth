@@ -19,10 +19,13 @@ const (
 	ActionAddMember     MembershipAction = "add_member"
 	ActionRemoveMember  MembershipAction = "remove_member"
 	ActionSuspendMember MembershipAction = "suspend_member"
-	ActionSetRole       MembershipAction = "set_role"
-	ActionInvite        MembershipAction = "invite"
-	ActionRevokeInvite  MembershipAction = "revoke_invite"
-	ActionListInvites   MembershipAction = "list_invites"
+	// ActionReactivateMember lifts a suspension. It follows the suspension
+	// rules: an owner may reactivate anyone, an admin only plain members.
+	ActionReactivateMember MembershipAction = "reactivate_member"
+	ActionSetRole          MembershipAction = "set_role"
+	ActionInvite           MembershipAction = "invite"
+	ActionRevokeInvite     MembershipAction = "revoke_invite"
+	ActionListInvites      MembershipAction = "list_invites"
 	// ActionSetSlug changes the organization's slug, and with it the address of
 	// its tenant host. Only an owner may.
 	ActionSetSlug MembershipAction = "set_slug"

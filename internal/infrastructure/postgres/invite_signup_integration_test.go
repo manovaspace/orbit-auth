@@ -48,7 +48,7 @@ func TestPhoneInviteSignupCreatesUnverifiedMemberAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	invite := pendingPhoneInvite(org.ID, inviter.ID, signupPhone, domain.RoleAdmin, "phone-signup-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,7 +147,7 @@ func TestPhoneInviteSignupExistingMobileIsNoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 	invite := pendingPhoneInvite(org.ID, inviter.ID, signupPhone, domain.RoleMember, "existing-number-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +256,7 @@ func emailInviteFixtureStore(t *testing.T, email, token string) (*Store, domain.
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, email, token)
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	return store, org, invite, now

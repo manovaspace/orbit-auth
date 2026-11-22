@@ -247,12 +247,13 @@ func (q *Queries) RevokeOrganizationInvite(ctx context.Context, arg RevokeOrgani
 	return result.RowsAffected(), nil
 }
 
-const revokePendingOrganizationInvitesForEmail = `-- name: RevokePendingOrganizationInvitesForEmail :exec
+const revokePendingOrganizationInvitesForEmail = `-- name: RevokePendingOrganizationInvitesForEmail :many
 UPDATE organization_invites
 SET status = 'revoked'
 WHERE org_id = $1::uuid
   AND lower(email) = lower($2::text)
   AND status = 'pending'
+RETURNING id
 `
 
 type RevokePendingOrganizationInvitesForEmailParams struct {
@@ -260,17 +261,34 @@ type RevokePendingOrganizationInvitesForEmailParams struct {
 	Email string
 }
 
-func (q *Queries) RevokePendingOrganizationInvitesForEmail(ctx context.Context, arg RevokePendingOrganizationInvitesForEmailParams) error {
-	_, err := q.db.Exec(ctx, revokePendingOrganizationInvitesForEmail, arg.OrgID, arg.Email)
-	return err
+// Returns the ids it revoked, so the rotation can audit each one.
+func (q *Queries) RevokePendingOrganizationInvitesForEmail(ctx context.Context, arg RevokePendingOrganizationInvitesForEmailParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, revokePendingOrganizationInvitesForEmail, arg.OrgID, arg.Email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const revokePendingOrganizationInvitesForPhone = `-- name: RevokePendingOrganizationInvitesForPhone :exec
+const revokePendingOrganizationInvitesForPhone = `-- name: RevokePendingOrganizationInvitesForPhone :many
 UPDATE organization_invites
 SET status = 'revoked'
 WHERE org_id = $1::uuid
   AND phone = $2::text
   AND status = 'pending'
+RETURNING id
 `
 
 type RevokePendingOrganizationInvitesForPhoneParams struct {
@@ -278,7 +296,23 @@ type RevokePendingOrganizationInvitesForPhoneParams struct {
 	Phone string
 }
 
-func (q *Queries) RevokePendingOrganizationInvitesForPhone(ctx context.Context, arg RevokePendingOrganizationInvitesForPhoneParams) error {
-	_, err := q.db.Exec(ctx, revokePendingOrganizationInvitesForPhone, arg.OrgID, arg.Phone)
-	return err
+// Returns the ids it revoked, so the rotation can audit each one.
+func (q *Queries) RevokePendingOrganizationInvitesForPhone(ctx context.Context, arg RevokePendingOrganizationInvitesForPhoneParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, revokePendingOrganizationInvitesForPhone, arg.OrgID, arg.Phone)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

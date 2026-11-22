@@ -81,7 +81,7 @@ func (f *fakeUsers) FindOrCreateByEmail(_ context.Context, email string) (domain
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.user.Email == "" {
-		f.user = domain.User{ID: "u1", Email: email}
+		f.user = domain.User{ID: "u1", Email: email, Status: domain.UserActive}
 	}
 	return f.user, nil
 }
@@ -90,7 +90,7 @@ func (f *fakeUsers) FindOrCreateByMobile(_ context.Context, mobile string) (doma
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.user.Mobile == "" {
-		f.user = domain.User{ID: "u1", Mobile: mobile}
+		f.user = domain.User{ID: "u1", Mobile: mobile, Status: domain.UserActive}
 	}
 	return f.user, nil
 }
@@ -132,9 +132,15 @@ func (f *fakeUsers) SetUsername(_ context.Context, userID, username string) erro
 	return nil
 }
 
+// FindByID returns the seeded user. A fake with no seeded user treats every id
+// as an active account, so token tests need not seed one; tests of account
+// state seed the user explicitly.
 func (f *fakeUsers) FindByID(_ context.Context, userID string) (domain.User, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
+	if f.user.ID == "" {
+		return domain.User{ID: userID, Status: domain.UserActive}, nil
+	}
 	if f.user.ID != userID {
 		return domain.User{}, domain.ErrUserNotFound
 	}

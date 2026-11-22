@@ -38,10 +38,10 @@ func ownerFixture(t *testing.T) (*Store, domain.Organization, map[string]string)
 	if err := store.CreateOrg(ctx, org, ids["owner"]); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, ids["admin"], domain.MembershipActive, domain.RoleAdmin); err != nil {
+	if err := store.AddMember(ctx, org.ID, ids["admin"], domain.MembershipActive, domain.RoleAdmin, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, ids["member"], domain.MembershipActive, domain.RoleMember); err != nil {
+	if err := store.AddMember(ctx, org.ID, ids["member"], domain.MembershipActive, domain.RoleMember, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	return store, org, ids
@@ -282,7 +282,7 @@ func TestAcceptingAnInviteKeepsTheStoredRoleInTheEvent(t *testing.T) {
 	ctx := context.Background()
 
 	invite := pendingInvite(org.ID, inviter.ID, "owner@example.com", "owner-own-invite")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, inviter.ID, domain.RoleMember, time.Now().UTC()); err != nil {

@@ -20,6 +20,9 @@ func (s *Service) CreateOrg(ctx context.Context, creatorID, name, slug string) (
 	if creatorID == "" {
 		return domain.Organization{}, fmt.Errorf("creator_id required")
 	}
+	if err := s.requireActiveUser(ctx, creatorID); err != nil {
+		return domain.Organization{}, err
+	}
 	if name == "" {
 		return domain.Organization{}, domain.ErrInvalidOrgName
 	}
@@ -149,7 +152,7 @@ func (s *Service) AddMember(ctx context.Context, orgID, callerID, userID string)
 	if _, err := s.orgs.GetOrg(ctx, orgID); err != nil {
 		return err
 	}
-	return s.orgs.AddMember(ctx, orgID, userID, domain.MembershipActive, domain.RoleMember)
+	return s.orgs.AddMember(ctx, orgID, userID, domain.MembershipActive, domain.RoleMember, domain.UserAuditActor(callerID))
 }
 
 // SuspendMember suspends one active membership. Suspending an already
@@ -176,6 +179,32 @@ func (s *Service) SuspendMember(ctx context.Context, orgID, callerID, userID str
 	}
 	return s.orgs.UpdateMemberStatus(ctx, orgID, userID, domain.MembershipSuspended,
 		domain.MembershipActor{CallerID: callerID, Action: domain.ActionSuspendMember})
+}
+
+// ReactivateMember lifts the suspension of one membership. It follows the
+// suspension rules: an owner may reactivate anyone and an admin only plain
+// members. A membership that is not suspended, including an invitation, is left
+// unchanged and returns nil.
+func (s *Service) ReactivateMember(ctx context.Context, orgID, callerID, userID string) error {
+	orgID, callerID, userID = strings.TrimSpace(orgID), strings.TrimSpace(callerID), strings.TrimSpace(userID)
+	if orgID == "" || callerID == "" || userID == "" {
+		return fmt.Errorf("org_id, caller_id and user_id required")
+	}
+	if err := s.authorizeMembership(ctx, orgID, callerID, domain.ActionReactivateMember, userID, ""); err != nil {
+		return err
+	}
+	if err := s.requireUser(ctx, userID); err != nil {
+		return err
+	}
+	membership, err := s.orgs.GetMembership(ctx, orgID, userID)
+	if err != nil {
+		return err
+	}
+	if membership.Status != domain.MembershipSuspended {
+		return nil
+	}
+	return s.orgs.UpdateMemberStatus(ctx, orgID, userID, domain.MembershipActive,
+		domain.MembershipActor{CallerID: callerID, Action: domain.ActionReactivateMember})
 }
 
 // RemoveMember deletes one membership. Removing the last active membership or
@@ -224,6 +253,11 @@ func (s *Service) SetMemberRole(ctx context.Context, orgID, callerID, userID str
 // set and is a member, the target's, then applies the pure policy in the domain
 // package. A caller who is not a member gets domain.ErrNotMember.
 func (s *Service) authorizeMembership(ctx context.Context, orgID, callerID string, action domain.MembershipAction, targetUserID string, newRole domain.MembershipRole) error {
+	// An unknown caller falls through to the membership check, which refuses
+	// a non-member; only a known account that is not active is refused here.
+	if err := s.requireActiveUser(ctx, callerID); err != nil && !errors.Is(err, domain.ErrUserNotFound) {
+		return err
+	}
 	caller, err := s.orgs.GetMembership(ctx, orgID, callerID)
 	if err != nil {
 		return err

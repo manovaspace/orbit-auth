@@ -92,7 +92,7 @@ func (s *Store) ProvisionedOrganization(ctx context.Context, idempotencyKey stri
 // the key created, so a repeat never leaves a second organization behind. Attempts
 // with one key are serialised by an advisory lock, so a concurrent repeat waits
 // for the first attempt and then returns its organization.
-func (s *Store) ProvisionOrganization(ctx context.Context, org domain.Organization, owner domain.Invite, idempotencyKey string) (domain.OrganizationProvision, bool, error) {
+func (s *Store) ProvisionOrganization(ctx context.Context, org domain.Organization, owner domain.Invite, idempotencyKey string, by domain.StaffActor) (domain.OrganizationProvision, bool, error) {
 	orgID, err := uuid.Parse(org.ID)
 	if err != nil {
 		return domain.OrganizationProvision{}, false, fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
@@ -124,7 +124,8 @@ func (s *Store) ProvisionOrganization(ctx context.Context, org domain.Organizati
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
 	}
-	if err := insertOrganizationTx(ctx, queries, newOutboxSink(tx), org, occurredAt); err != nil {
+	actor := domain.StaffAuditActor(by)
+	if err := insertOrganizationTx(ctx, queries, newOutboxSink(tx), org, occurredAt, actor); err != nil {
 		return domain.OrganizationProvision{}, false, err
 	}
 	if idempotencyKey != "" {
@@ -143,7 +144,7 @@ func (s *Store) ProvisionOrganization(ctx context.Context, org domain.Organizati
 			return s.repeatedProvision(ctx, tx, idempotencyKey)
 		}
 	}
-	if err := insertOwnerInviteTx(ctx, queries, owner); err != nil {
+	if err := insertOwnerInviteTx(ctx, queries, owner, actor); err != nil {
 		return domain.OrganizationProvision{}, false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -204,6 +205,11 @@ func (s *Store) SuspendOrganization(ctx context.Context, orgID string, by domain
 	}); err != nil {
 		return fmt.Errorf("postgres: suspend organization: %w", err)
 	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action: domain.AuditOrgSuspended, Actor: domain.StaffAuditActor(by), OrgID: orgID, OccurredAt: now,
+	}); err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewOrgSuspendedEvent(orgID, by, now)); err != nil {
 		return err
 	}
@@ -246,6 +252,11 @@ func (s *Store) ReactivateOrganization(ctx context.Context, orgID string, by dom
 	}); err != nil {
 		return fmt.Errorf("postgres: reactivate organization: %w", err)
 	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action: domain.AuditOrgReactivated, Actor: domain.StaffAuditActor(by), OrgID: orgID, OccurredAt: now,
+	}); err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewOrgReactivatedEvent(orgID, by, now)); err != nil {
 		return err
 	}
@@ -258,7 +269,7 @@ func (s *Store) ReactivateOrganization(ctx context.Context, orgID string, by dom
 // insertOwnerInviteTx writes one pending owner-tier invitation in the caller's
 // transaction. The organization has no other invitation for the recipient yet,
 // so nothing is revoked here; rotation goes through CreateInvite.
-func insertOwnerInviteTx(ctx context.Context, queries *sqlcgen.Queries, invite domain.Invite) error {
+func insertOwnerInviteTx(ctx context.Context, queries *sqlcgen.Queries, invite domain.Invite, by domain.AuditActor) error {
 	id, err := uuid.Parse(invite.ID)
 	if err != nil {
 		return fmt.Errorf("postgres: invite id %q: %w", invite.ID, err)
@@ -286,5 +297,12 @@ func insertOwnerInviteTx(ctx context.Context, queries *sqlcgen.Queries, invite d
 	}); err != nil {
 		return fmt.Errorf("postgres: create owner invite: %w", err)
 	}
-	return nil
+	return writeAudit(ctx, queries, domain.AuditEntry{
+		Action:     domain.AuditInviteCreated,
+		Actor:      by,
+		OrgID:      invite.OrgID,
+		InviteID:   invite.ID,
+		Details:    map[string]any{"role": string(invite.Role), "channel": inviteChannel(invite)},
+		OccurredAt: invite.CreatedAt,
+	})
 }

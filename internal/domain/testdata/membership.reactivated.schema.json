@@ -1,0 +1,9 @@
+{
+	"fields": {
+		"occurred_at": "string",
+		"org_id": "string",
+		"role": "string",
+		"status": "string",
+		"user_id": "string"
+	}
+}

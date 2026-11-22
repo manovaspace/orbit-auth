@@ -115,7 +115,8 @@ func (s *Store) FindOrCreateByEmail(ctx context.Context, email string) (domain.U
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := s.queries.WithTx(tx).CreateUserWithEmail(ctx, sqlcgen.CreateUserWithEmailParams{
+	queries := s.queries.WithTx(tx)
+	if err := queries.CreateUserWithEmail(ctx, sqlcgen.CreateUserWithEmailParams{
 		ID:     parsed,
 		Email:  email,
 		Status: user.Status,
@@ -123,6 +124,9 @@ func (s *Store) FindOrCreateByEmail(ctx context.Context, email string) (domain.U
 		return domain.User{}, err
 	}
 	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(user.ID, occurredAt)); err != nil {
+		return domain.User{}, err
+	}
+	if err := userCreatedAudit(ctx, queries, user.ID, domain.UserAuditActor(user.ID), occurredAt); err != nil {
 		return domain.User{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -305,7 +309,8 @@ func (s *Store) FindOrCreateByMobile(ctx context.Context, mobile string) (domain
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := s.queries.WithTx(tx).CreateUserWithMobile(ctx, sqlcgen.CreateUserWithMobileParams{
+	queries := s.queries.WithTx(tx)
+	if err := queries.CreateUserWithMobile(ctx, sqlcgen.CreateUserWithMobileParams{
 		ID:     parsed,
 		Mobile: mobile,
 	}); err != nil {
@@ -313,6 +318,9 @@ func (s *Store) FindOrCreateByMobile(ctx context.Context, mobile string) (domain
 	}
 	user = domain.User{ID: id, Mobile: mobile}
 	if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(user.ID, occurredAt)); err != nil {
+		return domain.User{}, err
+	}
+	if err := userCreatedAudit(ctx, queries, user.ID, domain.UserAuditActor(user.ID), occurredAt); err != nil {
 		return domain.User{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -397,7 +405,11 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, username, pas
 		}
 	}
 	if created {
-		if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(id.String(), time.Now().UTC())); err != nil {
+		occurredAt := time.Now().UTC()
+		if err := emitEvents(ctx, newOutboxSink(tx), domain.NewUserCreatedEvent(id.String(), occurredAt)); err != nil {
+			return err
+		}
+		if err := userCreatedAudit(ctx, queries, id.String(), domain.SystemAuditActor(), occurredAt); err != nil {
 			return err
 		}
 	}
@@ -408,7 +420,11 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, username, pas
 }
 
 // Store writes one refresh token by hash, remembering the selected
-// organization when orgID is not empty.
+// organization when orgID is not empty. It takes a share lock on the account in
+// the same transaction, so the token is written only while the account is
+// active. A disable that commits first makes the write return
+// domain.ErrAccountNotActive; a disable that waits for this transaction revokes
+// the token it stored.
 func (s *Store) Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error {
 	user, err := uuid.Parse(userID)
 	if err != nil {
@@ -422,14 +438,37 @@ func (s *Store) Store(ctx context.Context, userID, orgID, tokenHash string, expi
 		}
 		org = pgtype.UUID{Bytes: parsed, Valid: true}
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin store refresh token: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	status, err := queries.LockUserForShare(ctx, user)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrAccountNotActive
+	}
+	if err != nil {
+		return fmt.Errorf("postgres: lock account for refresh token: %w", err)
+	}
+	if status != domain.UserActive {
+		return domain.ErrAccountNotActive
+	}
 	id := uuid.New()
-	return s.queries.StoreRefreshToken(ctx, sqlcgen.StoreRefreshTokenParams{
+	if err := queries.StoreRefreshToken(ctx, sqlcgen.StoreRefreshTokenParams{
 		ID:        id,
 		UserID:    user,
 		OrgID:     org,
 		TokenHash: tokenHash,
 		ExpiresAt: timestamptz(expiresAt),
-	})
+	}); err != nil {
+		return fmt.Errorf("postgres: store refresh token: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit store refresh token: %w", err)
+	}
+	return nil
 }
 
 // FindValid returns the user ID and remembered organization of a live refresh

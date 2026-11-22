@@ -168,7 +168,7 @@ func (f *fakeOrgStore) ListMembers(_ context.Context, orgID string) ([]domain.Me
 	return out, nil
 }
 
-func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status domain.MembershipStatus, role domain.MembershipRole) error {
+func (f *fakeOrgStore) AddMember(_ context.Context, orgID, userID string, status domain.MembershipStatus, role domain.MembershipRole, _ domain.AuditActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.orgs[orgID]; !ok {
@@ -305,7 +305,7 @@ func (f fakeOrgUsers) FindByID(_ context.Context, userID string) (domain.User, e
 	if f.missing[userID] {
 		return domain.User{}, domain.ErrUserNotFound
 	}
-	return domain.User{ID: userID}, nil
+	return domain.User{ID: userID, Status: domain.UserActive}, nil
 }
 
 func newOrgService(t *testing.T, orgs domain.OrgStore) *Service {
@@ -929,7 +929,7 @@ func (f *fakeOrgStore) ProvisionedOrganization(_ context.Context, key string) (d
 // ProvisionOrganization writes the organization with no members, its slug, the
 // owner invitation and the key with its owner target. A repeated key returns the
 // provision it recorded.
-func (f *fakeOrgStore) ProvisionOrganization(ctx context.Context, org domain.Organization, owner domain.Invite, key string) (domain.OrganizationProvision, bool, error) {
+func (f *fakeOrgStore) ProvisionOrganization(ctx context.Context, org domain.Organization, owner domain.Invite, key string, _ domain.StaffActor) (domain.OrganizationProvision, bool, error) {
 	target := domain.InviteTarget{Email: owner.Email, Phone: owner.Phone}
 	f.mu.Lock()
 	if key != "" {
@@ -962,7 +962,7 @@ func (f *fakeOrgStore) ProvisionOrganization(ctx context.Context, org domain.Org
 	invites := f.invites
 	f.mu.Unlock()
 	if invites != nil {
-		if err := invites.CreateInvite(ctx, owner); err != nil {
+		if err := invites.CreateInvite(ctx, owner, domain.SystemAuditActor()); err != nil {
 			return domain.OrganizationProvision{}, false, err
 		}
 	}

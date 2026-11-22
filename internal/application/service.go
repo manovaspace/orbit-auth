@@ -14,21 +14,23 @@ import (
 // dependency is injected; the application layer reads no environment variable
 // and imports no infrastructure package.
 type Deps struct {
-	OTP      domain.OTPStore
-	Users    domain.UserStore
-	Refresh  domain.RefreshTokenStore
-	Tokens   domain.APITokenStore
-	Orgs     domain.OrgStore
-	Invites  domain.InviteStore
-	Signup   domain.SignupStore
-	Notifier domain.Notifier
-	Flags    domain.Flags
-	Clock    domain.Clock
-	IDs      domain.IDGenerator
-	Signer   domain.TokenSigner
-	Hasher   domain.Hasher
-	Codes    domain.CodeGenerator
-	Secrets  domain.SecretGenerator
+	OTP     domain.OTPStore
+	Users   domain.UserStore
+	Refresh domain.RefreshTokenStore
+	Tokens  domain.APITokenStore
+	Orgs    domain.OrgStore
+	Invites domain.InviteStore
+	// StaffUsers is the staff view of accounts and the audit trail.
+	StaffUsers domain.StaffUserStore
+	Signup     domain.SignupStore
+	Notifier   domain.Notifier
+	Flags      domain.Flags
+	Clock      domain.Clock
+	IDs        domain.IDGenerator
+	Signer     domain.TokenSigner
+	Hasher     domain.Hasher
+	Codes      domain.CodeGenerator
+	Secrets    domain.SecretGenerator
 
 	// SignupOpen is AUTH_SIGNUP=open. The default is false, so deployments
 	// that do not opt in keep self-serve registration disabled.
@@ -91,6 +93,9 @@ type Service struct {
 	defaultCallingCode  string
 	google              *GoogleSignIn
 	logger              func(msg string, args ...any)
+	// dummyHash is compared for password logins with no usable hash.
+	dummyHash  string
+	staffUsers domain.StaffUserStore
 }
 
 // NewService builds the service from its ports.
@@ -123,6 +128,8 @@ func NewService(deps Deps) *Service {
 		autoSelectSingleOrg: deps.AutoSelectSingleOrg,
 		defaultCallingCode:  deps.DefaultCallingCode,
 		google:              deps.Google,
+		dummyHash:           dummyPasswordHash(deps.Hasher),
+		staffUsers:          deps.StaffUsers,
 		logger:              logger,
 	}
 }
@@ -243,9 +250,10 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	if err != nil {
 		return "", "", time.Time{}, err
 	}
-	// A self-serve account stays unusable until VerifySignup activates it.
-	// OTP login must not be a shortcut around that verification.
-	if user.Status == domain.UserSignupPending {
+	// A self-serve account stays unusable until VerifySignup activates it, and
+	// a disabled account stays unusable until staff enable it. OTP login must
+	// not be a shortcut around either.
+	if user.Status != domain.UserActive {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if channel == domain.ChannelSMS {
@@ -255,7 +263,8 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 			return "", "", time.Time{}, err
 		}
 	}
-	return s.issueTokens(ctx, user.ID)
+	access, refresh, expires, err = s.issueTokens(ctx, user.ID)
+	return access, refresh, expires, generic(err, ErrInvalidOTPCode)
 }
 
 // Refresh rotates a valid refresh token. The new pair keeps the remembered
@@ -275,7 +284,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (access, ref
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	return s.issueTokensForOrg(ctx, userID, s.activeOrg(ctx, userID, orgID))
+	if s.requireActiveUser(ctx, userID) != nil {
+		return "", "", time.Time{}, ErrInvalidRefresh
+	}
+	access, refresh, expires, err = s.issueTokensForOrg(ctx, userID, s.activeOrg(ctx, userID, orgID))
+	return access, refresh, expires, generic(err, ErrInvalidRefresh)
 }
 
 // SelectOrg rotates the presented refresh token and issues a new pair carrying
@@ -286,6 +299,9 @@ func (s *Service) SelectOrg(ctx context.Context, userID, refreshToken, orgID str
 	userID = strings.TrimSpace(userID)
 	orgID = strings.TrimSpace(orgID)
 	if userID == "" || orgID == "" {
+		return "", "", time.Time{}, ErrInvalidRefresh
+	}
+	if s.requireActiveUser(ctx, userID) != nil {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
 	if s.orgs == nil {
@@ -315,7 +331,8 @@ func (s *Service) SelectOrg(ctx context.Context, userID, refreshToken, orgID str
 	if _, _, err := s.refresh.Consume(ctx, hash); err != nil {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	return s.issueTokensForOrg(ctx, userID, orgID)
+	access, refresh, expires, err = s.issueTokensForOrg(ctx, userID, orgID)
+	return access, refresh, expires, generic(err, ErrInvalidRefresh)
 }
 
 // RevokeRefresh revokes the presented refresh token so it can no longer be

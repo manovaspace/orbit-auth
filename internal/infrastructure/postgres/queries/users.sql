@@ -135,7 +135,7 @@ ON CONFLICT (email) DO UPDATE SET
     username = COALESCE(EXCLUDED.username, users.username),
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
-    status = 'active',
+    status = CASE WHEN users.status = 'disabled' THEN users.status ELSE 'active' END,
     email_verified_at = CASE
         WHEN EXCLUDED.email IS NOT NULL THEN COALESCE(users.email_verified_at, NOW())
         ELSE users.email_verified_at
@@ -165,7 +165,7 @@ ON CONFLICT (mobile) DO UPDATE SET
     username = COALESCE(EXCLUDED.username, users.username),
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
-    status = 'active',
+    status = CASE WHEN users.status = 'disabled' THEN users.status ELSE 'active' END,
     email_verified_at = CASE
         WHEN EXCLUDED.email IS NOT NULL THEN COALESCE(users.email_verified_at, NOW())
         ELSE users.email_verified_at

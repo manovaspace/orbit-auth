@@ -43,6 +43,145 @@ service StaffOrgService {
   rpc ReinviteOwner(ReinviteOwnerRequest) returns (ReinviteOwnerResponse);
 }
 
+// StaffUserService is the Manova staff surface over accounts and the audit
+// trail. It follows the same edge rules as StaffOrgService: the gateway is the
+// only caller, every call carries x-orbit-service-token and x-staff-subject, and
+// every write RPC also carries x-staff-reason. Staff are never members of an
+// organization, so no membership policy applies. Staff never see a password
+// hash, a token or an email address in an audit row.
+service StaffUserService {
+  // ListUsers pages through accounts, oldest first. The query matches the
+  // email, mobile number, username or display name, case-insensitively.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  // GetUser returns one account with its organization memberships.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  // DisableUser makes an active account disabled. Every refresh token of the
+  // account is revoked at once. A still-valid access token keeps working at
+  // most 15 minutes, because access tokens are not checked against the account.
+  // A disabled account is unchanged and reports changed=false. A pending account
+  // is FAILED_PRECONDITION.
+  rpc DisableUser(DisableUserRequest) returns (DisableUserResponse);
+  // EnableUser makes a disabled account active again. The user signs in again;
+  // refresh tokens revoked by the disable are not restored. An active account
+  // reports changed=false. A pending account is FAILED_PRECONDITION.
+  rpc EnableUser(EnableUserRequest) returns (EnableUserResponse);
+  // ListAuditEvents pages through audit rows, newest first. The request must
+  // name an organization, a user or both.
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
+}
+
+// StaffUser is an account as staff see it. It carries no password hash, token or
+// hash of either.
+message StaffUser {
+  string id = 1;
+  string email = 2;
+  string mobile = 3;
+  string username = 4;
+  string display_name = 5;
+  // active, disabled or signup_pending.
+  string status = 6;
+  bool email_verified = 7;
+  bool mobile_verified = 8;
+  bool has_password = 9;
+  bool google_linked = 10;
+  string created_at = 11;
+  string last_login_at = 12;
+  string disabled_at = 13;
+  string disabled_reason = 14;
+  int64 membership_count = 15;
+}
+
+// StaffUserMembership is one organization membership of an account.
+message StaffUserMembership {
+  string org_id = 1;
+  string org_name = 2;
+  string org_slug = 3;
+  // active or suspended.
+  string org_status = 4;
+  // owner, admin or member.
+  string role = 5;
+  // active, invited or suspended.
+  string status = 6;
+  string joined_at = 7;
+}
+
+// AuditEvent is one durable audit row. details is a JSON object. It never holds
+// an email address, a mobile number, a password, a token or a hash.
+message AuditEvent {
+  int64 id = 1;
+  string occurred_at = 2;
+  string action = 3;
+  // user, staff or system.
+  string actor_kind = 4;
+  // The user id for a user actor, the staff subject for a staff actor; empty for
+  // a system actor.
+  string actor_id = 5;
+  string org_id = 6;
+  string subject_user_id = 7;
+  string invite_id = 8;
+  string reason = 9;
+  string details = 10;
+}
+
+message ListUsersRequest {
+  string query = 1;
+  // "", active, disabled or signup_pending.
+  string status = 2;
+  // At most 100. Zero means the default page size.
+  int32 page_size = 3;
+  // The next_page_token of the previous page. Empty starts at the beginning.
+  string page_token = 4;
+}
+
+message ListUsersResponse {
+  repeated StaffUser users = 1;
+  // Empty when there is no further page.
+  string next_page_token = 2;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  StaffUser user = 1;
+  repeated StaffUserMembership memberships = 2;
+}
+
+message DisableUserRequest {
+  string user_id = 1;
+}
+
+message DisableUserResponse {
+  // false when the account was already disabled.
+  bool changed = 1;
+}
+
+message EnableUserRequest {
+  string user_id = 1;
+}
+
+message EnableUserResponse {
+  // false when the account was already active.
+  bool changed = 1;
+}
+
+message ListAuditEventsRequest {
+  // At least one of org_id and user_id is required.
+  string org_id = 1;
+  string user_id = 2;
+  // At most 100. Zero means the default page size.
+  int32 page_size = 3;
+  // The next_page_token of the previous page. Empty starts at the beginning.
+  string page_token = 4;
+}
+
+message ListAuditEventsResponse {
+  repeated AuditEvent events = 1;
+  // Empty when there is no further page.
+  string next_page_token = 2;
+}
+
 // StaffOrganization is an organization as staff see it.
 message StaffOrganization {
   string id = 1;

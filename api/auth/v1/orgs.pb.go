@@ -1335,6 +1335,94 @@ func (*SuspendMemberResponse) Descriptor() ([]byte, []int) {
 	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{22}
 }
 
+type ReactivateMemberRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReactivateMemberRequest) Reset() {
+	*x = ReactivateMemberRequest{}
+	mi := &file_auth_v1_orgs_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReactivateMemberRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReactivateMemberRequest) ProtoMessage() {}
+
+func (x *ReactivateMemberRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_orgs_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReactivateMemberRequest.ProtoReflect.Descriptor instead.
+func (*ReactivateMemberRequest) Descriptor() ([]byte, []int) {
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ReactivateMemberRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ReactivateMemberRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type ReactivateMemberResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReactivateMemberResponse) Reset() {
+	*x = ReactivateMemberResponse{}
+	mi := &file_auth_v1_orgs_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReactivateMemberResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReactivateMemberResponse) ProtoMessage() {}
+
+func (x *ReactivateMemberResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_v1_orgs_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReactivateMemberResponse.ProtoReflect.Descriptor instead.
+func (*ReactivateMemberResponse) Descriptor() ([]byte, []int) {
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{24}
+}
+
 type SetMemberRoleRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	OrgId  string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
@@ -1347,7 +1435,7 @@ type SetMemberRoleRequest struct {
 
 func (x *SetMemberRoleRequest) Reset() {
 	*x = SetMemberRoleRequest{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[23]
+	mi := &file_auth_v1_orgs_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1359,7 +1447,7 @@ func (x *SetMemberRoleRequest) String() string {
 func (*SetMemberRoleRequest) ProtoMessage() {}
 
 func (x *SetMemberRoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[23]
+	mi := &file_auth_v1_orgs_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1372,7 +1460,7 @@ func (x *SetMemberRoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMemberRoleRequest.ProtoReflect.Descriptor instead.
 func (*SetMemberRoleRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{23}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SetMemberRoleRequest) GetOrgId() string {
@@ -1405,7 +1493,7 @@ type SetMemberRoleResponse struct {
 
 func (x *SetMemberRoleResponse) Reset() {
 	*x = SetMemberRoleResponse{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[24]
+	mi := &file_auth_v1_orgs_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1417,7 +1505,7 @@ func (x *SetMemberRoleResponse) String() string {
 func (*SetMemberRoleResponse) ProtoMessage() {}
 
 func (x *SetMemberRoleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[24]
+	mi := &file_auth_v1_orgs_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1430,7 +1518,7 @@ func (x *SetMemberRoleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMemberRoleResponse.ProtoReflect.Descriptor instead.
 func (*SetMemberRoleResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{24}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SetMemberRoleResponse) GetMembership() *Membership {
@@ -1462,7 +1550,7 @@ type InviteMemberRequest struct {
 
 func (x *InviteMemberRequest) Reset() {
 	*x = InviteMemberRequest{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[25]
+	mi := &file_auth_v1_orgs_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1474,7 +1562,7 @@ func (x *InviteMemberRequest) String() string {
 func (*InviteMemberRequest) ProtoMessage() {}
 
 func (x *InviteMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[25]
+	mi := &file_auth_v1_orgs_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1487,7 +1575,7 @@ func (x *InviteMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteMemberRequest.ProtoReflect.Descriptor instead.
 func (*InviteMemberRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{25}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *InviteMemberRequest) GetOrgId() string {
@@ -1538,7 +1626,7 @@ type InviteMemberResponse struct {
 
 func (x *InviteMemberResponse) Reset() {
 	*x = InviteMemberResponse{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[26]
+	mi := &file_auth_v1_orgs_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1550,7 +1638,7 @@ func (x *InviteMemberResponse) String() string {
 func (*InviteMemberResponse) ProtoMessage() {}
 
 func (x *InviteMemberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[26]
+	mi := &file_auth_v1_orgs_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1563,7 +1651,7 @@ func (x *InviteMemberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteMemberResponse.ProtoReflect.Descriptor instead.
 func (*InviteMemberResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{26}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *InviteMemberResponse) GetInvite() *Invite {
@@ -1589,7 +1677,7 @@ type AcceptInviteRequest struct {
 
 func (x *AcceptInviteRequest) Reset() {
 	*x = AcceptInviteRequest{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[27]
+	mi := &file_auth_v1_orgs_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1601,7 +1689,7 @@ func (x *AcceptInviteRequest) String() string {
 func (*AcceptInviteRequest) ProtoMessage() {}
 
 func (x *AcceptInviteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[27]
+	mi := &file_auth_v1_orgs_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1614,7 +1702,7 @@ func (x *AcceptInviteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptInviteRequest.ProtoReflect.Descriptor instead.
 func (*AcceptInviteRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{27}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *AcceptInviteRequest) GetToken() string {
@@ -1633,7 +1721,7 @@ type AcceptInviteResponse struct {
 
 func (x *AcceptInviteResponse) Reset() {
 	*x = AcceptInviteResponse{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[28]
+	mi := &file_auth_v1_orgs_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1645,7 +1733,7 @@ func (x *AcceptInviteResponse) String() string {
 func (*AcceptInviteResponse) ProtoMessage() {}
 
 func (x *AcceptInviteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[28]
+	mi := &file_auth_v1_orgs_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1658,7 +1746,7 @@ func (x *AcceptInviteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptInviteResponse.ProtoReflect.Descriptor instead.
 func (*AcceptInviteResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{28}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *AcceptInviteResponse) GetInvite() *Invite {
@@ -1678,7 +1766,7 @@ type RevokeInviteRequest struct {
 
 func (x *RevokeInviteRequest) Reset() {
 	*x = RevokeInviteRequest{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[29]
+	mi := &file_auth_v1_orgs_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1690,7 +1778,7 @@ func (x *RevokeInviteRequest) String() string {
 func (*RevokeInviteRequest) ProtoMessage() {}
 
 func (x *RevokeInviteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[29]
+	mi := &file_auth_v1_orgs_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1703,7 +1791,7 @@ func (x *RevokeInviteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeInviteRequest.ProtoReflect.Descriptor instead.
 func (*RevokeInviteRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{29}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *RevokeInviteRequest) GetOrgId() string {
@@ -1728,7 +1816,7 @@ type RevokeInviteResponse struct {
 
 func (x *RevokeInviteResponse) Reset() {
 	*x = RevokeInviteResponse{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[30]
+	mi := &file_auth_v1_orgs_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1740,7 +1828,7 @@ func (x *RevokeInviteResponse) String() string {
 func (*RevokeInviteResponse) ProtoMessage() {}
 
 func (x *RevokeInviteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[30]
+	mi := &file_auth_v1_orgs_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1753,7 +1841,7 @@ func (x *RevokeInviteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeInviteResponse.ProtoReflect.Descriptor instead.
 func (*RevokeInviteResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{30}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{32}
 }
 
 type ListInvitesRequest struct {
@@ -1765,7 +1853,7 @@ type ListInvitesRequest struct {
 
 func (x *ListInvitesRequest) Reset() {
 	*x = ListInvitesRequest{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[31]
+	mi := &file_auth_v1_orgs_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1777,7 +1865,7 @@ func (x *ListInvitesRequest) String() string {
 func (*ListInvitesRequest) ProtoMessage() {}
 
 func (x *ListInvitesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[31]
+	mi := &file_auth_v1_orgs_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1790,7 +1878,7 @@ func (x *ListInvitesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInvitesRequest.ProtoReflect.Descriptor instead.
 func (*ListInvitesRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{31}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListInvitesRequest) GetOrgId() string {
@@ -1809,7 +1897,7 @@ type ListInvitesResponse struct {
 
 func (x *ListInvitesResponse) Reset() {
 	*x = ListInvitesResponse{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[32]
+	mi := &file_auth_v1_orgs_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1821,7 +1909,7 @@ func (x *ListInvitesResponse) String() string {
 func (*ListInvitesResponse) ProtoMessage() {}
 
 func (x *ListInvitesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[32]
+	mi := &file_auth_v1_orgs_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1834,7 +1922,7 @@ func (x *ListInvitesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInvitesResponse.ProtoReflect.Descriptor instead.
 func (*ListInvitesResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{32}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListInvitesResponse) GetInvites() []*Invite {
@@ -1856,7 +1944,7 @@ type SelectOrgRequest struct {
 
 func (x *SelectOrgRequest) Reset() {
 	*x = SelectOrgRequest{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[33]
+	mi := &file_auth_v1_orgs_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1868,7 +1956,7 @@ func (x *SelectOrgRequest) String() string {
 func (*SelectOrgRequest) ProtoMessage() {}
 
 func (x *SelectOrgRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[33]
+	mi := &file_auth_v1_orgs_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1881,7 +1969,7 @@ func (x *SelectOrgRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelectOrgRequest.ProtoReflect.Descriptor instead.
 func (*SelectOrgRequest) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{33}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SelectOrgRequest) GetOrgId() string {
@@ -1907,7 +1995,7 @@ type SelectOrgResponse struct {
 
 func (x *SelectOrgResponse) Reset() {
 	*x = SelectOrgResponse{}
-	mi := &file_auth_v1_orgs_proto_msgTypes[34]
+	mi := &file_auth_v1_orgs_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1919,7 +2007,7 @@ func (x *SelectOrgResponse) String() string {
 func (*SelectOrgResponse) ProtoMessage() {}
 
 func (x *SelectOrgResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_v1_orgs_proto_msgTypes[34]
+	mi := &file_auth_v1_orgs_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1932,7 +2020,7 @@ func (x *SelectOrgResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelectOrgResponse.ProtoReflect.Descriptor instead.
 func (*SelectOrgResponse) Descriptor() ([]byte, []int) {
-	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{34}
+	return file_auth_v1_orgs_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SelectOrgResponse) GetTokens() *TokenResponse {
@@ -2040,7 +2128,11 @@ const file_auth_v1_orgs_proto_rawDesc = "" +
 	"\x14SuspendMemberRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\"\x17\n" +
-	"\x15SuspendMemberResponse\"Z\n" +
+	"\x15SuspendMemberResponse\"I\n" +
+	"\x17ReactivateMemberRequest\x12\x15\n" +
+	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"\x1a\n" +
+	"\x18ReactivateMemberResponse\"Z\n" +
 	"\x14SetMemberRoleRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x12\n" +
@@ -2075,7 +2167,7 @@ const file_auth_v1_orgs_proto_rawDesc = "" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\"C\n" +
 	"\x11SelectOrgResponse\x12.\n" +
-	"\x06tokens\x18\x01 \x01(\v2\x16.auth.v1.TokenResponseR\x06tokens2\xce\a\n" +
+	"\x06tokens\x18\x01 \x01(\v2\x16.auth.v1.TokenResponseR\x06tokens2\xa7\b\n" +
 	"\n" +
 	"OrgService\x12B\n" +
 	"\tCreateOrg\x12\x19.auth.v1.CreateOrgRequest\x1a\x1a.auth.v1.CreateOrgResponse\x12E\n" +
@@ -2084,7 +2176,8 @@ const file_auth_v1_orgs_proto_rawDesc = "" +
 	"\vListMembers\x12\x1b.auth.v1.ListMembersRequest\x1a\x1c.auth.v1.ListMembersResponse\x12B\n" +
 	"\tAddMember\x12\x19.auth.v1.AddMemberRequest\x1a\x1a.auth.v1.AddMemberResponse\x12K\n" +
 	"\fRemoveMember\x12\x1c.auth.v1.RemoveMemberRequest\x1a\x1d.auth.v1.RemoveMemberResponse\x12N\n" +
-	"\rSuspendMember\x12\x1d.auth.v1.SuspendMemberRequest\x1a\x1e.auth.v1.SuspendMemberResponse\x12E\n" +
+	"\rSuspendMember\x12\x1d.auth.v1.SuspendMemberRequest\x1a\x1e.auth.v1.SuspendMemberResponse\x12W\n" +
+	"\x10ReactivateMember\x12 .auth.v1.ReactivateMemberRequest\x1a!.auth.v1.ReactivateMemberResponse\x12E\n" +
 	"\n" +
 	"SetOrgSlug\x12\x1a.auth.v1.SetOrgSlugRequest\x1a\x1b.auth.v1.SetOrgSlugResponse\x12N\n" +
 	"\rSetMemberRole\x12\x1d.auth.v1.SetMemberRoleRequest\x1a\x1e.auth.v1.SetMemberRoleResponse\x12K\n" +
@@ -2111,7 +2204,7 @@ func file_auth_v1_orgs_proto_rawDescGZIP() []byte {
 	return file_auth_v1_orgs_proto_rawDescData
 }
 
-var file_auth_v1_orgs_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_auth_v1_orgs_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_auth_v1_orgs_proto_goTypes = []any{
 	(*Organization)(nil),                   // 0: auth.v1.Organization
 	(*GetInvitePreviewRequest)(nil),        // 1: auth.v1.GetInvitePreviewRequest
@@ -2136,19 +2229,21 @@ var file_auth_v1_orgs_proto_goTypes = []any{
 	(*RemoveMemberResponse)(nil),           // 20: auth.v1.RemoveMemberResponse
 	(*SuspendMemberRequest)(nil),           // 21: auth.v1.SuspendMemberRequest
 	(*SuspendMemberResponse)(nil),          // 22: auth.v1.SuspendMemberResponse
-	(*SetMemberRoleRequest)(nil),           // 23: auth.v1.SetMemberRoleRequest
-	(*SetMemberRoleResponse)(nil),          // 24: auth.v1.SetMemberRoleResponse
-	(*InviteMemberRequest)(nil),            // 25: auth.v1.InviteMemberRequest
-	(*InviteMemberResponse)(nil),           // 26: auth.v1.InviteMemberResponse
-	(*AcceptInviteRequest)(nil),            // 27: auth.v1.AcceptInviteRequest
-	(*AcceptInviteResponse)(nil),           // 28: auth.v1.AcceptInviteResponse
-	(*RevokeInviteRequest)(nil),            // 29: auth.v1.RevokeInviteRequest
-	(*RevokeInviteResponse)(nil),           // 30: auth.v1.RevokeInviteResponse
-	(*ListInvitesRequest)(nil),             // 31: auth.v1.ListInvitesRequest
-	(*ListInvitesResponse)(nil),            // 32: auth.v1.ListInvitesResponse
-	(*SelectOrgRequest)(nil),               // 33: auth.v1.SelectOrgRequest
-	(*SelectOrgResponse)(nil),              // 34: auth.v1.SelectOrgResponse
-	(*TokenResponse)(nil),                  // 35: auth.v1.TokenResponse
+	(*ReactivateMemberRequest)(nil),        // 23: auth.v1.ReactivateMemberRequest
+	(*ReactivateMemberResponse)(nil),       // 24: auth.v1.ReactivateMemberResponse
+	(*SetMemberRoleRequest)(nil),           // 25: auth.v1.SetMemberRoleRequest
+	(*SetMemberRoleResponse)(nil),          // 26: auth.v1.SetMemberRoleResponse
+	(*InviteMemberRequest)(nil),            // 27: auth.v1.InviteMemberRequest
+	(*InviteMemberResponse)(nil),           // 28: auth.v1.InviteMemberResponse
+	(*AcceptInviteRequest)(nil),            // 29: auth.v1.AcceptInviteRequest
+	(*AcceptInviteResponse)(nil),           // 30: auth.v1.AcceptInviteResponse
+	(*RevokeInviteRequest)(nil),            // 31: auth.v1.RevokeInviteRequest
+	(*RevokeInviteResponse)(nil),           // 32: auth.v1.RevokeInviteResponse
+	(*ListInvitesRequest)(nil),             // 33: auth.v1.ListInvitesRequest
+	(*ListInvitesResponse)(nil),            // 34: auth.v1.ListInvitesResponse
+	(*SelectOrgRequest)(nil),               // 35: auth.v1.SelectOrgRequest
+	(*SelectOrgResponse)(nil),              // 36: auth.v1.SelectOrgResponse
+	(*TokenResponse)(nil),                  // 37: auth.v1.TokenResponse
 }
 var file_auth_v1_orgs_proto_depIdxs = []int32{
 	0,  // 0: auth.v1.SetOrgSlugResponse.organization:type_name -> auth.v1.Organization
@@ -2159,41 +2254,43 @@ var file_auth_v1_orgs_proto_depIdxs = []int32{
 	8,  // 5: auth.v1.InviteMemberResponse.invite:type_name -> auth.v1.Invite
 	8,  // 6: auth.v1.AcceptInviteResponse.invite:type_name -> auth.v1.Invite
 	8,  // 7: auth.v1.ListInvitesResponse.invites:type_name -> auth.v1.Invite
-	35, // 8: auth.v1.SelectOrgResponse.tokens:type_name -> auth.v1.TokenResponse
+	37, // 8: auth.v1.SelectOrgResponse.tokens:type_name -> auth.v1.TokenResponse
 	9,  // 9: auth.v1.OrgService.CreateOrg:input_type -> auth.v1.CreateOrgRequest
 	13, // 10: auth.v1.OrgService.ListMyOrgs:input_type -> auth.v1.ListMyOrgsRequest
 	15, // 11: auth.v1.OrgService.ListMembers:input_type -> auth.v1.ListMembersRequest
 	17, // 12: auth.v1.OrgService.AddMember:input_type -> auth.v1.AddMemberRequest
 	19, // 13: auth.v1.OrgService.RemoveMember:input_type -> auth.v1.RemoveMemberRequest
 	21, // 14: auth.v1.OrgService.SuspendMember:input_type -> auth.v1.SuspendMemberRequest
-	10, // 15: auth.v1.OrgService.SetOrgSlug:input_type -> auth.v1.SetOrgSlugRequest
-	23, // 16: auth.v1.OrgService.SetMemberRole:input_type -> auth.v1.SetMemberRoleRequest
-	25, // 17: auth.v1.OrgService.InviteMember:input_type -> auth.v1.InviteMemberRequest
-	27, // 18: auth.v1.OrgService.AcceptInvite:input_type -> auth.v1.AcceptInviteRequest
-	29, // 19: auth.v1.OrgService.RevokeInvite:input_type -> auth.v1.RevokeInviteRequest
-	31, // 20: auth.v1.OrgService.ListInvites:input_type -> auth.v1.ListInvitesRequest
-	33, // 21: auth.v1.OrgService.SelectOrg:input_type -> auth.v1.SelectOrgRequest
-	1,  // 22: auth.v1.InviteService.GetInvitePreview:input_type -> auth.v1.GetInvitePreviewRequest
-	3,  // 23: auth.v1.InviteService.AcceptInviteWithSignup:input_type -> auth.v1.AcceptInviteWithSignupRequest
-	5,  // 24: auth.v1.TenantService.ResolveTenant:input_type -> auth.v1.ResolveTenantRequest
-	12, // 25: auth.v1.OrgService.CreateOrg:output_type -> auth.v1.CreateOrgResponse
-	14, // 26: auth.v1.OrgService.ListMyOrgs:output_type -> auth.v1.ListMyOrgsResponse
-	16, // 27: auth.v1.OrgService.ListMembers:output_type -> auth.v1.ListMembersResponse
-	18, // 28: auth.v1.OrgService.AddMember:output_type -> auth.v1.AddMemberResponse
-	20, // 29: auth.v1.OrgService.RemoveMember:output_type -> auth.v1.RemoveMemberResponse
-	22, // 30: auth.v1.OrgService.SuspendMember:output_type -> auth.v1.SuspendMemberResponse
-	11, // 31: auth.v1.OrgService.SetOrgSlug:output_type -> auth.v1.SetOrgSlugResponse
-	24, // 32: auth.v1.OrgService.SetMemberRole:output_type -> auth.v1.SetMemberRoleResponse
-	26, // 33: auth.v1.OrgService.InviteMember:output_type -> auth.v1.InviteMemberResponse
-	28, // 34: auth.v1.OrgService.AcceptInvite:output_type -> auth.v1.AcceptInviteResponse
-	30, // 35: auth.v1.OrgService.RevokeInvite:output_type -> auth.v1.RevokeInviteResponse
-	32, // 36: auth.v1.OrgService.ListInvites:output_type -> auth.v1.ListInvitesResponse
-	34, // 37: auth.v1.OrgService.SelectOrg:output_type -> auth.v1.SelectOrgResponse
-	2,  // 38: auth.v1.InviteService.GetInvitePreview:output_type -> auth.v1.InvitePreview
-	4,  // 39: auth.v1.InviteService.AcceptInviteWithSignup:output_type -> auth.v1.AcceptInviteWithSignupResponse
-	6,  // 40: auth.v1.TenantService.ResolveTenant:output_type -> auth.v1.ResolveTenantResponse
-	25, // [25:41] is the sub-list for method output_type
-	9,  // [9:25] is the sub-list for method input_type
+	23, // 15: auth.v1.OrgService.ReactivateMember:input_type -> auth.v1.ReactivateMemberRequest
+	10, // 16: auth.v1.OrgService.SetOrgSlug:input_type -> auth.v1.SetOrgSlugRequest
+	25, // 17: auth.v1.OrgService.SetMemberRole:input_type -> auth.v1.SetMemberRoleRequest
+	27, // 18: auth.v1.OrgService.InviteMember:input_type -> auth.v1.InviteMemberRequest
+	29, // 19: auth.v1.OrgService.AcceptInvite:input_type -> auth.v1.AcceptInviteRequest
+	31, // 20: auth.v1.OrgService.RevokeInvite:input_type -> auth.v1.RevokeInviteRequest
+	33, // 21: auth.v1.OrgService.ListInvites:input_type -> auth.v1.ListInvitesRequest
+	35, // 22: auth.v1.OrgService.SelectOrg:input_type -> auth.v1.SelectOrgRequest
+	1,  // 23: auth.v1.InviteService.GetInvitePreview:input_type -> auth.v1.GetInvitePreviewRequest
+	3,  // 24: auth.v1.InviteService.AcceptInviteWithSignup:input_type -> auth.v1.AcceptInviteWithSignupRequest
+	5,  // 25: auth.v1.TenantService.ResolveTenant:input_type -> auth.v1.ResolveTenantRequest
+	12, // 26: auth.v1.OrgService.CreateOrg:output_type -> auth.v1.CreateOrgResponse
+	14, // 27: auth.v1.OrgService.ListMyOrgs:output_type -> auth.v1.ListMyOrgsResponse
+	16, // 28: auth.v1.OrgService.ListMembers:output_type -> auth.v1.ListMembersResponse
+	18, // 29: auth.v1.OrgService.AddMember:output_type -> auth.v1.AddMemberResponse
+	20, // 30: auth.v1.OrgService.RemoveMember:output_type -> auth.v1.RemoveMemberResponse
+	22, // 31: auth.v1.OrgService.SuspendMember:output_type -> auth.v1.SuspendMemberResponse
+	24, // 32: auth.v1.OrgService.ReactivateMember:output_type -> auth.v1.ReactivateMemberResponse
+	11, // 33: auth.v1.OrgService.SetOrgSlug:output_type -> auth.v1.SetOrgSlugResponse
+	26, // 34: auth.v1.OrgService.SetMemberRole:output_type -> auth.v1.SetMemberRoleResponse
+	28, // 35: auth.v1.OrgService.InviteMember:output_type -> auth.v1.InviteMemberResponse
+	30, // 36: auth.v1.OrgService.AcceptInvite:output_type -> auth.v1.AcceptInviteResponse
+	32, // 37: auth.v1.OrgService.RevokeInvite:output_type -> auth.v1.RevokeInviteResponse
+	34, // 38: auth.v1.OrgService.ListInvites:output_type -> auth.v1.ListInvitesResponse
+	36, // 39: auth.v1.OrgService.SelectOrg:output_type -> auth.v1.SelectOrgResponse
+	2,  // 40: auth.v1.InviteService.GetInvitePreview:output_type -> auth.v1.InvitePreview
+	4,  // 41: auth.v1.InviteService.AcceptInviteWithSignup:output_type -> auth.v1.AcceptInviteWithSignupResponse
+	6,  // 42: auth.v1.TenantService.ResolveTenant:output_type -> auth.v1.ResolveTenantResponse
+	26, // [26:43] is the sub-list for method output_type
+	9,  // [9:26] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -2211,7 +2308,7 @@ func file_auth_v1_orgs_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_v1_orgs_proto_rawDesc), len(file_auth_v1_orgs_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   35,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

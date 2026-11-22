@@ -64,6 +64,10 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 	); err != nil {
 		return false, err
 	}
+	self := domain.UserAuditActor(user.ID)
+	if err := userCreatedAudit(ctx, queries, user.ID, self, occurredAt); err != nil {
+		return false, err
+	}
 
 	if invite != nil {
 		orgID, err := uuid.Parse(invite.OrgID)
@@ -94,6 +98,9 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 			Role:   string(invite.Role),
 		}); err != nil {
 			return false, fmt.Errorf("postgres: add signup invite member: %w", err)
+		}
+		if err := inviteAcceptedAudit(ctx, queries, invite.OrgID, invite.ID, user.ID, invite.Role, true, self, occurredAt); err != nil {
+			return false, err
 		}
 		if err := emitEvents(ctx, sink,
 			domain.NewMembershipAddedEvent(invite.OrgID, user.ID, domain.MembershipActive, invite.Role, occurredAt),
@@ -156,10 +163,14 @@ func (s *Store) CreateInviteSignup(ctx context.Context, user domain.User, invite
 	}
 
 	sink := newOutboxSink(tx)
+	self := domain.UserAuditActor(holderID)
 	if inserted {
 		if err := emitEvents(ctx, sink,
 			domain.NewUserCreatedEvent(holderID, acceptedAt),
 		); err != nil {
+			return "", false, err
+		}
+		if err := userCreatedAudit(ctx, queries, holderID, self, acceptedAt); err != nil {
 			return "", false, err
 		}
 	}
@@ -177,12 +188,19 @@ func (s *Store) CreateInviteSignup(ctx context.Context, user domain.User, invite
 	if affected == 0 {
 		return "", false, domain.ErrInviteNotFound
 	}
+	newMember, err := isNewMember(ctx, queries, orgID, holderUUID)
+	if err != nil {
+		return "", false, err
+	}
 	if err := queries.AddActiveOrganizationMembership(ctx, sqlcgen.AddActiveOrganizationMembershipParams{
 		OrgID:  orgID,
 		UserID: holderUUID,
 		Role:   string(invite.Role),
 	}); err != nil {
 		return "", false, fmt.Errorf("postgres: add invite signup member: %w", err)
+	}
+	if err := inviteAcceptedAudit(ctx, queries, invite.OrgID, invite.ID, holderID, invite.Role, newMember, self, acceptedAt); err != nil {
+		return "", false, err
 	}
 	if err := emitEvents(ctx, sink,
 		domain.NewMembershipAddedEvent(invite.OrgID, holderID, domain.MembershipActive, invite.Role, acceptedAt),
@@ -335,12 +353,19 @@ func (s *Store) ReissuePendingSignup(ctx context.Context, user domain.User, chal
 		if affected == 0 {
 			return "", false, domain.ErrInviteNotFound
 		}
+		newMember, err := isNewMember(ctx, queries, orgID, userUUID)
+		if err != nil {
+			return "", false, err
+		}
 		if err := queries.AddActiveOrganizationMembership(ctx, sqlcgen.AddActiveOrganizationMembershipParams{
 			OrgID:  orgID,
 			UserID: userUUID,
 			Role:   string(invite.Role),
 		}); err != nil {
 			return "", false, fmt.Errorf("postgres: add signup invite member: %w", err)
+		}
+		if err := inviteAcceptedAudit(ctx, queries, invite.OrgID, invite.ID, userID, invite.Role, newMember, domain.UserAuditActor(userID), acceptedAt); err != nil {
+			return "", false, err
 		}
 		if err := emitEvents(ctx, newOutboxSink(tx),
 			domain.NewMembershipAddedEvent(invite.OrgID, userID, domain.MembershipActive, invite.Role, acceptedAt),

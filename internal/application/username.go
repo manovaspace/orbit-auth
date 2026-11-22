@@ -17,6 +17,9 @@ func (s *Service) SetUsername(ctx context.Context, userID, username string) (str
 	if userID == "" {
 		return "", fmt.Errorf("user_id required")
 	}
+	if err := s.requireActiveUser(ctx, userID); err != nil {
+		return "", err
+	}
 	normalized, ok := domain.NormalizeUsername(username)
 	if !ok {
 		return "", domain.ErrInvalidUsername

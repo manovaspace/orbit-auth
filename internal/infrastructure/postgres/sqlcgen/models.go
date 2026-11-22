@@ -21,6 +21,19 @@ type ApiToken struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type AuditEvent struct {
+	ID            int64
+	OccurredAt    pgtype.Timestamptz
+	Action        string
+	ActorKind     string
+	ActorID       string
+	OrgID         pgtype.UUID
+	SubjectUserID pgtype.UUID
+	InviteID      pgtype.UUID
+	Reason        string
+	Details       []byte
+}
+
 type FeatureFlag struct {
 	Name        string
 	Enabled     bool
@@ -129,6 +142,8 @@ type User struct {
 	EmailVerifiedAt  pgtype.Timestamptz
 	MobileVerifiedAt pgtype.Timestamptz
 	Username         *string
+	DisabledAt       pgtype.Timestamptz
+	DisabledReason   string
 }
 
 type UserIdentity struct {

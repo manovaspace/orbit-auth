@@ -60,7 +60,7 @@ func TestInviteCreateFindListAndHashOnly(t *testing.T) {
 	ctx := context.Background()
 
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "raw-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,11 +105,11 @@ func TestInviteCreateReplacesThePendingInviteForTheSameEmail(t *testing.T) {
 	ctx := context.Background()
 
 	first := pendingInvite(org.ID, inviter.ID, "member@example.com", "first-token")
-	if err := store.CreateInvite(ctx, first); err != nil {
+	if err := store.CreateInvite(ctx, first, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	second := pendingInvite(org.ID, inviter.ID, "MEMBER@example.com", "second-token")
-	if err := store.CreateInvite(ctx, second); err != nil {
+	if err := store.CreateInvite(ctx, second, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -141,7 +141,7 @@ func TestInviteAcceptIsSingleUseAndMakesAnActiveMember(t *testing.T) {
 	ctx := context.Background()
 
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "accept-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	acceptedAt := time.Now().UTC().Truncate(time.Microsecond)
@@ -168,7 +168,7 @@ func TestInviteAcceptIsSingleUseAndMakesAnActiveMember(t *testing.T) {
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, acceptedAt); !errors.Is(err, domain.ErrInviteNotFound) {
 		t.Fatalf("second accept err = %v, want ErrInviteNotFound", err)
 	}
-	if err := store.RevokeInvite(ctx, org.ID, invite.ID); !errors.Is(err, domain.ErrInviteNotFound) {
+	if err := store.RevokeInvite(ctx, org.ID, invite.ID, domain.SystemAuditActor()); !errors.Is(err, domain.ErrInviteNotFound) {
 		t.Fatalf("revoke accepted err = %v, want ErrInviteNotFound", err)
 	}
 }
@@ -177,14 +177,14 @@ func TestInviteAcceptRefusesSuspendedMember(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "suspended-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); !errors.Is(err, domain.ErrInvalidInvite) {
@@ -211,11 +211,11 @@ func TestInviteAcceptKeepsAnActiveMemberActive(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "active-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); err != nil {
@@ -242,11 +242,11 @@ func TestInviteAcceptActivatesAnInvitedMember(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipInvited, domain.RoleMember); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipInvited, domain.RoleMember, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "invited-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); err != nil {
@@ -266,10 +266,10 @@ func TestInviteRevoke(t *testing.T) {
 	ctx := context.Background()
 
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "revoke-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RevokeInvite(ctx, org.ID, invite.ID); err != nil {
+	if err := store.RevokeInvite(ctx, org.ID, invite.ID, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	found, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("revoke-token"))
@@ -279,10 +279,10 @@ func TestInviteRevoke(t *testing.T) {
 	if found.Status != domain.InviteRevoked {
 		t.Fatalf("status = %q, want revoked", found.Status)
 	}
-	if err := store.RevokeInvite(ctx, org.ID, invite.ID); !errors.Is(err, domain.ErrInviteNotFound) {
+	if err := store.RevokeInvite(ctx, org.ID, invite.ID, domain.SystemAuditActor()); !errors.Is(err, domain.ErrInviteNotFound) {
 		t.Fatalf("second revoke err = %v, want ErrInviteNotFound", err)
 	}
-	if err := store.RevokeInvite(ctx, uuid.NewString(), invite.ID); !errors.Is(err, domain.ErrInviteNotFound) {
+	if err := store.RevokeInvite(ctx, uuid.NewString(), invite.ID, domain.SystemAuditActor()); !errors.Is(err, domain.ErrInviteNotFound) {
 		t.Fatalf("wrong organization revoke err = %v, want ErrInviteNotFound", err)
 	}
 }
@@ -291,10 +291,10 @@ func TestInviteStoreRejectsInvalidUUIDs(t *testing.T) {
 	store, _ := migrationPool(t)
 	ctx := context.Background()
 
-	if err := store.CreateInvite(ctx, domain.Invite{ID: "bad", OrgID: uuid.NewString(), InviterID: uuid.NewString()}); err == nil {
+	if err := store.CreateInvite(ctx, domain.Invite{ID: "bad", OrgID: uuid.NewString(), InviterID: uuid.NewString()}, domain.SystemAuditActor()); err == nil {
 		t.Fatal("invalid invite id was accepted")
 	}
-	if err := store.RevokeInvite(ctx, "bad", uuid.NewString()); err == nil {
+	if err := store.RevokeInvite(ctx, "bad", uuid.NewString(), domain.SystemAuditActor()); err == nil {
 		t.Fatal("invalid organization id was accepted")
 	}
 	if _, err := store.ListInvites(ctx, "bad"); err == nil {
@@ -310,11 +310,11 @@ func TestInvitePhonePendingUniqueness(t *testing.T) {
 	ctx := context.Background()
 
 	first := pendingPhoneInvite(org.ID, inviter.ID, "+989121234567", domain.RoleMember, "phone-first")
-	if err := store.CreateInvite(ctx, first); err != nil {
+	if err := store.CreateInvite(ctx, first, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	second := pendingPhoneInvite(org.ID, inviter.ID, "+989121234567", domain.RoleAdmin, "phone-second")
-	if err := store.CreateInvite(ctx, second); err != nil {
+	if err := store.CreateInvite(ctx, second, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	old, err := store.FindInviteByTokenHash(ctx, domain.HashInviteToken("phone-first"))
@@ -374,7 +374,7 @@ func TestInviteRejectsAnUnknownRole(t *testing.T) {
 
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "bad-role-token")
 	invite.Role = "root"
-	if err := store.CreateInvite(ctx, invite); err == nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err == nil {
 		t.Fatal("an invite with an unknown role was stored")
 	}
 }
@@ -384,7 +384,7 @@ func TestInviteAcceptGrantsTheInvitedRole(t *testing.T) {
 	ctx := context.Background()
 
 	invite := pendingPhoneInvite(org.ID, inviter.ID, "+989121234567", domain.RoleAdmin, "role-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleAdmin, time.Now().UTC()); err != nil {
@@ -410,11 +410,11 @@ func TestInviteAcceptKeepsAnExistingRole(t *testing.T) {
 	store, org, inviter, member := createInviteFixture(t)
 	ctx := context.Background()
 
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleAdmin); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleAdmin, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "member@example.com", "keep-role-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AcceptInvite(ctx, invite.ID, org.ID, member.ID, domain.RoleMember, time.Now().UTC()); err != nil {

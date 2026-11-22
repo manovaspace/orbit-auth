@@ -74,9 +74,6 @@ func (s *Server) LoginWithPassword(ctx context.Context, req *authv1.LoginWithPas
 		if errors.Is(err, application.ErrInvalidCredentials) {
 			return nil, status.Error(codes.Unauthenticated, "invalid credentials")
 		}
-		if errors.Is(err, application.ErrUserDisabled) {
-			return nil, status.Error(codes.PermissionDenied, "user disabled")
-		}
 		return nil, err
 	}
 	return tokenResponse(access, refresh, exp), nil

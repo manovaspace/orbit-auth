@@ -19,19 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OrgService_CreateOrg_FullMethodName     = "/auth.v1.OrgService/CreateOrg"
-	OrgService_ListMyOrgs_FullMethodName    = "/auth.v1.OrgService/ListMyOrgs"
-	OrgService_ListMembers_FullMethodName   = "/auth.v1.OrgService/ListMembers"
-	OrgService_AddMember_FullMethodName     = "/auth.v1.OrgService/AddMember"
-	OrgService_RemoveMember_FullMethodName  = "/auth.v1.OrgService/RemoveMember"
-	OrgService_SuspendMember_FullMethodName = "/auth.v1.OrgService/SuspendMember"
-	OrgService_SetOrgSlug_FullMethodName    = "/auth.v1.OrgService/SetOrgSlug"
-	OrgService_SetMemberRole_FullMethodName = "/auth.v1.OrgService/SetMemberRole"
-	OrgService_InviteMember_FullMethodName  = "/auth.v1.OrgService/InviteMember"
-	OrgService_AcceptInvite_FullMethodName  = "/auth.v1.OrgService/AcceptInvite"
-	OrgService_RevokeInvite_FullMethodName  = "/auth.v1.OrgService/RevokeInvite"
-	OrgService_ListInvites_FullMethodName   = "/auth.v1.OrgService/ListInvites"
-	OrgService_SelectOrg_FullMethodName     = "/auth.v1.OrgService/SelectOrg"
+	OrgService_CreateOrg_FullMethodName        = "/auth.v1.OrgService/CreateOrg"
+	OrgService_ListMyOrgs_FullMethodName       = "/auth.v1.OrgService/ListMyOrgs"
+	OrgService_ListMembers_FullMethodName      = "/auth.v1.OrgService/ListMembers"
+	OrgService_AddMember_FullMethodName        = "/auth.v1.OrgService/AddMember"
+	OrgService_RemoveMember_FullMethodName     = "/auth.v1.OrgService/RemoveMember"
+	OrgService_SuspendMember_FullMethodName    = "/auth.v1.OrgService/SuspendMember"
+	OrgService_ReactivateMember_FullMethodName = "/auth.v1.OrgService/ReactivateMember"
+	OrgService_SetOrgSlug_FullMethodName       = "/auth.v1.OrgService/SetOrgSlug"
+	OrgService_SetMemberRole_FullMethodName    = "/auth.v1.OrgService/SetMemberRole"
+	OrgService_InviteMember_FullMethodName     = "/auth.v1.OrgService/InviteMember"
+	OrgService_AcceptInvite_FullMethodName     = "/auth.v1.OrgService/AcceptInvite"
+	OrgService_RevokeInvite_FullMethodName     = "/auth.v1.OrgService/RevokeInvite"
+	OrgService_ListInvites_FullMethodName      = "/auth.v1.OrgService/ListInvites"
+	OrgService_SelectOrg_FullMethodName        = "/auth.v1.OrgService/SelectOrg"
 )
 
 // OrgServiceClient is the client API for OrgService service.
@@ -58,6 +59,10 @@ type OrgServiceClient interface {
 	AddMember(ctx context.Context, in *AddMemberRequest, opts ...grpc.CallOption) (*AddMemberResponse, error)
 	RemoveMember(ctx context.Context, in *RemoveMemberRequest, opts ...grpc.CallOption) (*RemoveMemberResponse, error)
 	SuspendMember(ctx context.Context, in *SuspendMemberRequest, opts ...grpc.CallOption) (*SuspendMemberResponse, error)
+	// ReactivateMember lifts the suspension of one membership. It follows the
+	// suspension rules: an owner may reactivate anyone and an admin only plain
+	// members. A membership that is not suspended is left unchanged.
+	ReactivateMember(ctx context.Context, in *ReactivateMemberRequest, opts ...grpc.CallOption) (*ReactivateMemberResponse, error)
 	// SetOrgSlug changes the organization's slug, which is the label of its
 	// tenant host. Only an owner may. The old slug stays reserved for the
 	// organization and keeps resolving to it.
@@ -148,6 +153,16 @@ func (c *orgServiceClient) SuspendMember(ctx context.Context, in *SuspendMemberR
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SuspendMemberResponse)
 	err := c.cc.Invoke(ctx, OrgService_SuspendMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orgServiceClient) ReactivateMember(ctx context.Context, in *ReactivateMemberRequest, opts ...grpc.CallOption) (*ReactivateMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReactivateMemberResponse)
+	err := c.cc.Invoke(ctx, OrgService_ReactivateMember_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -248,6 +263,10 @@ type OrgServiceServer interface {
 	AddMember(context.Context, *AddMemberRequest) (*AddMemberResponse, error)
 	RemoveMember(context.Context, *RemoveMemberRequest) (*RemoveMemberResponse, error)
 	SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error)
+	// ReactivateMember lifts the suspension of one membership. It follows the
+	// suspension rules: an owner may reactivate anyone and an admin only plain
+	// members. A membership that is not suspended is left unchanged.
+	ReactivateMember(context.Context, *ReactivateMemberRequest) (*ReactivateMemberResponse, error)
 	// SetOrgSlug changes the organization's slug, which is the label of its
 	// tenant host. Only an owner may. The old slug stays reserved for the
 	// organization and keeps resolving to it.
@@ -301,6 +320,9 @@ func (UnimplementedOrgServiceServer) RemoveMember(context.Context, *RemoveMember
 }
 func (UnimplementedOrgServiceServer) SuspendMember(context.Context, *SuspendMemberRequest) (*SuspendMemberResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuspendMember not implemented")
+}
+func (UnimplementedOrgServiceServer) ReactivateMember(context.Context, *ReactivateMemberRequest) (*ReactivateMemberResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReactivateMember not implemented")
 }
 func (UnimplementedOrgServiceServer) SetOrgSlug(context.Context, *SetOrgSlugRequest) (*SetOrgSlugResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetOrgSlug not implemented")
@@ -448,6 +470,24 @@ func _OrgService_SuspendMember_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OrgServiceServer).SuspendMember(ctx, req.(*SuspendMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrgService_ReactivateMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReactivateMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrgServiceServer).ReactivateMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrgService_ReactivateMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrgServiceServer).ReactivateMember(ctx, req.(*ReactivateMemberRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -608,6 +648,10 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SuspendMember",
 			Handler:    _OrgService_SuspendMember_Handler,
+		},
+		{
+			MethodName: "ReactivateMember",
+			Handler:    _OrgService_ReactivateMember_Handler,
 		},
 		{
 			MethodName: "SetOrgSlug",
