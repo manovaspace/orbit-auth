@@ -119,7 +119,7 @@ Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version i
 
 ## Stack
 
-- Go 1.27.3, gRPC + Fiber v3 health + Postgres
+- Go 1.27.4, gRPC + Fiber v3 health + Postgres
 - Embedded goose migrations in `internal/infrastructure/postgres/migrations/`
 - sqlc queries in `internal/infrastructure/postgres/queries/`, generated package committed
 - Proto in `api/proto/auth/v1/`
