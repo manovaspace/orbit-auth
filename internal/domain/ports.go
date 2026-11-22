@@ -25,9 +25,18 @@ type UserStore interface {
 	FindOrCreateByMobile(ctx context.Context, mobile string) (User, error)
 	FindByEmail(ctx context.Context, email string) (User, error)
 	FindByMobile(ctx context.Context, mobile string) (User, error)
+	// FindByUsername takes the normalized username. A missing user is
+	// pgx.ErrNoRows, as for FindByMobile.
+	FindByUsername(ctx context.Context, username string) (User, error)
 	FindByID(ctx context.Context, userID string) (User, error)
 	UpdateLastLogin(ctx context.Context, userID string) error
-	UpsertDemoUser(ctx context.Context, email, mobile, passwordHash, displayName string) error
+	// SetUsername stores the normalized username for userID. It returns
+	// ErrUsernameTaken when another account holds it, and ErrUserNotFound when
+	// userID does not exist.
+	SetUsername(ctx context.Context, userID, username string) error
+	// UpsertDemoUser writes a demo account. An empty username keeps the stored
+	// one.
+	UpsertDemoUser(ctx context.Context, email, mobile, username, passwordHash, displayName string) error
 	// MarkMobileVerified records that a mobile OTP for userID succeeded. An
 	// existing verification time is kept.
 	MarkMobileVerified(ctx context.Context, userID string, verifiedAt time.Time) error

@@ -91,6 +91,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	defaultCallingCode, err := defaultCallingCodeFromEnv()
+	if err != nil {
+		log.Error("calling code config failed", "error", err)
+		os.Exit(1)
+	}
+
 	store := postgres.New(pool)
 	// Platform flags are read over HTTP before sign-in; writes arrive with the
 	// admin surface later.
@@ -139,6 +145,8 @@ func main() {
 		Secrets:   credentials.NewSecrets(),
 		DemoMode:  os.Getenv("DEMO_MODE") == "true",
 		DemoUsers: demoUsers,
+		// AUTH_DEFAULT_CALLING_CODE completes local mobile numbers at sign-in.
+		DefaultCallingCode: defaultCallingCode,
 		// AUTH_SIGNUP defaults to off; only the literal open (case-insensitive)
 		// enables self-serve registration.
 		SignupOpen: strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_SIGNUP")), "open"),
@@ -261,9 +269,10 @@ func runEventRelay(ctx context.Context, relay *outbox.Relay, logInfo, logError f
 }
 
 // serverOptions keeps the observability chain and adds access-token validation
-// for OrgService and the service-token guard for StaffOrgService. The access
-// interceptor runs after internal auth and before every OrgService handler.
-// AuthService keeps its existing unauthenticated contract.
+// for OrgService and for AuthService.SetUsername, plus the service-token guard
+// for StaffOrgService. The access interceptor runs after internal auth and
+// before those handlers. The other AuthService RPCs keep their unauthenticated
+// contract.
 func serverOptions(signer *jwt.Signer, staffServiceToken string) []googlegrpc.ServerOption {
 	opts := observability.GRPCServerOptions()
 	return append(opts, googlegrpc.ChainUnaryInterceptor(
@@ -290,6 +299,19 @@ func demoUsersFromEnv() ([]domain.DemoUser, error) {
 		return nil, err
 	}
 	return users, nil
+}
+
+// defaultCallingCodeFromEnv reads AUTH_DEFAULT_CALLING_CODE: the country
+// calling code in digits only, without "+". Empty means local mobile numbers
+// are not accepted at sign-in. Any other value fails before the service starts.
+func defaultCallingCodeFromEnv() (string, error) {
+	code := strings.TrimSpace(os.Getenv("AUTH_DEFAULT_CALLING_CODE"))
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return "", fmt.Errorf("AUTH_DEFAULT_CALLING_CODE must contain digits only, without \"+\"")
+		}
+	}
+	return code, nil
 }
 
 // runMigrate executes the explicit migrate subcommand:

@@ -551,13 +551,15 @@ func TestOrgAccessTokenInterceptorRejectsMissingAndInvalidTokens(t *testing.T) {
 func TestOrgAccessTokenInterceptorLeavesAuthServiceAlone(t *testing.T) {
 	keys, _ := orgTestKeys(t)
 	interceptor := AccessTokenUnaryServerInterceptor(keys)
-	_, err := interceptor(context.Background(), nil, &googlegrpc.UnaryServerInfo{
-		FullMethod: "/auth.v1.AuthService/RequestOTP",
-	}, func(context.Context, any) (any, error) {
-		return nil, nil
-	})
-	if err != nil {
-		t.Fatalf("AuthService call was intercepted: %v", err)
+	for _, method := range []string{"/auth.v1.AuthService/RequestOTP", "/auth.v1.AuthService/LoginWithPassword"} {
+		_, err := interceptor(context.Background(), nil, &googlegrpc.UnaryServerInfo{
+			FullMethod: method,
+		}, func(context.Context, any) (any, error) {
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatalf("%s was intercepted without a token: %v", method, err)
+		}
 	}
 }
 

@@ -216,7 +216,7 @@ func TestDemoSeededMobileCountsAsVerified(t *testing.T) {
 	store, _ := migrationPool(t)
 	ctx := context.Background()
 
-	if err := store.UpsertDemoUser(ctx, "", "+989121230003", "hash", "Demo"); err != nil {
+	if err := store.UpsertDemoUser(ctx, "", "+989121230003", "", "hash", "Demo"); err != nil {
 		t.Fatal(err)
 	}
 	found, err := store.FindByMobile(ctx, "+989121230003")

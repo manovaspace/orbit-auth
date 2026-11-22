@@ -106,8 +106,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 14 {
-		t.Fatalf("applied %d migrations, want 14", len(results))
+	if len(results) != 15 {
+		t.Fatalf("applied %d migrations, want 15", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "organization_provisions", "outbox_events", "feature_flags", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
@@ -120,16 +120,16 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if !columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") {
 		t.Fatal("organizations.status was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 14 || target != 14 {
-		t.Fatalf("version = %d/%d, err=%v, want 14/14", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 15 || target != 15 {
+		t.Fatalf("version = %d/%d, err=%v, want 15/15", current, target, err)
 	}
 }
 
 // TestAdoptionOnLegacyDatabaseChangesNothing is the production adoption proof:
 // a database created by the old runner (real users, OTP, session and API-token
 // rows) is adopted without running migration SQL. Table and index relfilenodes
-// and every row must be identical afterwards. Only migration 014, which the old
-// runner never applied, runs, and a second `up` is a no-op.
+// and every row must be identical afterwards. Only migrations 014 and 015, which
+// the old runner never applied, run, and a second `up` is a no-op.
 func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	db := testutil.OpenPostgres(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -151,8 +151,8 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("adopt legacy database: %v", err)
 	}
-	if len(results) != 1 || results[0].Source.Version != 14 {
-		t.Fatalf("adoption ran %d migrations, want only 014", len(results))
+	if len(results) != 2 || results[0].Source.Version != 14 || results[1].Source.Version != 15 {
+		t.Fatalf("adoption ran %d migrations, want only 014 and 015", len(results))
 	}
 
 	if after := schemaSnapshot(t, ctx, db.Pool, db.Schema); after != beforeSchema {
@@ -164,10 +164,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 14 || target != 14 {
-		t.Fatalf("version = %d/%d, err=%v, want 14/14", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 15 || target != 15 {
+		t.Fatalf("version = %d/%d, err=%v, want 15/15", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -220,7 +220,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -239,6 +239,9 @@ func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
 	}
 	// Roll 014 through 007 back so the next insert represents an account created
 	// before self-serve sign-up existed and before the outbox table.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 015: %v", err)
+	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 014: %v", err)
 	}
@@ -309,6 +312,16 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := m.Down(ctx)
+	if err != nil {
+		t.Fatalf("down 015: %v", err)
+	}
+	if result.Source.Version != 15 {
+		t.Fatalf("rolled back version %d, want 15", result.Source.Version)
+	}
+	if columnExists(t, ctx, db.Pool, db.Schema, "users", "username") || indexExists(t, ctx, db.Pool, db.Schema, "users_username_idx") {
+		t.Fatal("down of 015 left users.username in place")
+	}
+	result, err = m.Down(ctx)
 	if err != nil {
 		t.Fatalf("down 014: %v", err)
 	}
@@ -575,6 +588,18 @@ func tableExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, 
 	return exists
 }
 
+func indexExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, name string) bool {
+	t.Helper()
+	var exists bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = $2
+		)`, schema, name).Scan(&exists); err != nil {
+		t.Fatal(err)
+	}
+	return exists
+}
+
 func columnExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, table, column string) bool {
 	t.Helper()
 	var exists bool
@@ -629,6 +654,9 @@ func TestMembershipRoleBackfillMakesEarliestActiveMemberOwner(t *testing.T) {
 
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 015: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 014: %v", err)
@@ -726,6 +754,9 @@ func TestOrganizationSlugBackfill(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 015: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 014: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
@@ -792,6 +823,9 @@ func TestMobileVerifiedBackfillsExistingMobileAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 015: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 014: %v", err)
 	}
 	if _, err := m.Down(ctx); err != nil {
@@ -848,6 +882,9 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 015: %v", err)
+	}
+	if _, err := m.Down(ctx); err != nil {
 		t.Fatalf("roll back 014: %v", err)
 	}
 	beforeShape := shapeSnapshot(t, ctx, db.Pool, db.Schema)
@@ -869,10 +906,13 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 
 	results, err := m.Up(ctx)
 	if err != nil {
-		t.Fatalf("apply 014: %v", err)
+		t.Fatalf("apply 014 and 015: %v", err)
 	}
-	if len(results) != 1 || results[0].Source.Version != 14 {
-		t.Fatalf("up ran %d migrations, want only 014", len(results))
+	if len(results) != 2 || results[0].Source.Version != 14 || results[1].Source.Version != 15 {
+		t.Fatalf("up ran %d migrations, want only 014 and 015", len(results))
+	}
+	if shapeSnapshot(t, ctx, db.Pool, db.Schema) == beforeShape {
+		t.Fatal("migration 014 left the organization shape unchanged")
 	}
 	if shapeSnapshot(t, ctx, db.Pool, db.Schema) == beforeShape {
 		t.Fatal("migration 014 left the organization shape unchanged")
@@ -925,7 +965,11 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 	}
 
 	// Rolling back deletes the staff-issued invitation, keeps the user-issued one
-	// and restores the 013 shape exactly.
+	// and restores the 013 shape exactly. Migration 015 sits on top, so it goes
+	// first.
+	if _, err := m.Down(ctx); err != nil {
+		t.Fatalf("roll back 015: %v", err)
+	}
 	result, err := m.Down(ctx)
 	if err != nil {
 		t.Fatalf("roll back 014: %v", err)
@@ -951,8 +995,8 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 		`SELECT status FROM organizations WHERE id = 'a2000000-0000-0000-0000-000000000002'`).Scan(&status); err != nil || status != "active" {
 		t.Fatalf("status after reapplying 014 = %q, %v; want active", status, err)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 14 || target != 14 {
-		t.Fatalf("version = %d/%d, err=%v, want 14/14", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 15 || target != 15 {
+		t.Fatalf("version = %d/%d, err=%v, want 15/15", current, target, err)
 	}
 }
 

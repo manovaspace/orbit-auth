@@ -6,10 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	authv1 "github.com/manovaspace/orbit-auth/api/auth/v1"
 	"github.com/manovaspace/orbit-auth/internal/application"
 	"github.com/manovaspace/orbit-auth/internal/domain"
+	orbittoken "github.com/manovaspace/orbit-auth/token"
+	googlegrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -62,6 +66,11 @@ type fakeAuth struct {
 	validateUserID string
 	validateScopes []string
 	validateErr    error
+
+	setUserID   string
+	setUsername string
+	setResult   string
+	setErr      error
 }
 
 func (f *fakeAuth) RequestOTP(_ context.Context, identifier, channel, correlationID string) (time.Time, error) {
@@ -107,6 +116,11 @@ func (f *fakeAuth) RevokeApiToken(_ context.Context, userID, tokenID string) err
 func (f *fakeAuth) ValidateApiToken(_ context.Context, secret string) (string, []string, error) {
 	f.validateSecret = secret
 	return f.validateUserID, f.validateScopes, f.validateErr
+}
+
+func (f *fakeAuth) SetUsername(_ context.Context, userID, username string) (string, error) {
+	f.setUserID, f.setUsername = userID, username
+	return f.setResult, f.setErr
 }
 
 func assertCode(t *testing.T, err error, want codes.Code, message string) {
@@ -321,6 +335,96 @@ func TestRevokeApiTokenAndValidate(t *testing.T) {
 	app.validateErr = application.ErrInvalidToken
 	_, err = srv.ValidateApiToken(context.Background(), &authv1.ValidateApiTokenRequest{Secret: "bad"})
 	assertCode(t, err, codes.Unauthenticated, "invalid token")
+}
+
+// setUsernameThroughInterceptor runs SetUsername the way the server does: the
+// access-token interceptor, then the handler.
+func setUsernameThroughInterceptor(ctx context.Context, keys orbittoken.KeySet, srv *Server, req *authv1.SetUsernameRequest) (*authv1.SetUsernameResponse, error) {
+	interceptor := AccessTokenUnaryServerInterceptor(keys)
+	out, err := interceptor(ctx, req, &googlegrpc.UnaryServerInfo{
+		FullMethod: "/auth.v1.AuthService/SetUsername",
+	}, func(ctx context.Context, req any) (any, error) {
+		return srv.SetUsername(ctx, req.(*authv1.SetUsernameRequest))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.(*authv1.SetUsernameResponse), nil
+}
+
+func TestSetUsernameUsesTokenSubjectNotBody(t *testing.T) {
+	keys, key := orgTestKeys(t)
+	subject := uuid.NewString()
+	app := &fakeAuth{setResult: "chef.one"}
+	srv := New(app)
+
+	raw, err := orbittoken.SignAccessToken(key, "test-key", subject, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+raw))
+	resp, err := setUsernameThroughInterceptor(ctx, keys, srv, &authv1.SetUsernameRequest{Username: "Chef.One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetUsername() != "chef.one" || app.setUserID != subject || app.setUsername != "Chef.One" {
+		t.Fatalf("set username = %+v, user %q, name %q; want subject %q", resp, app.setUserID, app.setUsername, subject)
+	}
+}
+
+func TestSetUsernameRejectsMissingAndInvalidTokens(t *testing.T) {
+	keys, _ := orgTestKeys(t)
+	app := &fakeAuth{setResult: "chef.one"}
+	srv := New(app)
+
+	_, err := setUsernameThroughInterceptor(context.Background(), keys, srv, &authv1.SetUsernameRequest{Username: "chef.one"})
+	assertCode(t, err, codes.Unauthenticated, "authentication required")
+
+	invalid := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer not-a-token"))
+	_, err = setUsernameThroughInterceptor(invalid, keys, srv, &authv1.SetUsernameRequest{Username: "chef.one"})
+	assertCode(t, err, codes.Unauthenticated, "invalid or expired access token")
+
+	if app.setUserID != "" {
+		t.Fatalf("SetUsername reached the application without a valid token: user %q", app.setUserID)
+	}
+}
+
+func TestSetUsernameRejectsNonUUIDSubject(t *testing.T) {
+	app := &fakeAuth{setResult: "chef.one"}
+	srv := New(app)
+	_, err := srv.SetUsername(withCallerID(context.Background(), "token-user"), &authv1.SetUsernameRequest{Username: "chef.one"})
+	assertCode(t, err, codes.Unauthenticated, "authentication required")
+	if app.setUserID != "" {
+		t.Fatalf("non-UUID subject reached the application: %q", app.setUserID)
+	}
+}
+
+func TestSetUsernameMapsErrors(t *testing.T) {
+	const userID = "11111111-1111-4111-8111-111111111111"
+	app := &fakeAuth{setResult: "chef.one"}
+	srv := New(app)
+	ctx := withCallerID(context.Background(), userID)
+	resp, err := srv.SetUsername(ctx, &authv1.SetUsernameRequest{Username: "Chef.One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetUsername() != "chef.one" || app.setUserID != userID || app.setUsername != "Chef.One" {
+		t.Fatalf("set username = %+v, user %q, name %q", resp, app.setUserID, app.setUsername)
+	}
+
+	tests := []struct {
+		err  error
+		want codes.Code
+	}{
+		{domain.ErrInvalidUsername, codes.InvalidArgument},
+		{domain.ErrUsernameTaken, codes.AlreadyExists},
+		{domain.ErrUserNotFound, codes.NotFound},
+	}
+	for _, tc := range tests {
+		app.setErr = tc.err
+		_, err := srv.SetUsername(ctx, &authv1.SetUsernameRequest{Username: "chef.one"})
+		assertCode(t, err, tc.want, tc.err.Error())
+	}
 }
 
 func TestResolveIdentifierChannel(t *testing.T) {

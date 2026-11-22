@@ -2,6 +2,7 @@
 SELECT id::text AS id,
        COALESCE(email, '') AS email,
        COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
        COALESCE(status, 'active') AS status,
@@ -14,6 +15,7 @@ WHERE email = sqlc.arg('email')::text;
 SELECT id::text AS id,
        COALESCE(email, '') AS email,
        COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
        COALESCE(status, 'active') AS status,
@@ -26,6 +28,7 @@ WHERE mobile = sqlc.arg('mobile')::text;
 SELECT id::text AS id,
        COALESCE(email, '') AS email,
        COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
        COALESCE(password_hash, '') AS password_hash,
        COALESCE(display_name, '') AS display_name,
        COALESCE(status, 'active') AS status,
@@ -33,6 +36,19 @@ SELECT id::text AS id,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
 FROM users
 WHERE id = sqlc.arg('id')::uuid;
+
+-- name: FindUserByUsername :one
+SELECT id::text AS id,
+       COALESCE(email, '') AS email,
+       COALESCE(mobile, '') AS mobile,
+       COALESCE(username, '') AS username,
+       COALESCE(password_hash, '') AS password_hash,
+       COALESCE(display_name, '') AS display_name,
+       COALESCE(status, 'active') AS status,
+       (email_verified_at IS NOT NULL)::boolean AS email_verified,
+       (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
+FROM users
+WHERE username = sqlc.arg('username')::text;
 
 -- name: CreateUserWithEmail :exec
 INSERT INTO users (id, email, status, email_verified_at)
@@ -44,6 +60,12 @@ VALUES (sqlc.arg('id')::uuid, sqlc.arg('mobile')::text);
 
 -- name: UpdateLastLogin :exec
 UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = sqlc.arg('id')::uuid;
+
+-- name: SetUsername :execrows
+UPDATE users
+SET username = sqlc.arg('username')::text,
+    updated_at = NOW()
+WHERE id = sqlc.arg('id')::uuid;
 
 -- name: CreateSignupUser :execrows
 INSERT INTO users (id, email, password_hash, display_name, status, email_verified_at)
@@ -83,11 +105,12 @@ WHERE status = 'signup_pending'
   AND created_at < sqlc.arg('before')::timestamptz;
 
 -- name: UpsertDemoUserByEmail :exec
-INSERT INTO users (id, email, mobile, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.narg('email')::text,
     sqlc.narg('mobile')::text,
+    sqlc.narg('username')::text,
     sqlc.arg('password_hash')::text,
     sqlc.arg('display_name')::text,
     'active',
@@ -97,6 +120,7 @@ VALUES (
 ON CONFLICT (email) DO UPDATE SET
     email = COALESCE(EXCLUDED.email, users.email),
     mobile = COALESCE(EXCLUDED.mobile, users.mobile),
+    username = COALESCE(EXCLUDED.username, users.username),
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
     status = 'active',
@@ -111,11 +135,12 @@ ON CONFLICT (email) DO UPDATE SET
     updated_at = NOW();
 
 -- name: UpsertDemoUserByMobile :exec
-INSERT INTO users (id, email, mobile, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.narg('email')::text,
     sqlc.narg('mobile')::text,
+    sqlc.narg('username')::text,
     sqlc.arg('password_hash')::text,
     sqlc.arg('display_name')::text,
     'active',
@@ -125,6 +150,7 @@ VALUES (
 ON CONFLICT (mobile) DO UPDATE SET
     email = COALESCE(EXCLUDED.email, users.email),
     mobile = COALESCE(EXCLUDED.mobile, users.mobile),
+    username = COALESCE(EXCLUDED.username, users.username),
     password_hash = EXCLUDED.password_hash,
     display_name = EXCLUDED.display_name,
     status = 'active',

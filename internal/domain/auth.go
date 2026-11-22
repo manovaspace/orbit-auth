@@ -61,6 +61,7 @@ type User struct {
 	ID            string
 	Email         string
 	Mobile        string
+	Username      string
 	PasswordHash  string
 	DisplayName   string
 	Status        string
@@ -110,6 +111,7 @@ type APITokenInfo struct {
 type DemoUser struct {
 	Email       string `json:"email"`
 	Mobile      string `json:"mobile"`
+	Username    string `json:"username"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
 }

@@ -130,6 +130,7 @@ must never be edited by hand.
 | `HEALTH_PORT` | `10011` | Fiber health port (`/healthz`, `/readyz`) |
 | `MIGRATE_ON_START` | `true` | Apply embedded goose migrations on start |
 | `AUTH_AUTO_SELECT_SINGLE_ORG` | `true` | Add the `org` claim when the user has one active membership |
+| `AUTH_DEFAULT_CALLING_CODE` | unset | Digits only, without `+`. Completes a local mobile number at password sign-in (`09121234567` becomes `+989121234567` with `98`). Empty: local numbers are not accepted. Any other value stops the service at start |
 | `AUTH_SIGNUP` | `off` | `open` enables self-serve sign-up |
 | `AUTH_INVITE_SIGNUP` | `on` | `off` or `false` disables invite sign-up (`InviteService.AcceptInviteWithSignup`); independent of `AUTH_SIGNUP` |
 | `AUTH_STAFF_SERVICE_TOKEN` | unset | Shared secret the gateway sends as `x-orbit-service-token` on every `StaffOrgService` call. Empty disables the staff surface: every call is `Unavailable`. Never logged |
@@ -139,7 +140,8 @@ must never be edited by hand.
 | `BUS_REDIS_URL` | unset | Redis endpoint when `BUS_TRANSPORT=redis` |
 
 - **Feature Flags:** Uses OpenFeature over orbit-auth `/v1/flags` (`FLAGS_URL`, default `http://localhost:10011/v1/flags`; `off` disables) to evaluate `manova.auth.email_otp` and `manova.auth.mobile_otp`. An unreachable endpoint means the flag is off.
-- **Demo Mode:** When `DEMO_MODE=true` in dev, pre-seeds accounts from `AUTH_DEMO_USERS` JSON array. Enabling it outside dev fails closed.
+- **Demo Mode:** When `DEMO_MODE=true` in dev, pre-seeds accounts from `AUTH_DEMO_USERS` JSON array. Enabling it outside dev fails closed. A demo entry may carry a `username`; it must follow the username rule.
+- **Usernames:** `LoginWithPassword` accepts a username, an E.164 mobile number (or a local one when `AUTH_DEFAULT_CALLING_CODE` is set) or an email address as the identifier. A username is 3 to 32 characters: a letter first, then letters, digits, `.`, `_` or `-`, stored lower case. It never contains `@` or `+`, so it cannot be read as an email or a mobile number. `AuthService.SetUsername` sets it for the account of the verified bearer access token (`Unauthenticated` without a valid one; the request carries no `user_id`); a name another account holds is `AlreadyExists`, an invalid one `InvalidArgument`.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
 - **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. A suspended organization is never auto-selected. `SelectOrg` switches organization and rotates the refresh token.
