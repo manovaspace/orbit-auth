@@ -26,6 +26,10 @@ service OrgService {
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
   rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  // ReactivateMember lifts the suspension of one membership. It follows the
+  // suspension rules: an owner may reactivate anyone and an admin only plain
+  // members. A membership that is not suspended is left unchanged.
+  rpc ReactivateMember(ReactivateMemberRequest) returns (ReactivateMemberResponse);
   // SetOrgSlug changes the organization's slug, which is the label of its
   // tenant host. Only an owner may. The old slug stays reserved for the
   // organization and keeps resolving to it.
@@ -228,6 +232,13 @@ message SuspendMemberRequest {
 }
 
 message SuspendMemberResponse {}
+
+message ReactivateMemberRequest {
+  string org_id = 1;
+  string user_id = 2;
+}
+
+message ReactivateMemberResponse {}
 
 message SetMemberRoleRequest {
   string org_id = 1;

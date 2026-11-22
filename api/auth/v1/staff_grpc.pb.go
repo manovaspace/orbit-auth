@@ -407,3 +407,297 @@ var StaffOrgService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "auth/v1/staff.proto",
 }
+
+const (
+	StaffUserService_ListUsers_FullMethodName       = "/auth.v1.StaffUserService/ListUsers"
+	StaffUserService_GetUser_FullMethodName         = "/auth.v1.StaffUserService/GetUser"
+	StaffUserService_DisableUser_FullMethodName     = "/auth.v1.StaffUserService/DisableUser"
+	StaffUserService_EnableUser_FullMethodName      = "/auth.v1.StaffUserService/EnableUser"
+	StaffUserService_ListAuditEvents_FullMethodName = "/auth.v1.StaffUserService/ListAuditEvents"
+)
+
+// StaffUserServiceClient is the client API for StaffUserService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// StaffUserService is the Manova staff surface over accounts and the audit
+// trail. It follows the same edge rules as StaffOrgService: the gateway is the
+// only caller, every call carries x-orbit-service-token and x-staff-subject, and
+// every write RPC also carries x-staff-reason. Staff are never members of an
+// organization, so no membership policy applies. Staff never see a password
+// hash, a token or an email address in an audit row.
+type StaffUserServiceClient interface {
+	// ListUsers pages through accounts, oldest first. The query matches the
+	// email, mobile number, username or display name, case-insensitively.
+	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
+	// GetUser returns one account with its organization memberships.
+	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error)
+	// DisableUser makes an active account disabled. Every refresh token of the
+	// account is revoked at once. A still-valid access token keeps working at
+	// most 15 minutes, because access tokens are not checked against the account.
+	// A disabled account is unchanged and reports changed=false. A pending account
+	// is FAILED_PRECONDITION.
+	DisableUser(ctx context.Context, in *DisableUserRequest, opts ...grpc.CallOption) (*DisableUserResponse, error)
+	// EnableUser makes a disabled account active again. The user signs in again;
+	// refresh tokens revoked by the disable are not restored. An active account
+	// reports changed=false. A pending account is FAILED_PRECONDITION.
+	EnableUser(ctx context.Context, in *EnableUserRequest, opts ...grpc.CallOption) (*EnableUserResponse, error)
+	// ListAuditEvents pages through audit rows, newest first. The request must
+	// name an organization, a user or both.
+	ListAuditEvents(ctx context.Context, in *ListAuditEventsRequest, opts ...grpc.CallOption) (*ListAuditEventsResponse, error)
+}
+
+type staffUserServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewStaffUserServiceClient(cc grpc.ClientConnInterface) StaffUserServiceClient {
+	return &staffUserServiceClient{cc}
+}
+
+func (c *staffUserServiceClient) ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUsersResponse)
+	err := c.cc.Invoke(ctx, StaffUserService_ListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *staffUserServiceClient) GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*GetUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUserResponse)
+	err := c.cc.Invoke(ctx, StaffUserService_GetUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *staffUserServiceClient) DisableUser(ctx context.Context, in *DisableUserRequest, opts ...grpc.CallOption) (*DisableUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DisableUserResponse)
+	err := c.cc.Invoke(ctx, StaffUserService_DisableUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *staffUserServiceClient) EnableUser(ctx context.Context, in *EnableUserRequest, opts ...grpc.CallOption) (*EnableUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnableUserResponse)
+	err := c.cc.Invoke(ctx, StaffUserService_EnableUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *staffUserServiceClient) ListAuditEvents(ctx context.Context, in *ListAuditEventsRequest, opts ...grpc.CallOption) (*ListAuditEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAuditEventsResponse)
+	err := c.cc.Invoke(ctx, StaffUserService_ListAuditEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// StaffUserServiceServer is the server API for StaffUserService service.
+// All implementations must embed UnimplementedStaffUserServiceServer
+// for forward compatibility.
+//
+// StaffUserService is the Manova staff surface over accounts and the audit
+// trail. It follows the same edge rules as StaffOrgService: the gateway is the
+// only caller, every call carries x-orbit-service-token and x-staff-subject, and
+// every write RPC also carries x-staff-reason. Staff are never members of an
+// organization, so no membership policy applies. Staff never see a password
+// hash, a token or an email address in an audit row.
+type StaffUserServiceServer interface {
+	// ListUsers pages through accounts, oldest first. The query matches the
+	// email, mobile number, username or display name, case-insensitively.
+	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
+	// GetUser returns one account with its organization memberships.
+	GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error)
+	// DisableUser makes an active account disabled. Every refresh token of the
+	// account is revoked at once. A still-valid access token keeps working at
+	// most 15 minutes, because access tokens are not checked against the account.
+	// A disabled account is unchanged and reports changed=false. A pending account
+	// is FAILED_PRECONDITION.
+	DisableUser(context.Context, *DisableUserRequest) (*DisableUserResponse, error)
+	// EnableUser makes a disabled account active again. The user signs in again;
+	// refresh tokens revoked by the disable are not restored. An active account
+	// reports changed=false. A pending account is FAILED_PRECONDITION.
+	EnableUser(context.Context, *EnableUserRequest) (*EnableUserResponse, error)
+	// ListAuditEvents pages through audit rows, newest first. The request must
+	// name an organization, a user or both.
+	ListAuditEvents(context.Context, *ListAuditEventsRequest) (*ListAuditEventsResponse, error)
+	mustEmbedUnimplementedStaffUserServiceServer()
+}
+
+// UnimplementedStaffUserServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedStaffUserServiceServer struct{}
+
+func (UnimplementedStaffUserServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUsers not implemented")
+}
+func (UnimplementedStaffUserServiceServer) GetUser(context.Context, *GetUserRequest) (*GetUserResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUser not implemented")
+}
+func (UnimplementedStaffUserServiceServer) DisableUser(context.Context, *DisableUserRequest) (*DisableUserResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DisableUser not implemented")
+}
+func (UnimplementedStaffUserServiceServer) EnableUser(context.Context, *EnableUserRequest) (*EnableUserResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnableUser not implemented")
+}
+func (UnimplementedStaffUserServiceServer) ListAuditEvents(context.Context, *ListAuditEventsRequest) (*ListAuditEventsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAuditEvents not implemented")
+}
+func (UnimplementedStaffUserServiceServer) mustEmbedUnimplementedStaffUserServiceServer() {}
+func (UnimplementedStaffUserServiceServer) testEmbeddedByValue()                          {}
+
+// UnsafeStaffUserServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to StaffUserServiceServer will
+// result in compilation errors.
+type UnsafeStaffUserServiceServer interface {
+	mustEmbedUnimplementedStaffUserServiceServer()
+}
+
+func RegisterStaffUserServiceServer(s grpc.ServiceRegistrar, srv StaffUserServiceServer) {
+	// If the following call panics, it indicates UnimplementedStaffUserServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&StaffUserService_ServiceDesc, srv)
+}
+
+func _StaffUserService_ListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StaffUserServiceServer).ListUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StaffUserService_ListUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StaffUserServiceServer).ListUsers(ctx, req.(*ListUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StaffUserService_GetUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StaffUserServiceServer).GetUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StaffUserService_GetUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StaffUserServiceServer).GetUser(ctx, req.(*GetUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StaffUserService_DisableUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DisableUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StaffUserServiceServer).DisableUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StaffUserService_DisableUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StaffUserServiceServer).DisableUser(ctx, req.(*DisableUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StaffUserService_EnableUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnableUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StaffUserServiceServer).EnableUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StaffUserService_EnableUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StaffUserServiceServer).EnableUser(ctx, req.(*EnableUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StaffUserService_ListAuditEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAuditEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StaffUserServiceServer).ListAuditEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StaffUserService_ListAuditEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StaffUserServiceServer).ListAuditEvents(ctx, req.(*ListAuditEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// StaffUserService_ServiceDesc is the grpc.ServiceDesc for StaffUserService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var StaffUserService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "auth.v1.StaffUserService",
+	HandlerType: (*StaffUserServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListUsers",
+			Handler:    _StaffUserService_ListUsers_Handler,
+		},
+		{
+			MethodName: "GetUser",
+			Handler:    _StaffUserService_GetUser_Handler,
+		},
+		{
+			MethodName: "DisableUser",
+			Handler:    _StaffUserService_DisableUser_Handler,
+		},
+		{
+			MethodName: "EnableUser",
+			Handler:    _StaffUserService_EnableUser_Handler,
+		},
+		{
+			MethodName: "ListAuditEvents",
+			Handler:    _StaffUserService_ListAuditEvents_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "auth/v1/staff.proto",
+}

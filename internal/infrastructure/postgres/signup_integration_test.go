@@ -231,7 +231,7 @@ func TestSignupUserAcceptsInvitationAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "new@example.com", "signup-invite-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 

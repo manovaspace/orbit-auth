@@ -33,7 +33,7 @@ func TestStaffProvisionWritesOrgWithoutMemberAndRepeatsByKey(t *testing.T) {
 	at := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
 
 	org := testOrg("Provisioned", at)
-	created, wasCreated, err := store.ProvisionOrganization(ctx, org, staffOwnerInvite(org.ID, at, "token-1"), "key-1")
+	created, wasCreated, err := store.ProvisionOrganization(ctx, org, staffOwnerInvite(org.ID, at, "token-1"), "key-1", domain.StaffActor{Subject: "staff-test"})
 	if err != nil || !wasCreated || created.Organization.ID != org.ID {
 		t.Fatalf("provision = %q, created %v, %v; want a new organization %s", created.Organization.ID, wasCreated, err, org.ID)
 	}
@@ -54,7 +54,7 @@ func TestStaffProvisionWritesOrgWithoutMemberAndRepeatsByKey(t *testing.T) {
 	repeat := testOrg("Provisioned", at)
 	repeatOwner := staffOwnerInvite(repeat.ID, at, "token-2")
 	repeatOwner.Email = "someone-else@staff-test.example"
-	again, wasCreated, err := store.ProvisionOrganization(ctx, repeat, repeatOwner, "key-1")
+	again, wasCreated, err := store.ProvisionOrganization(ctx, repeat, repeatOwner, "key-1", domain.StaffActor{Subject: "staff-test"})
 	if err != nil || wasCreated || again.Organization.ID != org.ID {
 		t.Fatalf("repeat = %q, created %v, %v; want the existing organization %s", again.Organization.ID, wasCreated, err, org.ID)
 	}
@@ -223,7 +223,7 @@ func TestStaffProvisionConcurrentRepeatWithTheSameKeyCreatesOneOrganization(t *t
 		org.Slug = "racing-org"
 		go func() {
 			<-start
-			got, created, err := store.ProvisionOrganization(ctx, org, staffOwnerInvite(org.ID, at, uuid.NewString()), "race-key")
+			got, created, err := store.ProvisionOrganization(ctx, org, staffOwnerInvite(org.ID, at, uuid.NewString()), "race-key", domain.StaffActor{Subject: "staff-test"})
 			outcomes <- outcome{orgID: got.Organization.ID, created: created, err: err}
 		}()
 	}

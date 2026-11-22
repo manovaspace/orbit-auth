@@ -60,10 +60,14 @@ type fakeOrgService struct {
 	removeUserID string
 	removeErr    error
 
-	suspendOrgID  string
-	suspendCaller string
-	suspendUserID string
-	suspendErr    error
+	suspendOrgID     string
+	suspendCaller    string
+	suspendUserID    string
+	suspendErr       error
+	reactivateOrgID  string
+	reactivateCaller string
+	reactivateUserID string
+	reactivateErr    error
 
 	roleOrgID  string
 	roleCaller string
@@ -153,6 +157,11 @@ func (f *fakeOrgService) RemoveMember(_ context.Context, orgID, callerID, userID
 func (f *fakeOrgService) SuspendMember(_ context.Context, orgID, callerID, userID string) error {
 	f.suspendOrgID, f.suspendCaller, f.suspendUserID = orgID, callerID, userID
 	return f.suspendErr
+}
+
+func (f *fakeOrgService) ReactivateMember(_ context.Context, orgID, callerID, userID string) error {
+	f.reactivateOrgID, f.reactivateCaller, f.reactivateUserID = orgID, callerID, userID
+	return f.reactivateErr
 }
 
 func (f *fakeOrgService) SetMemberRole(_ context.Context, orgID, callerID, userID string, role domain.MembershipRole) (domain.Membership, error) {

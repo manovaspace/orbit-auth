@@ -25,6 +25,13 @@ const (
 	SubjectOrgSuspended = "auth.org.suspended"
 	// SubjectOrgReactivated is published when staff lift a suspension.
 	SubjectOrgReactivated = "auth.org.reactivated"
+	// SubjectMembershipReactivated is published when a suspended member is
+	// reactivated.
+	SubjectMembershipReactivated = "auth.membership.reactivated"
+	// SubjectUserDisabled is published when staff disable an account.
+	SubjectUserDisabled = "auth.user.disabled"
+	// SubjectUserEnabled is published when staff enable a disabled account.
+	SubjectUserEnabled = "auth.user.enabled"
 )
 
 // EventSource is the envelope metadata source of every event this service
@@ -112,6 +119,27 @@ type MembershipSuspendedPayload struct {
 	UserID     string           `json:"user_id"`
 	Status     MembershipStatus `json:"status"`
 	OccurredAt time.Time        `json:"occurred_at"`
+}
+
+// MembershipReactivatedPayload is the body of auth.membership.reactivated.
+// Status is the lifecycle state after the change (active) and Role the
+// organization administration tier.
+type MembershipReactivatedPayload struct {
+	OrgID      string           `json:"org_id"`
+	UserID     string           `json:"user_id"`
+	Status     MembershipStatus `json:"status"`
+	Role       MembershipRole   `json:"role"`
+	OccurredAt time.Time        `json:"occurred_at"`
+}
+
+// UserStatusChangedPayload is the body of auth.user.disabled and
+// auth.user.enabled. StaffSubject and Reason identify the staff write. The
+// payload carries no email, mobile number or token.
+type UserStatusChangedPayload struct {
+	UserID       string    `json:"user_id"`
+	StaffSubject string    `json:"staff_subject"`
+	Reason       string    `json:"reason"`
+	OccurredAt   time.Time `json:"occurred_at"`
 }
 
 // Event is one lifecycle fact to record in the same transaction as the change
@@ -209,6 +237,33 @@ func NewOrgSlugChangedEvent(orgID, slug, previous, actorID, reason string, at ti
 	return Event{
 		Subject:    SubjectOrgSlugChanged,
 		Payload:    OrgSlugChangedPayload{OrgID: orgID, Slug: slug, PreviousSlug: previous, ActorID: actorID, Reason: reason, OccurredAt: at},
+		OccurredAt: at,
+	}
+}
+
+// NewMembershipReactivatedEvent builds auth.membership.reactivated.
+func NewMembershipReactivatedEvent(orgID, userID string, status MembershipStatus, role MembershipRole, at time.Time) Event {
+	return Event{
+		Subject:    SubjectMembershipReactivated,
+		Payload:    MembershipReactivatedPayload{OrgID: orgID, UserID: userID, Status: status, Role: role, OccurredAt: at},
+		OccurredAt: at,
+	}
+}
+
+// NewUserDisabledEvent builds auth.user.disabled.
+func NewUserDisabledEvent(userID string, by StaffActor, at time.Time) Event {
+	return Event{
+		Subject:    SubjectUserDisabled,
+		Payload:    UserStatusChangedPayload{UserID: userID, StaffSubject: by.Subject, Reason: by.Reason, OccurredAt: at},
+		OccurredAt: at,
+	}
+}
+
+// NewUserEnabledEvent builds auth.user.enabled.
+func NewUserEnabledEvent(userID string, by StaffActor, at time.Time) Event {
+	return Event{
+		Subject:    SubjectUserEnabled,
+		Payload:    UserStatusChangedPayload{UserID: userID, StaffSubject: by.Subject, Reason: by.Reason, OccurredAt: at},
 		OccurredAt: at,
 	}
 }

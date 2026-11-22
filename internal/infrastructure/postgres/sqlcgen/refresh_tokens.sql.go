@@ -51,6 +51,44 @@ func (q *Queries) FindValidRefreshToken(ctx context.Context, tokenHash string) (
 	return i, err
 }
 
+const lockUserForShare = `-- name: LockUserForShare :one
+SELECT status FROM users WHERE id = $1::uuid FOR SHARE
+`
+
+// Takes a share lock on the account row for the sign-in transaction that stores a
+// refresh token. DisableUser takes the conflicting FOR UPDATE lock, so a token
+// stored by a concurrent sign-in either commits first and is revoked by the
+// disable, or the disable commits first and the sign-in finds the account
+// disabled.
+func (q *Queries) LockUserForShare(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, lockUserForShare, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const revokeOrganizationRefreshTokens = `-- name: RevokeOrganizationRefreshTokens :execrows
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE user_id = $1::uuid
+  AND org_id = $2::uuid
+  AND revoked_at IS NULL
+`
+
+type RevokeOrganizationRefreshTokensParams struct {
+	UserID uuid.UUID
+	OrgID  uuid.UUID
+}
+
+// Revokes the live refresh tokens of one account that selected one organization.
+// Suspending or removing that membership uses it; other organizations are kept.
+func (q *Queries) RevokeOrganizationRefreshTokens(ctx context.Context, arg RevokeOrganizationRefreshTokensParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeOrganizationRefreshTokens, arg.UserID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1
 `
@@ -58,6 +96,20 @@ UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1
 func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	_, err := q.db.Exec(ctx, revokeRefreshToken, tokenHash)
 	return err
+}
+
+const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :execrows
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE user_id = $1::uuid AND revoked_at IS NULL
+`
+
+// Revokes every live refresh token of one account. Disabling an account uses it.
+func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const storeRefreshToken = `-- name: StoreRefreshToken :exec

@@ -70,12 +70,12 @@ func TestRolledBackSignupWritesNoEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	invite := pendingInvite(org.ID, inviter.ID, "new@example.com", "rollback-token")
-	if err := store.CreateInvite(ctx, invite); err != nil {
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	// Revoking leaves the invite id valid but no longer pending, so acceptance
 	// inside CreateSignupUser affects no rows after user.created was written.
-	if err := store.RevokeInvite(ctx, org.ID, invite.ID); err != nil {
+	if err := store.RevokeInvite(ctx, org.ID, invite.ID, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,7 +151,7 @@ func TestOutboxCommitPublishesOnceAndRestartRedeliversNothing(t *testing.T) {
 
 	// One committed change: adding a member writes exactly one outbox row and
 	// the relay publishes exactly one event.
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	var pending int
@@ -235,7 +235,7 @@ func TestLifecycleEventSubjectsInOneTransaction(t *testing.T) {
 	if err := store.CreateOrg(ctx, org, owner.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember); err != nil {
+	if err := store.AddMember(ctx, org.ID, member.ID, domain.MembershipActive, domain.RoleMember, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateMemberStatus(ctx, org.ID, member.ID, domain.MembershipSuspended, domain.MembershipActor{}); err != nil {

@@ -65,7 +65,7 @@ Start with orbit-infra: `orbit/orbit-infra/scripts/start-tier2.sh`
 Memberships carry an administration tier `role` (`owner`, `admin`, `member`; migration 010). It decides who may change memberships and invitations in orbit-auth itself; products keep their own roles and permissions (ADR-045).
 
 - The rule is one pure function, `domain.AuthorizeMembershipAction`. The caller must be an active owner or admin; an admin acts only on plain members; only an owner grants `owner` or `admin`; any active member may remove themselves.
-- Every write RPC (`AddMember`, `RemoveMember`, `SuspendMember`, `SetMemberRole`, `InviteMember`, `RevokeInvite`) and `ListInvites` is authorized in `internal/application`. A caller who is not an active member gets `NotFound` (existence is not revealed); a member without authority gets `PermissionDenied`.
+- Every write RPC (`AddMember`, `RemoveMember`, `SuspendMember`, `ReactivateMember`, `SetMemberRole`, `InviteMember`, `RevokeInvite`) and `ListInvites` is authorized in `internal/application`. A caller who is not an active member gets `NotFound` (existence is not revealed); a member without authority gets `PermissionDenied`.
 - The store keeps at least one active owner (`ErrLastOwner` → `FailedPrecondition`) under the organization row lock, so concurrent demotions cannot orphan an organization. The creator of an organization (`CreateOrg`, sign-up with `org_name`) is its first owner; invited and added members start as `member`.
 - Migration 010 backfilled the earliest active member of each organization as its owner.
 
@@ -78,6 +78,23 @@ Memberships carry an administration tier `role` (`owner`, `admin`, `member`; mig
 - **Staff are never members.** Staff operations skip `AuthorizeMembershipAction`. Each write is logged with the staff subject and reason.
 - **Suspension:** a suspended organization refuses `SelectOrg` and refresh into it (`FailedPrecondition`, "organization suspended"). Its members keep their memberships, and `ResolveTenant` reports `suspended`.
 - **Migration 014** adds `organizations.status` (`active` or `suspended`), `suspended_at`, `suspended_reason`, the `organization_provisions` idempotency table (key, organization and owner target), and `organization_invites.inviter_staff_subject`. `inviter_id` becomes nullable, and exactly one of the two inviter columns is set.
+
+## Staff user administration
+
+`StaffUserService` is the staff surface over accounts. It follows the `StaffOrgService` edge rules: the gateway is the only caller, every call carries `x-orbit-service-token` and `x-staff-subject`, and every write also carries the reason.
+
+- **RPCs:** `ListUsers` (query over email, mobile, username and display name, case-insensitive, `LIKE` wildcards escaped; `status` filter; keyset `page_token` on `(created_at, id)`, `page_size` up to 100), `GetUser` (one account with its organization memberships), `DisableUser`, `EnableUser` and `ListAuditEvents`. `GetUser` and the listings never return a password hash, a token or a hash of either.
+- **Disable:** `DisableUser` locks the account row (`FOR UPDATE`), sets `disabled`, revokes every live refresh token of the account, writes `user.disabled` to `audit_events` and `auth.user.disabled` to the outbox, all in one transaction. Sign-in takes the account row `FOR SHARE` before it stores a refresh token, so a sign-in either commits before the disable and is revoked, or sees `disabled` and gets no token. A disabled account returns `changed=false` and writes nothing. A `signup_pending` account is `FailedPrecondition` "account is not active".
+- **Enable:** `EnableUser` restores `active` and writes `user.enabled` and `auth.user.enabled`. Refresh tokens revoked by the disable stay revoked; the user signs in again. An active account returns `changed=false`.
+- **Reason:** both writes need `x-staff-reason`. `ListUsers`, `GetUser` and `ListAuditEvents` need none.
+
+## Audit trail
+
+`audit_events` (migration 017) is a durable, append-only record of account, membership, organization and invitation changes. Each row is written in the same transaction as the change it records, through `writeAudit` in `internal/infrastructure/postgres/audit.go`.
+
+- Columns: `occurred_at`, `action` (for example `invite.created`, `membership.suspended`, `org.reactivated`, `user.disabled`), `actor_kind` (`user`, `staff` or `system`), `actor_id` (the user id, or the staff subject, or empty), `org_id`, `subject_user_id`, `invite_id`, `reason` (the staff reason) and `details` (JSON). Rows carry no foreign keys, so they outlive the organization and the user.
+- A row never holds an email address, a mobile number, a password, a token or a hash. An invitation is identified by `invite_id`.
+- `ListAuditEvents` (`StaffUserService`) pages newest first and requires an `org_id`, a `user_id` or both. A `user_id` filter matches `subject_user_id` only: rows where the user was the actor, and not the subject, are not listed by it.
 
 ## Organization slugs and tenant hosts
 
@@ -94,6 +111,7 @@ Every organization has a `slug`, the label of its tenant host (`<slug>.falak.<en
 
 - **Feature flags:** `manova.auth.email_otp` and `manova.auth.mobile_otp`, evaluated with OpenFeature over orbit-auth `/v1/flags` (`FLAGS_URL`). When disabled, `RequestOTP` returns `ErrEmailOTPDisabled` or `ErrMobileOTPDisabled`.
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) adds the optional `org` access-token claim at login when the user has exactly one active membership. Zero or many memberships omit it, and a suspended organization is never chosen. `SelectOrg` rotates the refresh token and issues a pair carrying the selected org.
+- **Account states:** `users.status` is `active`, `disabled` or `signup_pending` (migration 017). Only an active account gets tokens or acts. A disabled account is refused on every path with the caller's generic error: password login with `invalid credentials` (the password is compared first, so the refusal costs the same as a wrong password), OTP with `invalid or expired code`, `RefreshToken` and `SelectOrg` with `invalid refresh token`, API tokens with `invalid api token`, Google sign-in with `ErrGoogleAccountNotAllowed`, and `CreateOrg`, `SetUsername` and every membership action with `PermissionDenied` "account is not active". A still-valid access token keeps working at most 15 minutes, because access tokens are not checked against the account; the refresh tokens are revoked at once.
 - **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically (`RefreshTokenStore.Consume`), so a token can be redeemed once even under concurrent requests. Refreshing into or selecting a suspended organization fails with `FailedPrecondition` (`organization suspended`) and leaves the token unspent. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed.
 - **Demo seeding:** `DEMO_MODE=true` (dev only) and `AUTH_DEMO_USERS` JSON array seeds test user accounts into Postgres on startup. `cmd/auth` parses the JSON; the application validates and hashes each entry.
 - **Invite sign-up:** `AUTH_INVITE_SIGNUP` defaults to on; only an explicit `off` or `false` disables `InviteService.AcceptInviteWithSignup`. It needs a token an owner or admin issued, so it is independent of `AUTH_SIGNUP`.
@@ -109,6 +127,9 @@ Lifecycle events are written to the Postgres outbox (`outbox_events`, migration 
 - `auth.membership.added` — `AddMember`, invite acceptance (including phone invite sign-up), or the creator membership
 - `auth.membership.removed` — `RemoveMember`
 - `auth.membership.suspended` — `SuspendMember`
+- `auth.membership.reactivated` — `ReactivateMember` (carries `status` and `role`)
+- `auth.user.disabled` — staff `DisableUser` (carries `user_id`, `staff_subject` and `reason`)
+- `auth.user.enabled` — staff `EnableUser` (same payload)
 - `auth.membership.role_changed` — `SetMemberRole` (carries `role`, `previous_role` and `actor_id`)
 - `auth.org.slug_changed` — `SetOrgSlug` or staff `SetOrganizationSlug` (carries `slug`, `previous_slug` and `actor_id`: the caller, or for a staff change the staff subject, with `reason`); `auth.org.created` carries the new organization's `slug`
 - `auth.org.suspended` — staff `SuspendOrganization` (carries `org_id`, `staff_subject` and `reason`)

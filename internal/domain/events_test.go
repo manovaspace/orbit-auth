@@ -45,6 +45,9 @@ func TestLifecycleEventPayloadSchemas(t *testing.T) {
 		{"user.created", UserCreatedPayload{UserID: "u-1", OccurredAt: at}},
 		{"org.created", OrgCreatedPayload{OrgID: "o-1", Name: "Acme", Slug: "acme", OccurredAt: at}},
 		{"org.slug_changed", OrgSlugChangedPayload{OrgID: "o-1", Slug: "acme-cafe", PreviousSlug: "acme", ActorID: "u-1", OccurredAt: at}},
+		{"membership.reactivated", MembershipReactivatedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipActive, Role: RoleMember, OccurredAt: at}},
+		{"user.disabled", UserStatusChangedPayload{UserID: "u-1", StaffSubject: "staff-1", Reason: "fraud", OccurredAt: at}},
+		{"user.enabled", UserStatusChangedPayload{UserID: "u-1", StaffSubject: "staff-1", Reason: "cleared", OccurredAt: at}},
 		{"membership.added", MembershipAddedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipActive, Role: RoleMember, OccurredAt: at}},
 		{"membership.removed", MembershipRemovedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipActive, OccurredAt: at}},
 		{"membership.suspended", MembershipSuspendedPayload{OrgID: "o-1", UserID: "u-1", Status: MembershipSuspended, OccurredAt: at}},
@@ -71,6 +74,9 @@ func TestLifecycleEventConstructors(t *testing.T) {
 		{"suspended", NewMembershipSuspendedEvent("o-1", "u-1", MembershipSuspended, at), SubjectMembershipSuspended},
 		{"slug changed", NewOrgSlugChangedEvent("o-1", "acme-cafe", "acme", "u-1", "", at), SubjectOrgSlugChanged},
 		{"role changed", NewMembershipRoleChangedEvent("o-1", "u-1", RoleAdmin, RoleMember, "u-2", at), SubjectMembershipRoleChanged},
+		{"reactivated", NewMembershipReactivatedEvent("o-1", "u-1", MembershipActive, RoleMember, at), SubjectMembershipReactivated},
+		{"user disabled", NewUserDisabledEvent("u-1", StaffActor{Subject: "staff-1", Reason: "fraud"}, at), SubjectUserDisabled},
+		{"user enabled", NewUserEnabledEvent("u-1", StaffActor{Subject: "staff-1", Reason: "cleared"}, at), SubjectUserEnabled},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

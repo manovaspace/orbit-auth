@@ -18,8 +18,10 @@ import (
 // recipient (email or phone), then writes the new pending invite in one
 // transaction. The organization row is locked so two concurrent invitations
 // for the same recipient cannot both survive the partial unique indexes. The
-// database check keeps exactly one of email and phone set.
-func (s *Store) CreateInvite(ctx context.Context, invite domain.Invite) error {
+// database check keeps exactly one of email and phone set. Each revoked invite
+// gets an invite.revoked row with rotated=true, and the new one an invite.created
+// row, all written for by.
+func (s *Store) CreateInvite(ctx context.Context, invite domain.Invite, by domain.AuditActor) error {
 	id, err := uuid.Parse(invite.ID)
 	if err != nil {
 		return fmt.Errorf("postgres: invite id %q: %w", invite.ID, err)
@@ -43,19 +45,32 @@ func (s *Store) CreateInvite(ctx context.Context, invite domain.Invite) error {
 	if err := lockOrganization(ctx, queries, orgID); err != nil {
 		return err
 	}
+	var revoked []uuid.UUID
 	if invite.Phone != "" {
-		err = queries.RevokePendingOrganizationInvitesForPhone(ctx, sqlcgen.RevokePendingOrganizationInvitesForPhoneParams{
+		revoked, err = queries.RevokePendingOrganizationInvitesForPhone(ctx, sqlcgen.RevokePendingOrganizationInvitesForPhoneParams{
 			OrgID: orgID,
 			Phone: invite.Phone,
 		})
 	} else {
-		err = queries.RevokePendingOrganizationInvitesForEmail(ctx, sqlcgen.RevokePendingOrganizationInvitesForEmailParams{
+		revoked, err = queries.RevokePendingOrganizationInvitesForEmail(ctx, sqlcgen.RevokePendingOrganizationInvitesForEmailParams{
 			OrgID: orgID,
 			Email: invite.Email,
 		})
 	}
 	if err != nil {
 		return fmt.Errorf("postgres: revoke previous pending invite: %w", err)
+	}
+	for _, revokedID := range revoked {
+		if err := writeAudit(ctx, queries, domain.AuditEntry{
+			Action:     domain.AuditInviteRevoked,
+			Actor:      by,
+			OrgID:      invite.OrgID,
+			InviteID:   revokedID.String(),
+			Details:    map[string]any{"rotated": true},
+			OccurredAt: time.Now().UTC(),
+		}); err != nil {
+			return err
+		}
 	}
 	if err := queries.CreateOrganizationInvite(ctx, sqlcgen.CreateOrganizationInviteParams{
 		ID:                  id,
@@ -71,6 +86,16 @@ func (s *Store) CreateInvite(ctx context.Context, invite domain.Invite) error {
 		CreatedAt:           timestamptz(invite.CreatedAt),
 	}); err != nil {
 		return fmt.Errorf("postgres: create invite: %w", err)
+	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:     domain.AuditInviteCreated,
+		Actor:      by,
+		OrgID:      invite.OrgID,
+		InviteID:   invite.ID,
+		Details:    map[string]any{"role": string(invite.Role), "channel": inviteChannel(invite)},
+		OccurredAt: time.Now().UTC(),
+	}); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("postgres: commit create invite: %w", err)
@@ -134,13 +159,21 @@ func (s *Store) ListInvites(ctx context.Context, orgID string) ([]domain.Invite,
 	return out, nil
 }
 
-// RevokeInvite revokes one pending invite or returns domain.ErrInviteNotFound.
-func (s *Store) RevokeInvite(ctx context.Context, orgID, inviteID string) error {
+// RevokeInvite revokes one pending invite and writes its invite.revoked row in
+// the same transaction, or returns domain.ErrInviteNotFound.
+func (s *Store) RevokeInvite(ctx context.Context, orgID, inviteID string, by domain.AuditActor) error {
 	org, id, err := inviteIDs(orgID, inviteID)
 	if err != nil {
 		return err
 	}
-	affected, err := s.queries.RevokeOrganizationInvite(ctx, sqlcgen.RevokeOrganizationInviteParams{
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: begin revoke invite: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	affected, err := queries.RevokeOrganizationInvite(ctx, sqlcgen.RevokeOrganizationInviteParams{
 		ID:    id,
 		OrgID: org,
 	})
@@ -150,7 +183,28 @@ func (s *Store) RevokeInvite(ctx context.Context, orgID, inviteID string) error 
 	if affected == 0 {
 		return domain.ErrInviteNotFound
 	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:     domain.AuditInviteRevoked,
+		Actor:      by,
+		OrgID:      orgID,
+		InviteID:   inviteID,
+		Details:    map[string]any{"rotated": false},
+		OccurredAt: time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("postgres: commit revoke invite: %w", err)
+	}
 	return nil
+}
+
+// inviteChannel names the channel an invitation uses, for the audit details.
+func inviteChannel(invite domain.Invite) string {
+	if invite.Phone != "" {
+		return "phone"
+	}
+	return "email"
 }
 
 // AcceptInvite marks one pending invite accepted and makes the user an active
@@ -184,6 +238,7 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 		return err
 	}
 	current, err := getMembership(ctx, queries, org, user)
+	newMember := errors.Is(err, domain.ErrNotMember)
 	switch {
 	case err == nil && current.Status == domain.MembershipSuspended:
 		// A suspended member cannot use an invitation to reactivate
@@ -215,6 +270,10 @@ func (s *Store) AcceptInvite(ctx context.Context, inviteID, orgID, userID string
 	// rather than assuming a new plain member.
 	joined, err := getMembership(ctx, queries, org, user)
 	if err != nil {
+		return err
+	}
+	actor := domain.UserAuditActor(userID)
+	if err := inviteAcceptedAudit(ctx, queries, orgID, id.String(), userID, role, newMember, actor, acceptedAt); err != nil {
 		return err
 	}
 	if err := emitEvents(ctx, newOutboxSink(tx),

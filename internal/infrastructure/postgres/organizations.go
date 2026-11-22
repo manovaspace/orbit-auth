@@ -49,7 +49,8 @@ func (s *Store) CreateOrg(ctx context.Context, org domain.Organization, creatorI
 // owner, and the creation events. It is shared by CreateOrg and sign-up with an
 // organization so both allocate slugs the same way.
 func createOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, userID uuid.UUID, occurredAt time.Time) error {
-	if err := insertOrganizationTx(ctx, queries, sink, org, occurredAt); err != nil {
+	creator := domain.UserAuditActor(userID.String())
+	if err := insertOrganizationTx(ctx, queries, sink, org, occurredAt, creator); err != nil {
 		return err
 	}
 	orgID, err := uuid.Parse(org.ID)
@@ -64,16 +65,27 @@ func createOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink do
 	}); err != nil {
 		return fmt.Errorf("postgres: add organization creator: %w", err)
 	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:        domain.AuditMembershipAdded,
+		Actor:         creator,
+		OrgID:         org.ID,
+		SubjectUserID: userID.String(),
+		Details:       map[string]any{"role": string(domain.RoleOwner)},
+		OccurredAt:    occurredAt,
+	}); err != nil {
+		return err
+	}
 	return emitEvents(ctx, sink,
 		domain.NewMembershipAddedEvent(org.ID, userID.String(), domain.MembershipActive, domain.RoleOwner, occurredAt),
 	)
 }
 
 // insertOrganizationTx writes the organization row, its slug registry row and
-// auth.org.created, without any membership. Staff provisioning uses it directly
-// because staff are never members. A slug that another organization holds or
-// has held is domain.ErrSlugTaken.
-func insertOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, occurredAt time.Time) error {
+// auth.org.created, without any membership, and writes the org.created audit
+// row for by. Staff provisioning uses it directly because staff are never
+// members. A slug that another organization holds or has held is
+// domain.ErrSlugTaken.
+func insertOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink domain.EventSink, org domain.Organization, occurredAt time.Time, by domain.AuditActor) error {
 	orgID, err := uuid.Parse(org.ID)
 	if err != nil {
 		return fmt.Errorf("postgres: organization id %q: %w", org.ID, err)
@@ -92,6 +104,15 @@ func insertOrganizationTx(ctx context.Context, queries *sqlcgen.Queries, sink do
 	}
 	if err := queries.InsertOrganizationSlug(ctx, sqlcgen.InsertOrganizationSlugParams{Slug: org.Slug, OrgID: orgID}); err != nil {
 		return slugConflict(fmt.Errorf("postgres: register organization slug: %w", err))
+	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:     domain.AuditOrgCreated,
+		Actor:      by,
+		OrgID:      org.ID,
+		Details:    map[string]any{"slug": org.Slug},
+		OccurredAt: occurredAt,
+	}); err != nil {
+		return err
 	}
 	return emitEvents(ctx, sink,
 		domain.NewOrgCreatedEvent(org.ID, org.Name, org.Slug, occurredAt),
@@ -120,22 +141,22 @@ func (s *Store) SlugAvailable(ctx context.Context, slug string) (bool, error) {
 // SetOrgSlug makes slug the organization's current slug for a member, under the
 // organization lock where the policy is rechecked. The event names the caller.
 func (s *Store) SetOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor) error {
-	return s.changeOrgSlug(ctx, orgID, slug, by, by.CallerID, "")
+	return s.changeOrgSlug(ctx, orgID, slug, by, domain.MembershipAuditActor(by))
 }
 
 // SetOrgSlugByStaff makes slug the organization's current slug for a staff
 // write. Staff are not members, so no membership is checked. The event names the
 // staff subject as its actor and carries the reason.
 func (s *Store) SetOrgSlugByStaff(ctx context.Context, orgID, slug string, by domain.StaffActor) error {
-	return s.changeOrgSlug(ctx, orgID, slug, domain.MembershipActor{}, by.Subject, by.Reason)
+	return s.changeOrgSlug(ctx, orgID, slug, domain.MembershipActor{}, domain.StaffAuditActor(by))
 }
 
 // changeOrgSlug makes slug the organization's current slug in one transaction
 // under the organization lock. The previous slug is retired, stays reserved for
 // this organization and keeps resolving, so a rename never frees an address for
 // someone else. Re-claiming one of the organization's own retired slugs is
-// allowed. actorID and reason are written to auth.org.slug_changed.
-func (s *Store) changeOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor, actorID, reason string) error {
+// allowed. actor is named in auth.org.slug_changed and in its audit row.
+func (s *Store) changeOrgSlug(ctx context.Context, orgID, slug string, by domain.MembershipActor, actor domain.AuditActor) error {
 	if err := domain.ValidateSlug(slug); err != nil {
 		return err
 	}
@@ -181,8 +202,18 @@ func (s *Store) changeOrgSlug(ctx context.Context, orgID, slug string, by domain
 	if err := queries.UpdateOrganizationSlug(ctx, sqlcgen.UpdateOrganizationSlugParams{Slug: slug, ID: org}); err != nil {
 		return slugConflict(fmt.Errorf("postgres: update organization slug: %w", err))
 	}
+	now := time.Now().UTC()
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:     domain.AuditOrgSlugChanged,
+		Actor:      actor,
+		OrgID:      orgID,
+		Details:    map[string]any{"slug": slug, "previous_slug": current.Slug},
+		OccurredAt: now,
+	}); err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewOrgSlugChangedEvent(orgID, slug, current.Slug, actorID, reason, time.Now().UTC()),
+		domain.NewOrgSlugChangedEvent(orgID, slug, current.Slug, actor.ID, actor.Reason, now),
 	); err != nil {
 		return err
 	}
@@ -288,7 +319,7 @@ func (s *Store) ListMembers(ctx context.Context, orgID string) ([]domain.Members
 // transaction. An existing membership is left untouched, so its status can only
 // change through UpdateMemberStatus, its role through UpdateMemberRole, and no
 // event is written for a no-op.
-func (s *Store) AddMember(ctx context.Context, orgID, userID string, status domain.MembershipStatus, role domain.MembershipRole) error {
+func (s *Store) AddMember(ctx context.Context, orgID, userID string, status domain.MembershipStatus, role domain.MembershipRole, by domain.AuditActor) error {
 	org, user, err := membershipIDs(orgID, userID)
 	if err != nil {
 		return err
@@ -323,8 +354,19 @@ func (s *Store) AddMember(ctx context.Context, orgID, userID string, status doma
 	}); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:        domain.AuditMembershipAdded,
+		Actor:         by,
+		OrgID:         orgID,
+		SubjectUserID: userID,
+		Details:       map[string]any{"role": string(role)},
+		OccurredAt:    now,
+	}); err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewMembershipAddedEvent(orgID, userID, status, role, time.Now().UTC()),
+		domain.NewMembershipAddedEvent(orgID, userID, status, role, now),
 	); err != nil {
 		return err
 	}
@@ -378,9 +420,39 @@ func (s *Store) UpdateMemberStatus(ctx context.Context, orgID, userID string, st
 	}); err != nil {
 		return err
 	}
-	if status == domain.MembershipSuspended && current.Status != domain.MembershipSuspended {
+	now := time.Now().UTC()
+	switch {
+	case status == domain.MembershipSuspended && current.Status != domain.MembershipSuspended:
+		// A suspended member keeps no session in this organization.
+		if err := revokeOrganizationTokens(ctx, queries, org, user); err != nil {
+			return err
+		}
+		if err := writeAudit(ctx, queries, domain.AuditEntry{
+			Action:        domain.AuditMembershipSuspended,
+			Actor:         domain.MembershipAuditActor(by),
+			OrgID:         orgID,
+			SubjectUserID: userID,
+			OccurredAt:    now,
+		}); err != nil {
+			return err
+		}
 		if err := emitEvents(ctx, newOutboxSink(tx),
-			domain.NewMembershipSuspendedEvent(orgID, userID, status, time.Now().UTC()),
+			domain.NewMembershipSuspendedEvent(orgID, userID, status, now),
+		); err != nil {
+			return err
+		}
+	case status == domain.MembershipActive && current.Status == domain.MembershipSuspended:
+		if err := writeAudit(ctx, queries, domain.AuditEntry{
+			Action:        domain.AuditMembershipReactivated,
+			Actor:         domain.MembershipAuditActor(by),
+			OrgID:         orgID,
+			SubjectUserID: userID,
+			OccurredAt:    now,
+		}); err != nil {
+			return err
+		}
+		if err := emitEvents(ctx, newOutboxSink(tx),
+			domain.NewMembershipReactivatedEvent(orgID, userID, domain.MembershipActive, current.Role, now),
 		); err != nil {
 			return err
 		}
@@ -433,8 +505,22 @@ func (s *Store) RemoveMember(ctx context.Context, orgID, userID string, by domai
 	}); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
+	if err := revokeOrganizationTokens(ctx, queries, org, user); err != nil {
+		return err
+	}
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:        domain.AuditMembershipRemoved,
+		Actor:         domain.MembershipAuditActor(by),
+		OrgID:         orgID,
+		SubjectUserID: userID,
+		Details:       map[string]any{"status": string(current.Status)},
+		OccurredAt:    now,
+	}); err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewMembershipRemovedEvent(orgID, userID, current.Status, time.Now().UTC()),
+		domain.NewMembershipRemovedEvent(orgID, userID, current.Status, now),
 	); err != nil {
 		return err
 	}
@@ -491,8 +577,19 @@ func (s *Store) UpdateMemberRole(ctx context.Context, orgID, userID string, role
 	}); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
+	if err := writeAudit(ctx, queries, domain.AuditEntry{
+		Action:        domain.AuditMembershipRoleChanged,
+		Actor:         domain.UserAuditActor(actorID),
+		OrgID:         orgID,
+		SubjectUserID: userID,
+		Details:       map[string]any{"role": string(role), "previous_role": string(current.Role)},
+		OccurredAt:    now,
+	}); err != nil {
+		return err
+	}
 	if err := emitEvents(ctx, newOutboxSink(tx),
-		domain.NewMembershipRoleChangedEvent(orgID, userID, role, current.Role, actorID, time.Now().UTC()),
+		domain.NewMembershipRoleChangedEvent(orgID, userID, role, current.Role, actorID, now),
 	); err != nil {
 		return err
 	}
@@ -567,6 +664,19 @@ func getMembership(ctx context.Context, queries *sqlcgen.Queries, orgID, userID 
 		CreatedAt: row.CreatedAt.Time,
 		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
+}
+
+// revokeOrganizationTokens revokes the live refresh tokens of one account that
+// selected orgID. Other organizations' sessions are kept. It runs in the
+// membership change's transaction.
+func revokeOrganizationTokens(ctx context.Context, queries *sqlcgen.Queries, orgID, userID uuid.UUID) error {
+	if _, err := queries.RevokeOrganizationRefreshTokens(ctx, sqlcgen.RevokeOrganizationRefreshTokensParams{
+		UserID: userID,
+		OrgID:  orgID,
+	}); err != nil {
+		return fmt.Errorf("postgres: revoke organization refresh tokens: %w", err)
+	}
+	return nil
 }
 
 func lockOrganization(ctx context.Context, queries *sqlcgen.Queries, orgID uuid.UUID) error {

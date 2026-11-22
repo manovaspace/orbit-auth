@@ -30,7 +30,7 @@ func newFakeInviteStore(orgs *fakeOrgStore) *fakeInviteStore {
 	return &fakeInviteStore{invites: make(map[string]domain.Invite), orgs: orgs}
 }
 
-func (f *fakeInviteStore) CreateInvite(_ context.Context, invite domain.Invite) error {
+func (f *fakeInviteStore) CreateInvite(_ context.Context, invite domain.Invite, _ domain.AuditActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.createErr != nil {
@@ -81,7 +81,7 @@ func (f *fakeInviteStore) ListInvites(_ context.Context, orgID string) ([]domain
 	return out, nil
 }
 
-func (f *fakeInviteStore) RevokeInvite(_ context.Context, orgID, inviteID string) error {
+func (f *fakeInviteStore) RevokeInvite(_ context.Context, orgID, inviteID string, _ domain.AuditActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.revokeErr != nil {

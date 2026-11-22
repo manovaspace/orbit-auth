@@ -225,9 +225,6 @@ func TestLoginWithPasswordMapsErrors(t *testing.T) {
 	_, err := srv.LoginWithPassword(context.Background(), &authv1.LoginWithPasswordRequest{Identifier: "person@example.com"})
 	assertCode(t, err, codes.Unauthenticated, "invalid credentials")
 
-	app.loginErr = application.ErrUserDisabled
-	_, err = srv.LoginWithPassword(context.Background(), &authv1.LoginWithPasswordRequest{Identifier: "person@example.com"})
-	assertCode(t, err, codes.PermissionDenied, "user disabled")
 }
 
 func TestRefreshTokenMapsError(t *testing.T) {

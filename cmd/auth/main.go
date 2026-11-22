@@ -147,23 +147,24 @@ func main() {
 	})
 	hasher := credentials.NewHasher()
 	svc := application.NewService(application.Deps{
-		OTP:       store,
-		Users:     store,
-		Refresh:   store,
-		Tokens:    store,
-		Orgs:      store,
-		Invites:   store,
-		Signup:    store,
-		Notifier:  notif,
-		Flags:     flags,
-		Clock:     clock.New(),
-		IDs:       ids.New(),
-		Signer:    signer,
-		Hasher:    hasher,
-		Codes:     credentials.NewCodes(),
-		Secrets:   credentials.NewSecrets(),
-		DemoMode:  os.Getenv("DEMO_MODE") == "true",
-		DemoUsers: demoUsers,
+		OTP:        store,
+		Users:      store,
+		Refresh:    store,
+		Tokens:     store,
+		Orgs:       store,
+		Invites:    store,
+		StaffUsers: store,
+		Signup:     store,
+		Notifier:   notif,
+		Flags:      flags,
+		Clock:      clock.New(),
+		IDs:        ids.New(),
+		Signer:     signer,
+		Hasher:     hasher,
+		Codes:      credentials.NewCodes(),
+		Secrets:    credentials.NewSecrets(),
+		DemoMode:   os.Getenv("DEMO_MODE") == "true",
+		DemoUsers:  demoUsers,
 		// AUTH_DEFAULT_CALLING_CODE completes local mobile numbers at sign-in.
 		DefaultCallingCode: defaultCallingCode,
 		// AUTH_SIGNUP defaults to off; only the literal open (case-insensitive)
@@ -209,6 +210,7 @@ func main() {
 	authv1.RegisterInviteServiceServer(gs, grpchandlers.NewInvite(svc))
 	authv1.RegisterSignupServiceServer(gs, grpchandlers.NewSignup(svc))
 	authv1.RegisterStaffOrgServiceServer(gs, grpchandlers.NewStaffOrg(svc))
+	authv1.RegisterStaffUserServiceServer(gs, grpchandlers.NewStaffUser(svc))
 
 	health := httpapi.New(flagService)
 	healthPort := envOr("HEALTH_PORT", "10011")

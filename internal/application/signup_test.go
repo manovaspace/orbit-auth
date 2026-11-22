@@ -740,7 +740,7 @@ func TestRegisterWithEmailInviteCreatesVerifiedMember(t *testing.T) {
 		ExpiresAt: now.Add(time.Hour),
 		CreatedAt: now,
 	}
-	if err := store.invites.CreateInvite(context.Background(), invite); err != nil {
+	if err := store.invites.CreateInvite(context.Background(), invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -802,7 +802,7 @@ func TestRegisterWithEmailInviteEmailMustMatch(t *testing.T) {
 		ExpiresAt: now.Add(time.Hour),
 		CreatedAt: now,
 	}
-	if err := store.invites.CreateInvite(context.Background(), invite); err != nil {
+	if err := store.invites.CreateInvite(context.Background(), invite, domain.SystemAuditActor()); err != nil {
 		t.Fatal(err)
 	}
 

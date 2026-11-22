@@ -25,6 +25,7 @@ type OrgService interface {
 	ListMembers(ctx context.Context, orgID string) ([]domain.Membership, error)
 	AddMember(ctx context.Context, orgID, callerID, userID string) error
 	SuspendMember(ctx context.Context, orgID, callerID, userID string) error
+	ReactivateMember(ctx context.Context, orgID, callerID, userID string) error
 	RemoveMember(ctx context.Context, orgID, callerID, userID string) error
 	SetMemberRole(ctx context.Context, orgID, callerID, userID string, role domain.MembershipRole) (domain.Membership, error)
 	IsActiveMember(ctx context.Context, orgID, userID string) (bool, error)
@@ -133,6 +134,23 @@ func (s *OrgServer) SuspendMember(ctx context.Context, req *authv1.SuspendMember
 		return nil, orgError(err)
 	}
 	return &authv1.SuspendMemberResponse{}, nil
+}
+
+// ReactivateMember lifts a suspension. The application layer applies the
+// suspension rules to the caller.
+func (s *OrgServer) ReactivateMember(ctx context.Context, req *authv1.ReactivateMemberRequest) (*authv1.ReactivateMemberResponse, error) {
+	orgID, userID, err := s.requireActiveMember(ctx, req.GetOrgId(), req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	callerID, err := caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.ReactivateMember(ctx, orgID, callerID, userID); err != nil {
+		return nil, orgError(err)
+	}
+	return &authv1.ReactivateMemberResponse{}, nil
 }
 
 // SetOrgSlug renames the organization's slug. The application layer requires
@@ -446,6 +464,8 @@ func orgError(err error) error {
 		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, domain.ErrLastActiveMember), errors.Is(err, domain.ErrLastOwner):
 		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, domain.ErrAccountNotActive):
+		return status.Error(codes.PermissionDenied, "account is not active")
 	case errors.Is(err, domain.ErrInvalidRole), errors.Is(err, domain.ErrInvalidSlug):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, domain.ErrSlugTaken), errors.Is(err, domain.ErrUsernameTaken):

@@ -30,14 +30,18 @@ const (
 	staffReasonMetadataKey       = "x-staff-reason"
 	staffReasonMaxRunes          = 500
 	staffOrgServicePrefix        = "/auth.v1.StaffOrgService/"
+	staffUserServicePrefix       = "/auth.v1.StaffUserService/"
 )
 
-// staffReadMethods are the StaffOrgService RPCs that change nothing and so need
-// no reason. Every other StaffOrgService method is a write, which is the safe
-// default for a method added later.
+// staffReadMethods are the staff RPCs that change nothing and so need no reason.
+// Every other staff method is a write, which is the safe default for a method
+// added later.
 var staffReadMethods = map[string]struct{}{
 	staffOrgServicePrefix + "ListOrganizations": {},
 	staffOrgServicePrefix + "GetOrganization":   {},
+	staffUserServicePrefix + "ListUsers":        {},
+	staffUserServicePrefix + "GetUser":          {},
+	staffUserServicePrefix + "ListAuditEvents":  {},
 }
 
 type staffActorContextKey struct{}
@@ -53,14 +57,14 @@ func staffActorFromContext(ctx context.Context) (domain.StaffActor, bool) {
 	return actor, ok
 }
 
-// StaffServiceUnaryServerInterceptor guards StaffOrgService. It fails closed:
-// with an empty serviceToken every StaffOrgService call is Unavailable. Otherwise
+// StaffServiceUnaryServerInterceptor guards StaffOrgService and StaffUserService.
+// It fails closed: with an empty serviceToken every staff call is Unavailable. Otherwise
 // the call needs the service token (compared in constant time), a non-empty
 // staff subject, and, for every write RPC, a non-empty staff reason. The subject
 // and reason go into the context. Other services pass through untouched.
 func StaffServiceUnaryServerInterceptor(serviceToken string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		if !strings.HasPrefix(info.FullMethod, staffOrgServicePrefix) {
+		if !strings.HasPrefix(info.FullMethod, staffOrgServicePrefix) && !strings.HasPrefix(info.FullMethod, staffUserServicePrefix) {
 			return handler(ctx, req)
 		}
 		if serviceToken == "" {

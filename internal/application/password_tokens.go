@@ -11,15 +11,16 @@ import (
 
 var (
 	ErrInvalidCredentials = fmt.Errorf("invalid credentials")
-	ErrUserDisabled       = fmt.Errorf("user disabled")
 	ErrInvalidToken       = fmt.Errorf("invalid api token")
 	ErrInvalidRefresh     = fmt.Errorf("invalid refresh token")
 )
 
 // LoginWithPassword authenticates by username, mobile number or email address
-// plus password. The identifier kind is decided by domain.ParseLoginIdentifier;
-// every failure, including an identifier that names no account, is
-// ErrInvalidCredentials.
+// plus password. The identifier kind is decided by domain.ParseLoginIdentifier.
+// Every failure is ErrInvalidCredentials: an identifier that names no account,
+// a wrong password, a self-serve account that is not verified yet, and a
+// disabled account. The password is compared before the account state is read,
+// so the refusal does not take less time than a wrong password.
 func (s *Service) LoginWithPassword(ctx context.Context, identifier, password string) (access, refresh string, expires time.Time, err error) {
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" || password == "" {
@@ -38,28 +39,27 @@ func (s *Service) LoginWithPassword(ctx context.Context, identifier, password st
 	default:
 		user, err = s.users.FindByEmail(ctx, normalized)
 	}
-	if err != nil {
-		return "", "", time.Time{}, ErrInvalidCredentials
+	hash := s.dummyHash
+	if err == nil && user.PasswordHash != "" {
+		hash = user.PasswordHash
 	}
-	// A pending self-serve account is indistinguishable from an unknown one.
-	if user.Status == domain.UserSignupPending {
-		return "", "", time.Time{}, ErrInvalidCredentials
-	}
-	if user.Status == domain.UserDisabled {
-		return "", "", time.Time{}, ErrUserDisabled
-	}
-	if user.PasswordHash == "" || !s.hasher.Compare(user.PasswordHash, password) {
+	matched := s.hasher.Compare(hash, password)
+	if err != nil || user.PasswordHash == "" || !matched || user.Status != domain.UserActive {
 		return "", "", time.Time{}, ErrInvalidCredentials
 	}
 	_ = s.users.UpdateLastLogin(ctx, user.ID)
 	s.logger("password_login", "user_id", user.ID)
-	return s.issueTokens(ctx, user.ID)
+	access, refresh, expires, err = s.issueTokens(ctx, user.ID)
+	return access, refresh, expires, generic(err, ErrInvalidCredentials)
 }
 
 // CreateApiToken returns the plaintext token exactly once.
 func (s *Service) CreateApiToken(ctx context.Context, userID, name string, scopes []string, expiresAt *time.Time) (tokenID, prefix, secret string, err error) {
 	if userID == "" || strings.TrimSpace(name) == "" {
 		return "", "", "", fmt.Errorf("user_id and name required")
+	}
+	if err := s.requireActiveUser(ctx, userID); err != nil {
+		return "", "", "", err
 	}
 	raw, err := s.secrets.NewSecret()
 	if err != nil {
@@ -123,6 +123,9 @@ func (s *Service) ValidateApiToken(ctx context.Context, secret string) (userID s
 		return "", nil, ErrInvalidToken
 	}
 	if !s.hasher.Compare(t.TokenHash, full) {
+		return "", nil, ErrInvalidToken
+	}
+	if s.requireActiveUser(ctx, t.UserID) != nil {
 		return "", nil, ErrInvalidToken
 	}
 	return t.UserID, t.Scopes, nil

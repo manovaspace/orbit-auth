@@ -49,7 +49,9 @@ func TestLoginWithPassword_Rejections(t *testing.T) {
 		{"unknown mobile", "+989129999999", "s3cret-pass", domain.UserActive, ErrInvalidCredentials},
 		{"local-format mobile is not a mobile identifier", "09121234567", "s3cret-pass", domain.UserActive, ErrInvalidCredentials},
 		{"empty identifier", "", "s3cret-pass", domain.UserActive, ErrInvalidCredentials},
-		{"disabled", "+989121234567", "s3cret-pass", domain.UserDisabled, ErrUserDisabled},
+		{"disabled with right password", "+989121234567", "s3cret-pass", domain.UserDisabled, ErrInvalidCredentials},
+		{"disabled with wrong password", "+989121234567", "nope", domain.UserDisabled, ErrInvalidCredentials},
+		{"signup pending with right password", "+989121234567", "s3cret-pass", domain.UserSignupPending, ErrInvalidCredentials},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
