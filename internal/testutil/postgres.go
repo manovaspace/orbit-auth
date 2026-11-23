@@ -73,25 +73,25 @@ func OpenPostgres(t testing.TB) *Database {
 
 	scopedBase, err := withDatabaseName(rawURL, dbName)
 	if err != nil {
-		dropDatabase(basePool, dbName)
+		_ = dropDatabase(basePool, dbName)
 		basePool.Close()
 		t.Fatalf("scope test database URL: %v", err)
 	}
 	scopedURL, err := searchpath.Apply(scopedBase)
 	if err != nil {
-		dropDatabase(basePool, dbName)
+		_ = dropDatabase(basePool, dbName)
 		basePool.Close()
 		t.Fatalf("apply search_path to test database URL: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, scopedURL)
 	if err != nil {
-		dropDatabase(basePool, dbName)
+		_ = dropDatabase(basePool, dbName)
 		basePool.Close()
 		t.Fatalf("connect isolated test database: %v", err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		dropDatabase(basePool, dbName)
+		_ = dropDatabase(basePool, dbName)
 		basePool.Close()
 		t.Fatalf("ping isolated test database: %v", err)
 	}
