@@ -26,7 +26,7 @@ var slugPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,28}[a-z0-9]$`)
 // be confused with, and words that read like official accounts.
 var reservedSlugs = map[string]struct{}{
 	"admin": {}, "administrator": {}, "api": {}, "app": {}, "assets": {}, "auth": {},
-	"billing": {}, "cdn": {}, "dev": {}, "demo": {}, "docs": {}, "falak": {},
+	"billing": {}, "cdn": {}, "console": {}, "dev": {}, "demo": {}, "docs": {}, "falak": {},
 	"git": {}, "handbook": {}, "help": {}, "internal": {}, "login": {}, "logout": {},
 	"mail": {}, "manova": {}, "orbit": {}, "root": {}, "signup": {}, "smtp": {},
 	"sta": {}, "staging": {}, "static": {}, "status": {}, "support": {}, "system": {},
