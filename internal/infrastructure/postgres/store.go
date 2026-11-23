@@ -49,11 +49,15 @@ func (s *Store) UpsertChallenge(ctx context.Context, ch domain.OTPChallenge) err
 }
 
 // GetLatestChallenge returns the newest challenge for identifier and channel.
+// A missing challenge matches both domain.ErrChallengeNotFound and pgx.ErrNoRows.
 func (s *Store) GetLatestChallenge(ctx context.Context, identifier, channel string) (domain.OTPChallenge, error) {
 	row, err := s.queries.GetLatestChallenge(ctx, sqlcgen.GetLatestChallengeParams{
 		Identifier: identifier,
 		Channel:    channel,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.OTPChallenge{}, fmt.Errorf("%w: %w", domain.ErrChallengeNotFound, err)
+	}
 	if err != nil {
 		return domain.OTPChallenge{}, err
 	}
@@ -88,22 +92,21 @@ func (s *Store) ConsumeAttempt(ctx context.Context, id string) (bool, error) {
 	return true, nil
 }
 
-// IncrementAttempts adds one wrong attempt to a challenge.
-func (s *Store) IncrementAttempts(ctx context.Context, id string) error {
-	parsed, err := uuid.Parse(id)
-	if err != nil {
-		return fmt.Errorf("postgres: challenge id %q: %w", id, err)
-	}
-	return s.queries.IncrementChallengeAttempts(ctx, parsed)
-}
-
-// ConsumeChallenge deletes a used challenge.
+// ConsumeChallenge deletes a used challenge. A challenge that is missing or was
+// already deleted is domain.ErrChallengeConsumed.
 func (s *Store) ConsumeChallenge(ctx context.Context, id string) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
 		return fmt.Errorf("postgres: challenge id %q: %w", id, err)
 	}
-	return s.queries.ConsumeChallenge(ctx, parsed)
+	deleted, err := s.queries.ConsumeChallenge(ctx, parsed)
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return domain.ErrChallengeConsumed
+	}
+	return nil
 }
 
 // DeleteExpiredChallenges removes challenges past their expiry.

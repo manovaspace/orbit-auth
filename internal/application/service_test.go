@@ -33,12 +33,12 @@ func (f *fakeOTP) GetLatestChallenge(_ context.Context, identifier, channel stri
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if f.consumed {
-		return domain.OTPChallenge{}, fmt.Errorf("challenge already consumed")
+		return domain.OTPChallenge{}, domain.ErrChallengeNotFound
 	}
 	if f.ch.Identifier == identifier && f.ch.Channel == channel {
 		return f.ch, nil
 	}
-	return domain.OTPChallenge{}, fmt.Errorf("challenge not found")
+	return domain.OTPChallenge{}, domain.ErrChallengeNotFound
 }
 
 // ConsumeAttempt mirrors the store: one guarded increment under the lock.
@@ -53,22 +53,15 @@ func (f *fakeOTP) ConsumeAttempt(_ context.Context, id string) (bool, error) {
 	return true, nil
 }
 
-func (f *fakeOTP) IncrementAttempts(_ context.Context, id string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.ch.ID == id {
-		f.attempts++
-		f.ch.Attempts = f.attempts
-	}
-	return nil
-}
-
+// ConsumeChallenge mirrors the store: it deletes the challenge once, and a
+// second or unknown consume is ErrChallengeConsumed.
 func (f *fakeOTP) ConsumeChallenge(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.ch.ID == id {
-		f.consumed = true
+	if f.ch.ID != id || f.consumed {
+		return domain.ErrChallengeConsumed
 	}
+	f.consumed = true
 	return nil
 }
 
@@ -250,6 +243,8 @@ type fakeNotifier struct {
 	mu            sync.RWMutex
 	lastChannel   string
 	lastRecipient string
+	otpCode       string
+	otpCalls      int
 	invite        domain.InviteNotification
 	inviteCalls   int
 	inviteErr     error
@@ -263,11 +258,13 @@ type fakeNotifier struct {
 	signupErr         error
 }
 
-func (f *fakeNotifier) SendOTP(_ context.Context, channel, recipient, _, _ string) error {
+func (f *fakeNotifier) SendOTP(_ context.Context, channel, recipient, code, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.lastChannel = channel
 	f.lastRecipient = recipient
+	f.otpCode = code
+	f.otpCalls++
 	return nil
 }
 

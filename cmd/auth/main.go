@@ -98,6 +98,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	devSMSCode, err := devSMSCodeFromEnv()
+	if err != nil {
+		log.Error("dev sms code config failed", "error", err)
+		os.Exit(1)
+	}
+	if devSMSCode != "" {
+		// The code itself is never logged.
+		log.Warn("AUTH_DEV_SMS_CODE is set: SMS challenges use a fixed code and no SMS is sent")
+	}
+
 	store := postgres.New(pool)
 	// Google sign-in is off unless all three GOOGLE_* settings are present. The
 	// state key is derived once here from the client secret.
@@ -163,6 +173,8 @@ func main() {
 		Hasher:     hasher,
 		Codes:      credentials.NewCodes(),
 		Secrets:    credentials.NewSecrets(),
+		// AUTH_DEV_SMS_CODE is dev only; devSMSCodeFromEnv refuses it elsewhere.
+		DevSMSCode: devSMSCode,
 		DemoMode:   os.Getenv("DEMO_MODE") == "true",
 		DemoUsers:  demoUsers,
 		// AUTH_DEFAULT_CALLING_CODE completes local mobile numbers at sign-in.
@@ -327,6 +339,30 @@ func demoUsersFromEnv() ([]domain.DemoUser, error) {
 		return nil, err
 	}
 	return users, nil
+}
+
+// devSMSCodeFromEnv reads AUTH_DEV_SMS_CODE, the fixed code every SMS challenge
+// uses while no SMS provider is integrated. Empty means unset. Outside
+// DEPLOYMENT_ENVIRONMENT=dev any value fails before the service starts, and the
+// value must have the shape of a generated code: six ASCII digits, as
+// credentials.Codes.NewCode produces.
+func devSMSCodeFromEnv() (string, error) {
+	raw := os.Getenv("AUTH_DEV_SMS_CODE")
+	if raw == "" {
+		return "", nil
+	}
+	if os.Getenv("DEPLOYMENT_ENVIRONMENT") != "dev" {
+		return "", fmt.Errorf("AUTH_DEV_SMS_CODE is only allowed when DEPLOYMENT_ENVIRONMENT=dev")
+	}
+	if len(raw) != 6 {
+		return "", fmt.Errorf("AUTH_DEV_SMS_CODE must be a six-digit code")
+	}
+	for _, r := range raw {
+		if r < '0' || r > '9' {
+			return "", fmt.Errorf("AUTH_DEV_SMS_CODE must be a six-digit code")
+		}
+	}
+	return raw, nil
 }
 
 // inviteAcceptHostsFromEnv reads AUTH_INVITE_ACCEPT_HOSTS, a comma-separated

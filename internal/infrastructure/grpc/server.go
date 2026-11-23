@@ -48,6 +48,9 @@ func (s *Server) RequestOTP(ctx context.Context, req *authv1.RequestOTPRequest) 
 		if errors.Is(err, application.ErrEmailOTPDisabled) || errors.Is(err, application.ErrMobileOTPDisabled) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
+		if errors.Is(err, application.ErrOTPCooldown) {
+			return nil, status.Error(codes.ResourceExhausted, err.Error())
+		}
 		return nil, err
 	}
 	return &authv1.RequestOTPResponse{ExpiresAt: expires.Format(time.RFC3339)}, nil

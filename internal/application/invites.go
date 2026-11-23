@@ -261,6 +261,79 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, token string) (domai
 	return invite, nil
 }
 
+// RequestInvitePhoneCode sends a one-time code to the number of a phone
+// invitation. AcceptInviteWithSignup needs that code, which proves that the
+// person controls the number. The token must resolve to a pending, unexpired
+// phone invitation; any other token is ErrInvalidInvite, including an email
+// invitation. Invite sign-up off is ErrInviteSignupDisabled, and an account
+// that already uses the number is ErrAccountExists. Without AUTH_DEV_SMS_CODE
+// the mobile OTP flag must be on (ErrMobileOTPDisabled). A number that got a
+// code while the newest SMS code is still resendable (see otpResendBlocked) is
+// ErrOTPCooldown and nothing is sent. With a dev
+// code the challenge holds that code and nothing is sent. The code is stored
+// as a challenge like any other; the raw code is never logged.
+func (s *Service) RequestInvitePhoneCode(ctx context.Context, token string) (time.Time, error) {
+	if s.inviteSignupOff {
+		return time.Time{}, ErrInviteSignupDisabled
+	}
+	now := s.clock.Now()
+	invite, err := s.pendingInvite(ctx, token, now)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if invite.Phone == "" {
+		return time.Time{}, domain.ErrInvalidInvite
+	}
+	if err := s.refuseExistingInviteAccount(ctx, invite); err != nil {
+		return time.Time{}, err
+	}
+	if !s.usesDevSMSCode(domain.ChannelSMS) && !s.flag(ctx, "manova.auth.mobile_otp") {
+		return time.Time{}, ErrMobileOTPDisabled
+	}
+	if s.otpResendBlocked(ctx, invite.Phone, domain.ChannelSMS, now) {
+		return time.Time{}, ErrOTPCooldown
+	}
+	ch, code, err := s.newOTPChallenge(ctx, invite.Phone, domain.ChannelSMS)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !s.usesDevSMSCode(domain.ChannelSMS) {
+		if err := s.notifier.SendOTP(ctx, domain.ChannelSMS, invite.Phone, code, invite.ID); err != nil {
+			return time.Time{}, err
+		}
+	}
+	s.logger("invite_phone_code_requested",
+		"invite_id", invite.ID, "identifier_hash", domain.HashIdentifier(invite.Phone))
+	return ch.ExpiresAt, nil
+}
+
+// verifyInvitePhoneCode proves the code RequestInvitePhoneCode sent to the
+// invitation's number. It follows VerifyOTP: the attempt is counted before the
+// compare, and the challenge is consumed only after a match. A missing or
+// expired challenge, or a wrong code, is ErrInvalidOTPCode; an empty code is
+// ErrPhoneCodeRequired.
+func (s *Service) verifyInvitePhoneCode(ctx context.Context, invite domain.Invite, code string, now time.Time) error {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ErrPhoneCodeRequired
+	}
+	ch, err := s.otp.GetLatestChallenge(ctx, invite.Phone, domain.ChannelSMS)
+	if err != nil || now.After(ch.ExpiresAt) {
+		return ErrInvalidOTPCode
+	}
+	ok, err := s.otp.ConsumeAttempt(ctx, ch.ID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrTooManyOTPAttempts
+	}
+	if !s.hasher.Compare(ch.CodeHash, code) {
+		return ErrInvalidOTPCode
+	}
+	return s.consumeOTPChallenge(ctx, ch.ID)
+}
+
 // InviteSignupResult is the outcome of AcceptInviteWithSignup. Identifier is
 // what the new account signs in with: its E.164 phone number for a phone
 // invitation, or its email address for an email invitation.
@@ -277,9 +350,14 @@ type InviteSignupResult struct {
 // ErrInvalidInvite). Invite sign-up is switched by AUTH_INVITE_SIGNUP, default
 // on; off is ErrInviteSignupDisabled. It does not depend on AUTH_SIGNUP.
 //
-// A phone invitation writes an account with the invited number, left unverified
-// (mobile_verified_at NULL). If an account already uses the number the call is
-// ErrAccountExists and nothing is written.
+// A phone invitation needs phone_code, the code RequestInvitePhoneCode sent to
+// the invited number. An empty code is ErrPhoneCodeRequired; a missing, expired,
+// wrong or already used code is ErrInvalidOTPCode, and too many attempts is
+// ErrTooManyOTPAttempts. Nothing is written in those cases. The code is checked
+// after the password checks and before the password is hashed. On a match the
+// account gets the invited number with mobile_verified_at set. If an account
+// already uses the number the call is ErrAccountExists and nothing is written.
+// The email path ignores phone_code.
 //
 // An email invitation writes an account with the invited email and
 // email_verified_at set, because the token reached only that mailbox. An active
@@ -291,7 +369,7 @@ type InviteSignupResult struct {
 // (ErrPasswordTooShort), and present (ErrPasswordRequired) when empty. The
 // account, the accepted invitation, the membership with the invited tier and
 // the events commit in one transaction.
-func (s *Service) AcceptInviteWithSignup(ctx context.Context, token, password, displayName string) (InviteSignupResult, error) {
+func (s *Service) AcceptInviteWithSignup(ctx context.Context, token, password, displayName, phoneCode string) (InviteSignupResult, error) {
 	if s.inviteSignupOff {
 		return InviteSignupResult{}, ErrInviteSignupDisabled
 	}
@@ -316,6 +394,11 @@ func (s *Service) AcceptInviteWithSignup(ctx context.Context, token, password, d
 	if utf8.RuneCountInString(trimmed) < minInvitePasswordRunes {
 		return InviteSignupResult{}, ErrPasswordTooShort
 	}
+	if invite.Phone != "" {
+		if err := s.verifyInvitePhoneCode(ctx, invite, phoneCode, now); err != nil {
+			return InviteSignupResult{}, err
+		}
+	}
 	hash, err := s.hasher.Hash(password)
 	if err != nil {
 		return InviteSignupResult{}, err
@@ -332,6 +415,8 @@ func (s *Service) AcceptInviteWithSignup(ctx context.Context, token, password, d
 		channel = inviteChannelPhone
 		identifier = invite.Phone
 		user.Mobile = invite.Phone
+		// The code proved the number, see verifyInvitePhoneCode.
+		user.MobileVerified = true
 	} else {
 		user.Email = invite.Email
 	}
@@ -437,15 +522,16 @@ func (s *Service) ListInvites(ctx context.Context, orgID, callerID string) ([]do
 // email to match and to have been proven: email OTP, an admin/demo seed, a
 // backfilled pre-sign-up account or a completed sign-up all set
 // email_verified_at. A phone invitation needs the account mobile number to equal
-// the invited E.164 number. A signup_pending account is not active and therefore
-// cannot accept an invitation.
+// the invited E.164 number and the number to have been proven (mobile_verified_at
+// set). A signup_pending account is not active and therefore cannot accept an
+// invitation.
 func inviteRecipientMatches(user domain.User, invite domain.Invite) bool {
 	if user.Status != domain.UserActive {
 		return false
 	}
 	if invite.Phone != "" {
 		mobile := strings.TrimSpace(user.Mobile)
-		return mobile != "" && mobile == invite.Phone
+		return user.MobileVerified && mobile != "" && mobile == invite.Phone
 	}
 	return user.Email != "" &&
 		user.EmailVerified &&

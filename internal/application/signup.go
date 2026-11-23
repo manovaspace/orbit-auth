@@ -277,7 +277,7 @@ func (s *Service) VerifySignup(ctx context.Context, email, code, password string
 		!s.hasher.Compare(user.PasswordHash, password) {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
-	if err := s.otp.ConsumeChallenge(ctx, ch.ID); err != nil {
+	if err := s.consumeOTPChallenge(ctx, ch.ID); err != nil {
 		return "", "", time.Time{}, err
 	}
 	if err := s.signup.VerifySignup(ctx, user.ID, now); err != nil {

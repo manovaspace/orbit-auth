@@ -688,6 +688,7 @@ var OrgService_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	InviteService_GetInvitePreview_FullMethodName       = "/auth.v1.InviteService/GetInvitePreview"
+	InviteService_RequestInvitePhoneCode_FullMethodName = "/auth.v1.InviteService/RequestInvitePhoneCode"
 	InviteService_AcceptInviteWithSignup_FullMethodName = "/auth.v1.InviteService/AcceptInviteWithSignup"
 )
 
@@ -703,15 +704,23 @@ type InviteServiceClient interface {
 	// in: the organization, its tier and the expiry. It never returns the
 	// recipient's email address or phone number.
 	GetInvitePreview(ctx context.Context, in *GetInvitePreviewRequest, opts ...grpc.CallOption) (*InvitePreview, error)
+	// RequestInvitePhoneCode sends a one-time code to the number of a phone
+	// invitation. The code is the proof AcceptInviteWithSignup needs. A new code
+	// is refused with ResourceExhausted until 60 seconds after the last one, and
+	// also while the newest code has a failed guess and has not yet expired. While the
+	// mobile OTP flag is off, the call is FailedPrecondition. An email invitation
+	// or an unusable token is the generic NotFound.
+	RequestInvitePhoneCode(ctx context.Context, in *RequestInvitePhoneCodeRequest, opts ...grpc.CallOption) (*RequestInvitePhoneCodeResponse, error)
 	// AcceptInviteWithSignup creates the account for an invitation, sets its
 	// password and display name, joins the organization with the invited tier
-	// and returns the new user. A phone invitation gets an account whose mobile
-	// number is the invited number and is not verified: no OTP proved it. An
-	// email invitation gets an account whose email is verified, because the
-	// token reached only that mailbox. If an active account already uses the
+	// and returns the new user. A phone invitation needs phone_code, the code
+	// RequestInvitePhoneCode sent to the invited number; the account's mobile is
+	// then verified. A wrong or used code is Unauthenticated. An email invitation
+	// gets an account whose email is verified, because the token reached only
+	// that mailbox, and ignores phone_code. If an active account already uses the
 	// number or email, the call is AlreadyExists and the person must sign in and
-	// call AcceptInvite instead. A signup_pending account with the invited email
-	// is taken over with the new password and becomes active.
+	// call AcceptInvite. A signup_pending account with the invited email is taken
+	// over with the new password and becomes active.
 	AcceptInviteWithSignup(ctx context.Context, in *AcceptInviteWithSignupRequest, opts ...grpc.CallOption) (*AcceptInviteWithSignupResponse, error)
 }
 
@@ -727,6 +736,16 @@ func (c *inviteServiceClient) GetInvitePreview(ctx context.Context, in *GetInvit
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(InvitePreview)
 	err := c.cc.Invoke(ctx, InviteService_GetInvitePreview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *inviteServiceClient) RequestInvitePhoneCode(ctx context.Context, in *RequestInvitePhoneCodeRequest, opts ...grpc.CallOption) (*RequestInvitePhoneCodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestInvitePhoneCodeResponse)
+	err := c.cc.Invoke(ctx, InviteService_RequestInvitePhoneCode_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -755,15 +774,23 @@ type InviteServiceServer interface {
 	// in: the organization, its tier and the expiry. It never returns the
 	// recipient's email address or phone number.
 	GetInvitePreview(context.Context, *GetInvitePreviewRequest) (*InvitePreview, error)
+	// RequestInvitePhoneCode sends a one-time code to the number of a phone
+	// invitation. The code is the proof AcceptInviteWithSignup needs. A new code
+	// is refused with ResourceExhausted until 60 seconds after the last one, and
+	// also while the newest code has a failed guess and has not yet expired. While the
+	// mobile OTP flag is off, the call is FailedPrecondition. An email invitation
+	// or an unusable token is the generic NotFound.
+	RequestInvitePhoneCode(context.Context, *RequestInvitePhoneCodeRequest) (*RequestInvitePhoneCodeResponse, error)
 	// AcceptInviteWithSignup creates the account for an invitation, sets its
 	// password and display name, joins the organization with the invited tier
-	// and returns the new user. A phone invitation gets an account whose mobile
-	// number is the invited number and is not verified: no OTP proved it. An
-	// email invitation gets an account whose email is verified, because the
-	// token reached only that mailbox. If an active account already uses the
+	// and returns the new user. A phone invitation needs phone_code, the code
+	// RequestInvitePhoneCode sent to the invited number; the account's mobile is
+	// then verified. A wrong or used code is Unauthenticated. An email invitation
+	// gets an account whose email is verified, because the token reached only
+	// that mailbox, and ignores phone_code. If an active account already uses the
 	// number or email, the call is AlreadyExists and the person must sign in and
-	// call AcceptInvite instead. A signup_pending account with the invited email
-	// is taken over with the new password and becomes active.
+	// call AcceptInvite. A signup_pending account with the invited email is taken
+	// over with the new password and becomes active.
 	AcceptInviteWithSignup(context.Context, *AcceptInviteWithSignupRequest) (*AcceptInviteWithSignupResponse, error)
 	mustEmbedUnimplementedInviteServiceServer()
 }
@@ -777,6 +804,9 @@ type UnimplementedInviteServiceServer struct{}
 
 func (UnimplementedInviteServiceServer) GetInvitePreview(context.Context, *GetInvitePreviewRequest) (*InvitePreview, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInvitePreview not implemented")
+}
+func (UnimplementedInviteServiceServer) RequestInvitePhoneCode(context.Context, *RequestInvitePhoneCodeRequest) (*RequestInvitePhoneCodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RequestInvitePhoneCode not implemented")
 }
 func (UnimplementedInviteServiceServer) AcceptInviteWithSignup(context.Context, *AcceptInviteWithSignupRequest) (*AcceptInviteWithSignupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AcceptInviteWithSignup not implemented")
@@ -820,6 +850,24 @@ func _InviteService_GetInvitePreview_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InviteService_RequestInvitePhoneCode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestInvitePhoneCodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InviteServiceServer).RequestInvitePhoneCode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InviteService_RequestInvitePhoneCode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InviteServiceServer).RequestInvitePhoneCode(ctx, req.(*RequestInvitePhoneCodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InviteService_AcceptInviteWithSignup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AcceptInviteWithSignupRequest)
 	if err := dec(in); err != nil {
@@ -848,6 +896,10 @@ var InviteService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetInvitePreview",
 			Handler:    _InviteService_GetInvitePreview_Handler,
+		},
+		{
+			MethodName: "RequestInvitePhoneCode",
+			Handler:    _InviteService_RequestInvitePhoneCode_Handler,
 		},
 		{
 			MethodName: "AcceptInviteWithSignup",

@@ -12,13 +12,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const consumeChallenge = `-- name: ConsumeChallenge :exec
+const consumeChallenge = `-- name: ConsumeChallenge :execrows
 DELETE FROM otp_challenges WHERE id = $1::uuid
 `
 
-func (q *Queries) ConsumeChallenge(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, consumeChallenge, id)
-	return err
+func (q *Queries) ConsumeChallenge(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeChallenge, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const consumeChallengeAttempt = `-- name: ConsumeChallengeAttempt :one
@@ -100,15 +103,6 @@ func (q *Queries) GetLatestChallenge(ctx context.Context, arg GetLatestChallenge
 		&i.Attempts,
 	)
 	return i, err
-}
-
-const incrementChallengeAttempts = `-- name: IncrementChallengeAttempts :exec
-UPDATE otp_challenges SET attempts = attempts + 1 WHERE id = $1::uuid
-`
-
-func (q *Queries) IncrementChallengeAttempts(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, incrementChallengeAttempts, id)
-	return err
 }
 
 const upsertChallenge = `-- name: UpsertChallenge :exec

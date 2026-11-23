@@ -11,6 +11,10 @@ import (
 
 const invitedMobile = "+989121234567"
 
+// invitedCode is the code the phoneInviteFixture seeds for invitedMobile, so a
+// test can accept the invitation without requesting a code first.
+const invitedCode = "654321"
+
 // phoneInviteFixture creates an organization owned by "owner" and one pending
 // phone invitation with role. The signup store is shared with the returned
 // service so tests can inspect the rows it writes.
@@ -28,6 +32,8 @@ func phoneInviteFixture(t *testing.T, role domain.MembershipRole) (*Service, *si
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The code was sent two minutes ago, so it is outside the resend cooldown.
+	seedPhoneChallenge(t, store.otp, invitedMobile, invitedCode, signupNow().Add(-2*time.Minute))
 	return svc, store, org, invite, token
 }
 
@@ -43,11 +49,11 @@ func (s *signupStore) userByMobile(mobile string) (domain.User, bool) {
 	return domain.User{}, false
 }
 
-func TestAcceptInviteWithSignupCreatesActiveUnverifiedMember(t *testing.T) {
+func TestAcceptInviteWithSignupCreatesActiveVerifiedMember(t *testing.T) {
 	svc, store, org, invite, token := phoneInviteFixture(t, domain.RoleAdmin)
 	ctx := context.Background()
 
-	result, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "  Sara  ")
+	result, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "  Sara  ", invitedCode)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,8 +75,8 @@ func TestAcceptInviteWithSignupCreatesActiveUnverifiedMember(t *testing.T) {
 	if user.PasswordHash == "" || user.PasswordHash == "correct horse" {
 		t.Fatal("password was not stored as a hash")
 	}
-	if user.MobileVerified {
-		t.Fatal("invite sign-up marked the mobile verified; only an OTP may")
+	if !user.MobileVerified {
+		t.Fatal("a phone invite sign-up with the proven code left the mobile unverified")
 	}
 
 	membership, err := store.orgs.GetMembership(ctx, org.ID, userID)
@@ -92,7 +98,7 @@ func TestAcceptInviteWithSignupExistingMobileNeedsSignIn(t *testing.T) {
 	svc, store, _, invite, token := phoneInviteFixture(t, domain.RoleMember)
 	store.add(domain.User{ID: "existing", Mobile: invitedMobile, Status: domain.UserActive})
 
-	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara")
+	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara", invitedCode)
 	if !errors.Is(err, ErrAccountExists) {
 		t.Fatalf("err = %v, want ErrAccountExists", err)
 	}
@@ -121,7 +127,7 @@ func TestAcceptInviteWithSignupRejectsUnusableTokens(t *testing.T) {
 			return token
 		},
 		"used": func(t *testing.T, svc *Service, _ *signupStore, _ domain.Invite, _ domain.Organization, token string) string {
-			if _, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "Sara"); err != nil {
+			if _, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "Sara", invitedCode); err != nil {
 				t.Fatal(err)
 			}
 			return token
@@ -133,7 +139,7 @@ func TestAcceptInviteWithSignupRejectsUnusableTokens(t *testing.T) {
 			token = prepare(t, svc, store, invite, org, token)
 			before := store.phoneCalls
 
-			_, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "Sara")
+			_, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "Sara", invitedCode)
 			if !errors.Is(err, domain.ErrInvalidInvite) {
 				t.Fatalf("err = %v, want ErrInvalidInvite", err)
 			}
@@ -148,7 +154,7 @@ func TestAcceptInviteWithSignupRequiresPassword(t *testing.T) {
 	svc, store, _, invite, token := phoneInviteFixture(t, domain.RoleMember)
 
 	for _, password := range []string{"", "   "} {
-		_, err := svc.AcceptInviteWithSignup(context.Background(), token, password, "Sara")
+		_, err := svc.AcceptInviteWithSignup(context.Background(), token, password, "Sara", invitedCode)
 		if !errors.Is(err, ErrPasswordRequired) {
 			t.Fatalf("password %q: err = %v, want ErrPasswordRequired", password, err)
 		}
@@ -165,7 +171,7 @@ func TestAcceptInviteWithSignupRollsBackWhenInviteIsConsumedMidway(t *testing.T)
 	svc, store, _, _, token := phoneInviteFixture(t, domain.RoleMember)
 	store.invites.acceptErr = domain.ErrInviteNotFound
 
-	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara")
+	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara", invitedCode)
 	if !errors.Is(err, domain.ErrInvalidInvite) {
 		t.Fatalf("err = %v, want ErrInvalidInvite", err)
 	}
@@ -204,7 +210,7 @@ func TestAcceptInviteWithSignupOnByDefaultWhileAuthSignupIsOff(t *testing.T) {
 	_, store, _, _, token := phoneInviteFixture(t, domain.RoleMember)
 	svc := newInviteSignupService(store, false, false)
 
-	if _, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara"); err != nil {
+	if _, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara", invitedCode); err != nil {
 		t.Fatalf("invite sign-up with AUTH_SIGNUP off: %v", err)
 	}
 	if _, ok := store.userByMobile(invitedMobile); !ok {
@@ -216,7 +222,7 @@ func TestAcceptInviteWithSignupExplicitOffRefusesAndWritesNothing(t *testing.T) 
 	_, store, _, _, token := phoneInviteFixture(t, domain.RoleMember)
 	svc := newInviteSignupService(store, true, true)
 
-	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara")
+	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "correct horse", "Sara", invitedCode)
 	if !errors.Is(err, ErrInviteSignupDisabled) {
 		t.Fatalf("err = %v, want ErrInviteSignupDisabled", err)
 	}
@@ -230,7 +236,7 @@ func TestAcceptInviteWithSignupPasswordMinimumIsEightCharacters(t *testing.T) {
 	ctx := context.Background()
 
 	for _, password := range []string{"1234567", "  1234567  ", "سلام"} {
-		_, err := svc.AcceptInviteWithSignup(ctx, token, password, "Sara")
+		_, err := svc.AcceptInviteWithSignup(ctx, token, password, "Sara", invitedCode)
 		if !errors.Is(err, ErrPasswordTooShort) {
 			t.Fatalf("password %q: err = %v, want ErrPasswordTooShort", password, err)
 		}
@@ -243,7 +249,7 @@ func TestAcceptInviteWithSignupPasswordMinimumIsEightCharacters(t *testing.T) {
 	}
 
 	// Eight Persian characters, more than eight bytes, are accepted.
-	if _, err := svc.AcceptInviteWithSignup(ctx, token, "ابتثجحخد", "Sara"); err != nil {
+	if _, err := svc.AcceptInviteWithSignup(ctx, token, "ابتثجحخد", "Sara", invitedCode); err != nil {
 		t.Fatalf("eight characters: %v", err)
 	}
 }

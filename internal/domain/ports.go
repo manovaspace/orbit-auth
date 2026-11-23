@@ -10,6 +10,15 @@ import (
 // missing, revoked or expired token.
 var ErrRefreshTokenNotFound = errors.New("refresh token not found")
 
+// ErrChallengeNotFound is returned by OTPStore.GetLatestChallenge when no
+// challenge exists for the identifier and channel. A store failure is another
+// error.
+var ErrChallengeNotFound = errors.New("otp challenge not found")
+
+// ErrChallengeConsumed is returned by OTPStore.ConsumeChallenge when no
+// challenge with that id is left: it was already consumed or never existed.
+var ErrChallengeConsumed = errors.New("otp challenge already consumed")
+
 // ErrAPITokenNotFound is returned by APITokenStore.RevokeToken when no active
 // token with that id belongs to the user. An unknown, revoked or another
 // user's token gets the same error.
@@ -25,7 +34,9 @@ type OTPStore interface {
 	// MaxOTPAttempts attempts. Concurrent calls never admit more attempts than
 	// the limit.
 	ConsumeAttempt(ctx context.Context, id string) (ok bool, err error)
-	IncrementAttempts(ctx context.Context, id string) error
+	// ConsumeChallenge deletes the challenge once its code was proven. It
+	// returns ErrChallengeConsumed when no such challenge is left, so two
+	// concurrent proofs of one code cannot both succeed.
 	ConsumeChallenge(ctx context.Context, id string) error
 	DeleteExpiredChallenges(ctx context.Context) error
 }
@@ -69,8 +80,8 @@ type SignupStore interface {
 	PurgeUnverifiedSignups(ctx context.Context, before time.Time) (int64, error)
 	// CreateInviteSignup writes the active account for an invitation and, in the
 	// same transaction, accepts the invitation and adds the membership with the
-	// invited role. A phone invitation writes user.Mobile, leaves the number
-	// unverified and emits user.created. An email invitation writes user.Email
+	// invited role. A phone invitation writes user.Mobile, with mobile_verified_at
+	// set to acceptedAt when user.MobileVerified is true, and emits user.created. An email invitation writes user.Email
 	// with email_verified_at set to acceptedAt and emits user.created when it
 	// inserts the row. If the email belongs to a signup_pending account, that
 	// account is taken over instead: its password hash and display name are

@@ -177,13 +177,14 @@ ON CONFLICT (mobile) DO UPDATE SET
     updated_at = NOW();
 
 -- name: CreatePhoneSignupUser :execrows
-INSERT INTO users (id, mobile, password_hash, display_name, status)
+INSERT INTO users (id, mobile, password_hash, display_name, status, mobile_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.arg('mobile')::text,
     sqlc.arg('password_hash')::text,
     sqlc.arg('display_name')::text,
-    sqlc.arg('status')::text
+    sqlc.arg('status')::text,
+    sqlc.narg('mobile_verified_at')::timestamptz
 )
 ON CONFLICT (mobile) DO NOTHING;
 

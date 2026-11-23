@@ -272,7 +272,8 @@ type InviteServer struct {
 // application layer.
 type InviteService interface {
 	GetInvitePreview(ctx context.Context, token string) (domain.InvitePreview, error)
-	AcceptInviteWithSignup(ctx context.Context, token, password, displayName string) (application.InviteSignupResult, error)
+	RequestInvitePhoneCode(ctx context.Context, token string) (time.Time, error)
+	AcceptInviteWithSignup(ctx context.Context, token, password, displayName, phoneCode string) (application.InviteSignupResult, error)
 }
 
 func NewInvite(svc InviteService) *InviteServer {
@@ -297,11 +298,36 @@ func (s *InviteServer) GetInvitePreview(ctx context.Context, req *authv1.GetInvi
 	}, nil
 }
 
-// AcceptInviteWithSignup creates the account for a phone invitation. An account
-// that already uses the number is AlreadyExists: that person must sign in and
-// accept with AcceptInvite.
+// RequestInvitePhoneCode sends the one-time code for a phone invitation. The
+// errors are mapped in one place: a cooldown is ResourceExhausted, a deployment
+// without SMS delivery is FailedPrecondition, and an account that already uses
+// the number is AlreadyExists.
+func (s *InviteServer) RequestInvitePhoneCode(ctx context.Context, req *authv1.RequestInvitePhoneCodeRequest) (*authv1.RequestInvitePhoneCodeResponse, error) {
+	expires, err := s.svc.RequestInvitePhoneCode(ctx, req.GetToken())
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInviteSignupDisabled):
+			return nil, status.Error(codes.FailedPrecondition, "invite sign-up is disabled")
+		case errors.Is(err, application.ErrMobileOTPDisabled):
+			return nil, status.Error(codes.FailedPrecondition, application.ErrMobileOTPDisabled.Error())
+		case errors.Is(err, application.ErrOTPCooldown):
+			return nil, status.Error(codes.ResourceExhausted, application.ErrOTPCooldown.Error())
+		case errors.Is(err, application.ErrAccountExists):
+			return nil, status.Error(codes.AlreadyExists, "account exists: sign in to accept the invitation")
+		default:
+			return nil, inviteTokenError(err)
+		}
+	}
+	return &authv1.RequestInvitePhoneCodeResponse{ExpiresAt: expires.Format(time.RFC3339)}, nil
+}
+
+// AcceptInviteWithSignup creates the account for an invitation. An account that
+// already uses the number is AlreadyExists: that person must sign in and accept
+// with AcceptInvite. A phone invitation needs the code from
+// RequestInvitePhoneCode; a wrong, expired or used code is Unauthenticated, as
+// for the OTP RPCs.
 func (s *InviteServer) AcceptInviteWithSignup(ctx context.Context, req *authv1.AcceptInviteWithSignupRequest) (*authv1.AcceptInviteWithSignupResponse, error) {
-	result, err := s.svc.AcceptInviteWithSignup(ctx, req.GetToken(), req.GetPassword(), req.GetDisplayName())
+	result, err := s.svc.AcceptInviteWithSignup(ctx, req.GetToken(), req.GetPassword(), req.GetDisplayName(), req.GetPhoneCode())
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInviteSignupDisabled):
@@ -312,6 +338,10 @@ func (s *InviteServer) AcceptInviteWithSignup(ctx context.Context, req *authv1.A
 			return nil, status.Error(codes.InvalidArgument, application.ErrPasswordRequired.Error())
 		case errors.Is(err, application.ErrPasswordTooShort):
 			return nil, status.Error(codes.InvalidArgument, application.ErrPasswordTooShort.Error())
+		case errors.Is(err, application.ErrPhoneCodeRequired):
+			return nil, status.Error(codes.InvalidArgument, application.ErrPhoneCodeRequired.Error())
+		case errors.Is(err, application.ErrInvalidOTPCode), errors.Is(err, application.ErrTooManyOTPAttempts):
+			return nil, status.Error(codes.Unauthenticated, err.Error())
 		case errors.Is(err, domain.ErrInvalidInvite):
 			return nil, inviteTokenError(err)
 		default:

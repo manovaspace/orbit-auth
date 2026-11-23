@@ -21,11 +21,16 @@ type fakeInviteService struct {
 	previewErr error
 	previewTok string
 
-	acceptToken    string
-	acceptPassword string
-	acceptName     string
-	acceptResult   application.InviteSignupResult
-	acceptErr      error
+	acceptToken     string
+	acceptPassword  string
+	acceptName      string
+	acceptPhoneCode string
+	acceptResult    application.InviteSignupResult
+	acceptErr       error
+
+	phoneCodeToken string
+	phoneCodeExp   time.Time
+	phoneCodeErr   error
 }
 
 func (f *fakeInviteService) GetInvitePreview(_ context.Context, token string) (domain.InvitePreview, error) {
@@ -33,8 +38,13 @@ func (f *fakeInviteService) GetInvitePreview(_ context.Context, token string) (d
 	return f.preview, f.previewErr
 }
 
-func (f *fakeInviteService) AcceptInviteWithSignup(_ context.Context, token, password, displayName string) (application.InviteSignupResult, error) {
-	f.acceptToken, f.acceptPassword, f.acceptName = token, password, displayName
+func (f *fakeInviteService) RequestInvitePhoneCode(_ context.Context, token string) (time.Time, error) {
+	f.phoneCodeToken = token
+	return f.phoneCodeExp, f.phoneCodeErr
+}
+
+func (f *fakeInviteService) AcceptInviteWithSignup(_ context.Context, token, password, displayName, phoneCode string) (application.InviteSignupResult, error) {
+	f.acceptToken, f.acceptPassword, f.acceptName, f.acceptPhoneCode = token, password, displayName, phoneCode
 	return f.acceptResult, f.acceptErr
 }
 
@@ -180,7 +190,7 @@ func TestInviteServiceAcceptWithSignupReturnsIDsAndMapsErrors(t *testing.T) {
 	srv := NewInvite(app)
 
 	resp, err := srv.AcceptInviteWithSignup(context.Background(), &authv1.AcceptInviteWithSignupRequest{
-		Token: "raw-token", Password: "correct horse", DisplayName: "Sara",
+		Token: "raw-token", Password: "correct horse", DisplayName: "Sara", PhoneCode: "654321",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -189,8 +199,8 @@ func TestInviteServiceAcceptWithSignupReturnsIDsAndMapsErrors(t *testing.T) {
 		resp.GetRole() != "admin" || resp.GetIdentifier() != "sara@example.com" {
 		t.Fatalf("response = %+v", resp)
 	}
-	if app.acceptToken != "raw-token" || app.acceptPassword != "correct horse" || app.acceptName != "Sara" {
-		t.Fatalf("forwarded = %q %q %q", app.acceptToken, app.acceptPassword, app.acceptName)
+	if app.acceptToken != "raw-token" || app.acceptPassword != "correct horse" || app.acceptName != "Sara" || app.acceptPhoneCode != "654321" {
+		t.Fatalf("forwarded = %q %q %q %q", app.acceptToken, app.acceptPassword, app.acceptName, app.acceptPhoneCode)
 	}
 
 	cases := []struct {
@@ -202,6 +212,9 @@ func TestInviteServiceAcceptWithSignupReturnsIDsAndMapsErrors(t *testing.T) {
 		{application.ErrInviteSignupDisabled, codes.FailedPrecondition, "invite sign-up is disabled"},
 		{application.ErrPasswordRequired, codes.InvalidArgument, application.ErrPasswordRequired.Error()},
 		{application.ErrPasswordTooShort, codes.InvalidArgument, "password must be at least 8 characters"},
+		{application.ErrPhoneCodeRequired, codes.InvalidArgument, "phone code is required"},
+		{application.ErrInvalidOTPCode, codes.Unauthenticated, "invalid or expired code"},
+		{application.ErrTooManyOTPAttempts, codes.Unauthenticated, "too many attempts"},
 		{domain.ErrInvalidInvite, codes.NotFound, "invite not found"},
 		{errors.New("database down"), codes.Internal, "internal error"},
 	}
@@ -212,11 +225,44 @@ func TestInviteServiceAcceptWithSignupReturnsIDsAndMapsErrors(t *testing.T) {
 	}
 }
 
+func TestInviteServiceRequestPhoneCodeReturnsExpiryAndMapsErrors(t *testing.T) {
+	expires := time.Date(2026, 11, 23, 12, 10, 0, 0, time.UTC)
+	app := &fakeInviteService{phoneCodeExp: expires}
+	srv := NewInvite(app)
+
+	resp, err := srv.RequestInvitePhoneCode(context.Background(), &authv1.RequestInvitePhoneCodeRequest{Token: "raw-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.phoneCodeToken != "raw-token" || resp.GetExpiresAt() != expires.Format(time.RFC3339) {
+		t.Fatalf("token = %q, expires_at = %q", app.phoneCodeToken, resp.GetExpiresAt())
+	}
+
+	cases := []struct {
+		err     error
+		code    codes.Code
+		message string
+	}{
+		{application.ErrInviteSignupDisabled, codes.FailedPrecondition, "invite sign-up is disabled"},
+		{application.ErrMobileOTPDisabled, codes.FailedPrecondition, application.ErrMobileOTPDisabled.Error()},
+		{application.ErrOTPCooldown, codes.ResourceExhausted, application.ErrOTPCooldown.Error()},
+		{application.ErrAccountExists, codes.AlreadyExists, "account exists: sign in to accept the invitation"},
+		{domain.ErrInvalidInvite, codes.NotFound, "invite not found"},
+		{errors.New("database down"), codes.Internal, "internal error"},
+	}
+	for _, tc := range cases {
+		app.phoneCodeErr = tc.err
+		_, err := srv.RequestInvitePhoneCode(context.Background(), &authv1.RequestInvitePhoneCodeRequest{Token: "t"})
+		assertCode(t, err, tc.code, tc.message)
+	}
+}
+
 func TestInviteServiceIsPublicToTheInterceptor(t *testing.T) {
 	keys, _ := orgTestKeys(t)
 	interceptor := AccessTokenUnaryServerInterceptor(keys)
 	for _, method := range []string{
 		"/auth.v1.InviteService/GetInvitePreview",
+		"/auth.v1.InviteService/RequestInvitePhoneCode",
 		"/auth.v1.InviteService/AcceptInviteWithSignup",
 	} {
 		called := false

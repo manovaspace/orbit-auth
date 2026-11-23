@@ -160,7 +160,7 @@ func TestEmailSignupCreatesVerifiedActiveAccount(t *testing.T) {
 	org, invite, token := emailInviteFixture(t, svc, notifier, store)
 	ctx := context.Background()
 
-	result, err := svc.AcceptInviteWithSignup(ctx, token, invitePassword, "  Sara  ")
+	result, err := svc.AcceptInviteWithSignup(ctx, token, invitePassword, "  Sara  ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestEmailSignupRefusesActiveAccountAndWritesNothing(t *testing.T) {
 	svc := acceptService(store, notifier, []string{acceptHost}, false, nil)
 	_, invite, token := emailInviteFixture(t, svc, notifier, store)
 
-	_, err := svc.AcceptInviteWithSignup(context.Background(), token, invitePassword, "Sara")
+	_, err := svc.AcceptInviteWithSignup(context.Background(), token, invitePassword, "Sara", "")
 	if !errors.Is(err, ErrAccountExists) {
 		t.Fatalf("err = %v, want ErrAccountExists", err)
 	}
@@ -222,7 +222,7 @@ func TestEmailSignupTakesOverPendingAccount(t *testing.T) {
 	_, invite, token := emailInviteFixture(t, svc, notifier, store)
 	usersBefore := len(store.users)
 
-	result, err := svc.AcceptInviteWithSignup(context.Background(), token, invitePassword, "Sara")
+	result, err := svc.AcceptInviteWithSignup(context.Background(), token, invitePassword, "Sara", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestEmailSignupShortPasswordWritesNothing(t *testing.T) {
 	svc := acceptService(store, notifier, []string{acceptHost}, false, nil)
 	_, invite, token := emailInviteFixture(t, svc, notifier, store)
 
-	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "1234567", "Sara")
+	_, err := svc.AcceptInviteWithSignup(context.Background(), token, "1234567", "Sara", "")
 	if !errors.Is(err, ErrPasswordTooShort) {
 		t.Fatalf("err = %v, want ErrPasswordTooShort", err)
 	}
@@ -268,7 +268,7 @@ func TestEmailSignupSwitchOffRefusesAndWritesNothing(t *testing.T) {
 	_, _, token := emailInviteFixture(t, svc, notifier, store)
 	off := acceptService(store, notifier, []string{acceptHost}, true, nil)
 
-	_, err := off.AcceptInviteWithSignup(context.Background(), token, invitePassword, "Sara")
+	_, err := off.AcceptInviteWithSignup(context.Background(), token, invitePassword, "Sara", "")
 	if !errors.Is(err, ErrInviteSignupDisabled) {
 		t.Fatalf("err = %v, want ErrInviteSignupDisabled", err)
 	}
