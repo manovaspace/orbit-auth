@@ -25,7 +25,7 @@ func (f *fakeOTP) UpsertChallenge(_ context.Context, ch domain.OTPChallenge) err
 	defer f.mu.Unlock()
 	f.ch = ch
 	f.consumed = false
-	f.attempts = 0
+	f.attempts = ch.Attempts
 	return nil
 }
 
@@ -39,6 +39,18 @@ func (f *fakeOTP) GetLatestChallenge(_ context.Context, identifier, channel stri
 		return f.ch, nil
 	}
 	return domain.OTPChallenge{}, fmt.Errorf("challenge not found")
+}
+
+// ConsumeAttempt mirrors the store: one guarded increment under the lock.
+func (f *fakeOTP) ConsumeAttempt(_ context.Context, id string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ch.ID != id || f.attempts >= domain.MaxOTPAttempts {
+		return false, nil
+	}
+	f.attempts++
+	f.ch.Attempts = f.attempts
+	return true, nil
 }
 
 func (f *fakeOTP) IncrementAttempts(_ context.Context, id string) error {

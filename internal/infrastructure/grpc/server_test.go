@@ -261,7 +261,7 @@ func TestRevokeRefreshTokenIsIdempotentAndMapsStoreErrors(t *testing.T) {
 func TestCreateApiTokenParsesExpiry(t *testing.T) {
 	app := &fakeAuth{createID: "t1", createPrefix: "abcdefgh", createSecret: "secret"}
 	srv := New(app)
-	resp, err := srv.CreateApiToken(context.Background(), &authv1.CreateApiTokenRequest{
+	resp, err := srv.CreateApiToken(withCallerID(context.Background(), "u1"), &authv1.CreateApiTokenRequest{
 		UserId: "u1", Name: "deploy", Scopes: []string{"read"}, ExpiresAt: "2026-11-03T12:00:00Z",
 	})
 	if err != nil {
@@ -277,7 +277,7 @@ func TestCreateApiTokenParsesExpiry(t *testing.T) {
 		t.Fatalf("expires = %v", app.createExpires)
 	}
 
-	_, err = srv.CreateApiToken(context.Background(), &authv1.CreateApiTokenRequest{ExpiresAt: "not-a-time"})
+	_, err = srv.CreateApiToken(withCallerID(context.Background(), "u1"), &authv1.CreateApiTokenRequest{ExpiresAt: "not-a-time"})
 	assertCode(t, err, codes.InvalidArgument, "invalid expires_at")
 }
 
@@ -288,7 +288,7 @@ func TestListApiTokensMapsRecordsAndKeepsEmptyNonNil(t *testing.T) {
 		ID: "t1", Name: "deploy", Prefix: "abcdefgh", Scopes: []string{"read"}, ExpiresAt: &expires, CreatedAt: created,
 	}}}
 	srv := New(app)
-	resp, err := srv.ListApiTokens(context.Background(), &authv1.ListApiTokensRequest{UserId: "u1"})
+	resp, err := srv.ListApiTokens(withCallerID(context.Background(), "u1"), &authv1.ListApiTokensRequest{UserId: "u1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestListApiTokensMapsRecordsAndKeepsEmptyNonNil(t *testing.T) {
 	}
 
 	app.listTokens = nil
-	resp, err = srv.ListApiTokens(context.Background(), &authv1.ListApiTokensRequest{UserId: "u1"})
+	resp, err = srv.ListApiTokens(withCallerID(context.Background(), "u1"), &authv1.ListApiTokensRequest{UserId: "u1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestListApiTokensMapsRecordsAndKeepsEmptyNonNil(t *testing.T) {
 func TestRevokeApiTokenAndValidate(t *testing.T) {
 	app := &fakeAuth{validateUserID: "u1", validateScopes: []string{"read"}}
 	srv := New(app)
-	if _, err := srv.RevokeApiToken(context.Background(), &authv1.RevokeApiTokenRequest{UserId: "u1", TokenId: "t1"}); err != nil {
+	if _, err := srv.RevokeApiToken(withCallerID(context.Background(), "u1"), &authv1.RevokeApiTokenRequest{UserId: "u1", TokenId: "t1"}); err != nil {
 		t.Fatal(err)
 	}
 	if app.revokeUserID != "u1" || app.revokeTokenID != "t1" {
@@ -439,5 +439,108 @@ func TestResolveIdentifierChannel(t *testing.T) {
 		if identifier != tc.wantIdentifier || channel != tc.wantChannel {
 			t.Fatalf("resolve(%q,%q,%q) = %q,%q, want %q,%q", tc.identifier, tc.channel, tc.legacyEmail, identifier, channel, tc.wantIdentifier, tc.wantChannel)
 		}
+	}
+}
+
+const (
+	apiTokenCaller = "11111111-1111-4111-8111-111111111111"
+	apiTokenOther  = "22222222-2222-4222-8222-222222222222"
+)
+
+// apiTokenCall runs one API-token RPC through the access-token interceptor and
+// then the handler, the way the server does.
+func apiTokenCall(ctx context.Context, keys orbittoken.KeySet, srv *Server, method string, req any) (any, error) {
+	interceptor := AccessTokenUnaryServerInterceptor(keys)
+	return interceptor(ctx, req, &googlegrpc.UnaryServerInfo{
+		FullMethod: "/auth.v1.AuthService/" + method,
+	}, func(ctx context.Context, req any) (any, error) {
+		switch r := req.(type) {
+		case *authv1.CreateApiTokenRequest:
+			return srv.CreateApiToken(ctx, r)
+		case *authv1.ListApiTokensRequest:
+			return srv.ListApiTokens(ctx, r)
+		case *authv1.RevokeApiTokenRequest:
+			return srv.RevokeApiToken(ctx, r)
+		}
+		return nil, errors.New("unexpected request type")
+	})
+}
+
+func apiTokenMethodRequests() map[string]any {
+	return map[string]any{
+		"CreateApiToken": &authv1.CreateApiTokenRequest{UserId: apiTokenCaller, Name: "deploy"},
+		"ListApiTokens":  &authv1.ListApiTokensRequest{UserId: apiTokenCaller},
+		"RevokeApiToken": &authv1.RevokeApiTokenRequest{UserId: apiTokenCaller, TokenId: "t1"},
+	}
+}
+
+func TestApiTokenRPCsRequireAccessToken(t *testing.T) {
+	keys, _ := orgTestKeys(t)
+	app := &fakeAuth{}
+	srv := New(app)
+	for method, req := range apiTokenMethodRequests() {
+		_, err := apiTokenCall(context.Background(), keys, srv, method, req)
+		assertCode(t, err, codes.Unauthenticated, "authentication required")
+
+		invalid := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer not-a-token"))
+		_, err = apiTokenCall(invalid, keys, srv, method, req)
+		assertCode(t, err, codes.Unauthenticated, "invalid or expired access token")
+	}
+	if app.createUserID != "" || app.listUserID != "" || app.revokeUserID != "" {
+		t.Fatalf("an API-token RPC reached the application without a token: %+v", app)
+	}
+}
+
+func TestApiTokenRPCsActForTheCallerOnly(t *testing.T) {
+	keys, key := orgTestKeys(t)
+	raw, err := orbittoken.SignAccessToken(key, "test-key", apiTokenCaller, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+raw))
+
+	app := &fakeAuth{createID: "t1", createPrefix: "abcdefgh", createSecret: "secret"}
+	srv := New(app)
+
+	// A request naming another user is refused before the application runs.
+	_, err = apiTokenCall(ctx, keys, srv, "CreateApiToken", &authv1.CreateApiTokenRequest{UserId: apiTokenOther, Name: "deploy"})
+	assertCode(t, err, codes.PermissionDenied, "user_id does not match the caller")
+	_, err = apiTokenCall(ctx, keys, srv, "ListApiTokens", &authv1.ListApiTokensRequest{UserId: apiTokenOther})
+	assertCode(t, err, codes.PermissionDenied, "user_id does not match the caller")
+	_, err = apiTokenCall(ctx, keys, srv, "RevokeApiToken", &authv1.RevokeApiTokenRequest{UserId: apiTokenOther, TokenId: "t1"})
+	assertCode(t, err, codes.PermissionDenied, "user_id does not match the caller")
+	if app.createUserID != "" || app.listUserID != "" || app.revokeUserID != "" {
+		t.Fatalf("a mismatched user_id reached the application: %+v", app)
+	}
+
+	// An empty or matching user_id acts for the caller.
+	if _, err := apiTokenCall(ctx, keys, srv, "CreateApiToken", &authv1.CreateApiTokenRequest{Name: "deploy"}); err != nil {
+		t.Fatal(err)
+	}
+	if app.createUserID != apiTokenCaller {
+		t.Fatalf("create user = %q, want caller %q", app.createUserID, apiTokenCaller)
+	}
+	if _, err := apiTokenCall(ctx, keys, srv, "ListApiTokens", &authv1.ListApiTokensRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if app.listUserID != apiTokenCaller {
+		t.Fatalf("list user = %q, want caller %q", app.listUserID, apiTokenCaller)
+	}
+	if _, err := apiTokenCall(ctx, keys, srv, "RevokeApiToken", &authv1.RevokeApiTokenRequest{UserId: apiTokenCaller, TokenId: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	if app.revokeUserID != apiTokenCaller || app.revokeTokenID != "t1" {
+		t.Fatalf("revoke = %q %q", app.revokeUserID, app.revokeTokenID)
+	}
+}
+
+func TestRevokeApiTokenMapsMissingTokenToNotFound(t *testing.T) {
+	app := &fakeAuth{revokeErr: domain.ErrAPITokenNotFound}
+	srv := New(app)
+	ctx := withCallerID(context.Background(), apiTokenCaller)
+	_, err := srv.RevokeApiToken(ctx, &authv1.RevokeApiTokenRequest{TokenId: "token-of-another-user"})
+	assertCode(t, err, codes.NotFound, "api token not found")
+	if app.revokeUserID != apiTokenCaller {
+		t.Fatalf("revoke ran for %q, want caller %q", app.revokeUserID, apiTokenCaller)
 	}
 }

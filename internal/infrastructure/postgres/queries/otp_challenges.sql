@@ -20,6 +20,11 @@ LIMIT 1;
 -- name: IncrementChallengeAttempts :exec
 UPDATE otp_challenges SET attempts = attempts + 1 WHERE id = sqlc.arg('id')::uuid;
 
+-- name: ConsumeChallengeAttempt :one
+UPDATE otp_challenges SET attempts = attempts + 1
+WHERE id = sqlc.arg('id')::uuid AND attempts < sqlc.arg('max_attempts')::int
+RETURNING attempts;
+
 -- name: ConsumeChallenge :exec
 DELETE FROM otp_challenges WHERE id = sqlc.arg('id')::uuid;
 

@@ -139,7 +139,10 @@ const accountServicePrefix = "/auth.v1.AccountService/"
 // own account. They need a verified access token, which supplies the subject.
 // Every other AuthService RPC keeps its unauthenticated contract.
 var authenticatedAuthMethods = map[string]struct{}{
-	"/auth.v1.AuthService/SetUsername": {},
+	"/auth.v1.AuthService/SetUsername":    {},
+	"/auth.v1.AuthService/CreateApiToken": {},
+	"/auth.v1.AuthService/ListApiTokens":  {},
+	"/auth.v1.AuthService/RevokeApiToken": {},
 }
 
 // AccessTokenUnaryServerInterceptor verifies the bearer access token on
