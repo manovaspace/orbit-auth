@@ -38,14 +38,18 @@ func TestOAuthStateIsSingleUseAndExpires(t *testing.T) {
 		t.Fatalf("second consume err = %v, want ErrInvalidGoogleState", err)
 	}
 
+	// The state is stored live and is consumed after its expiry. A row cannot be
+	// stored already expired: oauth_sign_in_states_expiry_after_created_chk
+	// requires expires_at after created_at, and created_at is the database clock.
 	expired := stateHashOf("state-two")
-	if err := store.CreateOAuthState(ctx, expired, domain.OAuthState{RedirectURI: "https://app.example.com/cb", ReturnTo: "/", Purpose: domain.OAuthPurposeSignIn}, now.Add(-time.Second)); err != nil {
+	if err := store.CreateOAuthState(ctx, expired, domain.OAuthState{RedirectURI: "https://app.example.com/cb", ReturnTo: "/", Purpose: domain.OAuthPurposeSignIn}, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ConsumeOAuthState(ctx, expired, now); !errors.Is(err, domain.ErrInvalidGoogleState) {
+	later := now.Add(2 * time.Minute)
+	if _, err := store.ConsumeOAuthState(ctx, expired, later); !errors.Is(err, domain.ErrInvalidGoogleState) {
 		t.Fatalf("expired consume err = %v, want ErrInvalidGoogleState", err)
 	}
-	if err := store.DeleteExpiredOAuthStates(ctx, now); err != nil {
+	if err := store.DeleteExpiredOAuthStates(ctx, later); err != nil {
 		t.Fatal(err)
 	}
 	var left int
@@ -253,24 +257,21 @@ func TestGoogleSignInLinksMixedCaseEmailWithoutDuplicate(t *testing.T) {
 	}
 }
 
-func TestGoogleSignInRefusesCaseOnlyDuplicateEmails(t *testing.T) {
-	store, db := migrationPool(t)
+// Case-only duplicate accounts used to be a state the sign-in path had to
+// refuse. Migration 019 makes the database refuse them, so the second row
+// cannot be stored at all.
+func TestCaseOnlyDuplicateEmailsAreRefusedByTheDatabase(t *testing.T) {
+	_, db := migrationPool(t)
 	ctx := context.Background()
-	for _, email := range []string{"Dup@Example.com", "dup@example.com"} {
-		if _, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, status, email_verified_at) VALUES ($1::uuid, $2, 'active', NOW())`, uuid.NewString(), email); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, status, email_verified_at) VALUES ($1::uuid, 'Dup@Example.com', 'active', NOW())`, uuid.NewString()); err != nil {
+		t.Fatal(err)
 	}
-
-	_, err := store.SignInWithIdentity(ctx, domain.GoogleProviderName, workspaceIdentity("sub-dup", "dup@example.com"), time.Now().UTC(), true)
-	if !errors.Is(err, domain.ErrGoogleAccountNotAllowed) {
-		t.Fatalf("case-only duplicates err = %v, want ErrGoogleAccountNotAllowed", err)
+	_, err := db.Pool.Exec(ctx, `INSERT INTO users (id, email, status, email_verified_at) VALUES ($1::uuid, 'dup@example.com', 'active', NOW())`, uuid.NewString())
+	if err == nil || !strings.Contains(err.Error(), "users_email_lower_key") {
+		t.Fatalf("case-only duplicate err = %v, want a violation of users_email_lower_key", err)
 	}
-	var identities, users int
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM user_identities WHERE subject = 'sub-dup'`).Scan(&identities); err != nil || identities != 0 {
-		t.Fatalf("identities for refused sign-in = %d, err = %v; want 0", identities, err)
-	}
-	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&users); err != nil || users != 2 {
-		t.Fatalf("users = %d, err = %v; want 2 untouched", users, err)
+	var users int
+	if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&users); err != nil || users != 1 {
+		t.Fatalf("users = %d, err = %v; want 1", users, err)
 	}
 }

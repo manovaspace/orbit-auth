@@ -9,7 +9,7 @@ SELECT id::text AS id,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
 FROM users
-WHERE email = sqlc.arg('email')::text;
+WHERE lower(email) = lower(sqlc.arg('email')::text);
 
 -- name: FindUserByMobile :one
 SELECT id::text AS id,
@@ -84,7 +84,7 @@ UPDATE users
 SET password_hash = sqlc.arg('password_hash')::text,
     display_name = sqlc.arg('display_name')::text,
     updated_at = NOW()
-WHERE email = sqlc.arg('email')::text
+WHERE lower(email) = lower(sqlc.arg('email')::text)
   AND status = 'signup_pending'
   AND email_verified_at IS NULL
 RETURNING id::text AS id;
@@ -96,7 +96,7 @@ SET password_hash = sqlc.arg('password_hash')::text,
     status = 'active',
     email_verified_at = sqlc.arg('email_verified_at')::timestamptz,
     updated_at = NOW()
-WHERE email = sqlc.arg('email')::text
+WHERE lower(email) = lower(sqlc.arg('email')::text)
   AND status = 'signup_pending'
   AND email_verified_at IS NULL
 RETURNING id::text AS id;
