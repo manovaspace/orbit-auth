@@ -13,20 +13,49 @@ import (
 )
 
 const consumeRefreshToken = `-- name: ConsumeRefreshToken :one
-UPDATE refresh_tokens SET revoked_at = NOW()
-WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
-RETURNING user_id::text AS user_id, COALESCE(org_id::text, '')::text AS org_id
+UPDATE refresh_tokens SET revoked_at = NOW(),
+    rotated_at = CASE WHEN $1::boolean THEN NOW() ELSE NULL END
+WHERE token_hash = $2 AND revoked_at IS NULL AND expires_at > NOW()
+RETURNING user_id::text AS user_id, COALESCE(org_id::text, '')::text AS org_id, family_id::text AS family_id
 `
 
-type ConsumeRefreshTokenRow struct {
-	UserID string
-	OrgID  string
+type ConsumeRefreshTokenParams struct {
+	Rotate    bool
+	TokenHash string
 }
 
-func (q *Queries) ConsumeRefreshToken(ctx context.Context, tokenHash string) (ConsumeRefreshTokenRow, error) {
-	row := q.db.QueryRow(ctx, consumeRefreshToken, tokenHash)
+type ConsumeRefreshTokenRow struct {
+	UserID   string
+	OrgID    string
+	FamilyID string
+}
+
+// Revokes a live token. rotate is true for a rotation (the token is marked
+// rotated, so a later presentation is detected as reuse) and false for a logout.
+func (q *Queries) ConsumeRefreshToken(ctx context.Context, arg ConsumeRefreshTokenParams) (ConsumeRefreshTokenRow, error) {
+	row := q.db.QueryRow(ctx, consumeRefreshToken, arg.Rotate, arg.TokenHash)
 	var i ConsumeRefreshTokenRow
-	err := row.Scan(&i.UserID, &i.OrgID)
+	err := row.Scan(&i.UserID, &i.OrgID, &i.FamilyID)
+	return i, err
+}
+
+const findRotatedRefreshToken = `-- name: FindRotatedRefreshToken :one
+SELECT user_id::text AS user_id, family_id::text AS family_id, rotated_at
+FROM refresh_tokens
+WHERE token_hash = $1 AND rotated_at IS NOT NULL
+`
+
+type FindRotatedRefreshTokenRow struct {
+	UserID    string
+	FamilyID  string
+	RotatedAt pgtype.Timestamptz
+}
+
+// Finds a token that a rotation consumed. A reuse of it means the token was copied.
+func (q *Queries) FindRotatedRefreshToken(ctx context.Context, tokenHash string) (FindRotatedRefreshTokenRow, error) {
+	row := q.db.QueryRow(ctx, findRotatedRefreshToken, tokenHash)
+	var i FindRotatedRefreshTokenRow
+	err := row.Scan(&i.UserID, &i.FamilyID, &i.RotatedAt)
 	return i, err
 }
 
@@ -98,6 +127,20 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) erro
 	return err
 }
 
+const revokeRefreshTokenFamily = `-- name: RevokeRefreshTokenFamily :execrows
+UPDATE refresh_tokens SET revoked_at = NOW()
+WHERE family_id = $1::uuid AND revoked_at IS NULL
+`
+
+// Revokes every live token of one family. Reuse of a rotated token uses it.
+func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, familyID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeRefreshTokenFamily, familyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :execrows
 UPDATE refresh_tokens SET revoked_at = NOW()
 WHERE user_id = $1::uuid AND revoked_at IS NULL
@@ -135,13 +178,14 @@ func (q *Queries) RevokeUserRefreshTokensExcept(ctx context.Context, arg RevokeU
 }
 
 const storeRefreshToken = `-- name: StoreRefreshToken :exec
-INSERT INTO refresh_tokens (id, user_id, org_id, token_hash, expires_at)
+INSERT INTO refresh_tokens (id, user_id, org_id, token_hash, expires_at, family_id)
 VALUES (
     $1::uuid,
     $2::uuid,
     $3::uuid,
     $4,
-    $5
+    $5,
+    COALESCE($6::uuid, $1::uuid)
 )
 `
 
@@ -151,8 +195,10 @@ type StoreRefreshTokenParams struct {
 	OrgID     pgtype.UUID
 	TokenHash string
 	ExpiresAt pgtype.Timestamptz
+	FamilyID  pgtype.UUID
 }
 
+// A token with no family_id starts a new family, identified by its own id.
 func (q *Queries) StoreRefreshToken(ctx context.Context, arg StoreRefreshTokenParams) error {
 	_, err := q.db.Exec(ctx, storeRefreshToken,
 		arg.ID,
@@ -160,6 +206,7 @@ func (q *Queries) StoreRefreshToken(ctx context.Context, arg StoreRefreshTokenPa
 		arg.OrgID,
 		arg.TokenHash,
 		arg.ExpiresAt,
+		arg.FamilyID,
 	)
 	return err
 }

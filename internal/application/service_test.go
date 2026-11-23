@@ -180,28 +180,55 @@ func (fakeApiTokens) FindByPrefix(context.Context, string) (domain.APIToken, err
 }
 
 type fakeRefreshToken struct {
-	userID string
-	orgID  string
+	userID   string
+	orgID    string
+	familyID string
 }
 
+// fakeRotatedToken is a token a rotation consumed, kept for reuse detection.
+type fakeRotatedToken struct {
+	userID    string
+	familyID  string
+	rotatedAt time.Time
+}
+
+// fakeRefreshStore keeps live tokens in tokens (a consumed or revoked token is
+// deleted, as before) and the rotated ones in rotated. now stamps rotations; a
+// nil now uses the wall clock.
 type fakeRefreshStore struct {
-	mu     sync.RWMutex
-	tokens map[string]fakeRefreshToken // tokenHash -> user and org
+	mu      sync.RWMutex
+	tokens  map[string]fakeRefreshToken // tokenHash -> user, org and family
+	rotated map[string]fakeRotatedToken // tokenHash -> rotation record
+	seq     int
+	now     func() time.Time
 }
 
 func newFakeRefreshStore() *fakeRefreshStore {
 	return &fakeRefreshStore{
-		tokens: make(map[string]fakeRefreshToken),
+		tokens:  make(map[string]fakeRefreshToken),
+		rotated: make(map[string]fakeRotatedToken),
 	}
 }
 
-func (f *fakeRefreshStore) Store(_ context.Context, userID, orgID, tokenHash string, _ time.Time) error {
+func (f *fakeRefreshStore) clockNow() time.Time {
+	if f.now != nil {
+		return f.now()
+	}
+	return time.Now()
+}
+
+func (f *fakeRefreshStore) Store(_ context.Context, userID, orgID, familyID, tokenHash string, _ time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.tokens == nil {
 		f.tokens = make(map[string]fakeRefreshToken)
 	}
-	f.tokens[tokenHash] = fakeRefreshToken{userID: userID, orgID: orgID}
+	f.seq++
+	if familyID == "" {
+		// A new family is identified by the new token's own id, as in Postgres.
+		familyID = fmt.Sprintf("family-%d", f.seq)
+	}
+	f.tokens[tokenHash] = fakeRefreshToken{userID: userID, orgID: orgID, familyID: familyID}
 	return nil
 }
 
@@ -218,16 +245,47 @@ func (f *fakeRefreshStore) FindValid(_ context.Context, tokenHash string) (strin
 	return token.userID, token.orgID, nil
 }
 
-// Consume checks and deletes under one lock, so one token redeems once.
-func (f *fakeRefreshStore) Consume(_ context.Context, tokenHash string) (string, string, error) {
+// Consume checks and deletes under one lock, so one token redeems once. A
+// rotation also records the token as rotated.
+func (f *fakeRefreshStore) Consume(_ context.Context, tokenHash string, rotate bool) (domain.RefreshGrant, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	token, ok := f.tokens[tokenHash]
 	if !ok {
-		return "", "", domain.ErrRefreshTokenNotFound
+		return domain.RefreshGrant{}, domain.ErrRefreshTokenNotFound
 	}
 	delete(f.tokens, tokenHash)
-	return token.userID, token.orgID, nil
+	if rotate {
+		if f.rotated == nil {
+			f.rotated = make(map[string]fakeRotatedToken)
+		}
+		f.rotated[tokenHash] = fakeRotatedToken{userID: token.userID, familyID: token.familyID, rotatedAt: f.clockNow()}
+	}
+	return domain.RefreshGrant{UserID: token.userID, OrgID: token.orgID, FamilyID: token.familyID}, nil
+}
+
+func (f *fakeRefreshStore) FindRotated(_ context.Context, tokenHash string) (domain.RotatedRefreshToken, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	r, ok := f.rotated[tokenHash]
+	if !ok {
+		return domain.RotatedRefreshToken{}, domain.ErrRefreshTokenNotFound
+	}
+	return domain.RotatedRefreshToken{UserID: r.userID, FamilyID: r.familyID, RotatedAt: r.rotatedAt}, nil
+}
+
+// RevokeFamily deletes every live token of familyID and counts them.
+func (f *fakeRefreshStore) RevokeFamily(_ context.Context, familyID string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for hash, token := range f.tokens {
+		if token.familyID == familyID {
+			delete(f.tokens, hash)
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *fakeRefreshStore) Revoke(_ context.Context, tokenHash string) error {
@@ -537,7 +595,7 @@ func TestRefresh_ValidRotation(t *testing.T) {
 
 	initialRefreshToken := "valid-refresh-token-value-12345"
 	userID := "user-42"
-	err := refreshStore.Store(context.Background(), userID, "", domain.HashRefreshToken(initialRefreshToken), time.Now().UTC().Add(24*time.Hour))
+	err := refreshStore.Store(context.Background(), userID, "", "", domain.HashRefreshToken(initialRefreshToken), time.Now().UTC().Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +655,7 @@ func TestRefresh_RevokedOrNonExistent(t *testing.T) {
 
 	t.Run("revoked refresh token", func(t *testing.T) {
 		token := "active-then-revoked-token"
-		_ = refreshStore.Store(context.Background(), "user-99", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour))
+		_ = refreshStore.Store(context.Background(), "user-99", "", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour))
 		// Revoke the token
 		_ = refreshStore.Revoke(context.Background(), domain.HashRefreshToken(token))
 
@@ -612,7 +670,7 @@ func TestRefreshConsumesTokenOnce(t *testing.T) {
 	refreshStore := newFakeRefreshStore()
 	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
 	token := "single-use-refresh-token"
-	if err := refreshStore.Store(context.Background(), "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := refreshStore.Store(context.Background(), "user-1", "", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, err := svc.Refresh(context.Background(), token); err != nil {
@@ -627,7 +685,7 @@ func TestRefreshConcurrentRedemptionSucceedsOnce(t *testing.T) {
 	refreshStore := newFakeRefreshStore()
 	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
 	token := "replayed-refresh-token"
-	if err := refreshStore.Store(context.Background(), "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := refreshStore.Store(context.Background(), "user-1", "", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -662,7 +720,7 @@ func TestRevokeRefreshInvalidatesToken(t *testing.T) {
 	refreshStore := newFakeRefreshStore()
 	svc := mustServiceWithRefresh(t, &fakeOTP{}, &fakeUsers{}, refreshStore, &fakeNotifier{}, fakeFlags{})
 	token := "logout-refresh-token"
-	if err := refreshStore.Store(context.Background(), "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := refreshStore.Store(context.Background(), "user-1", "", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.RevokeRefresh(context.Background(), token); err != nil {
@@ -688,7 +746,7 @@ func TestRevokeRefreshIsIdempotent(t *testing.T) {
 	}
 
 	token := "revoked-twice-token"
-	if err := refreshStore.Store(ctx, "user-1", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := refreshStore.Store(ctx, "user-1", "", "", domain.HashRefreshToken(token), time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.RevokeRefresh(ctx, token); err != nil {
@@ -704,8 +762,8 @@ type consumeFailStore struct {
 	*fakeRefreshStore
 }
 
-func (consumeFailStore) Consume(context.Context, string) (string, string, error) {
-	return "", "", errors.New("database unavailable")
+func (consumeFailStore) Consume(context.Context, string, bool) (domain.RefreshGrant, error) {
+	return domain.RefreshGrant{}, errors.New("database unavailable")
 }
 
 func TestRevokeRefreshReturnsStoreErrors(t *testing.T) {
@@ -723,7 +781,7 @@ func TestSelectOrgOtherUsersTokenIsNotConsumed(t *testing.T) {
 	svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
 
 	token := "owned-by-u2-refresh"
-	if err := refresh.Store(ctx, "u2", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
+	if err := refresh.Store(ctx, "u2", "", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, err := svc.SelectOrg(ctx, "u1", token, orgID); !errors.Is(err, ErrInvalidRefresh) {

@@ -19,7 +19,7 @@ func TestDisableUserRevokesRefreshTokensAndBlocksIssuance(t *testing.T) {
 		t.Fatal(err)
 	}
 	live := domain.HashRefreshToken("live-token-before-disable")
-	if err := store.Store(ctx, user.ID, "", live, time.Now().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "", live, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -31,7 +31,7 @@ func TestDisableUserRevokesRefreshTokensAndBlocksIssuance(t *testing.T) {
 	if _, _, err := store.FindValid(ctx, live); err == nil {
 		t.Fatal("refresh token survived the disable")
 	}
-	if err := store.Store(ctx, user.ID, "", domain.HashRefreshToken("after-disable"), time.Now().Add(time.Hour)); !errors.Is(err, domain.ErrAccountNotActive) {
+	if err := store.Store(ctx, user.ID, "", "", domain.HashRefreshToken("after-disable"), time.Now().Add(time.Hour)); !errors.Is(err, domain.ErrAccountNotActive) {
 		t.Fatalf("Store after disable err = %v, want ErrAccountNotActive", err)
 	}
 
@@ -56,7 +56,7 @@ func TestDisableUserRevokesRefreshTokensAndBlocksIssuance(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatalf("EnableUser = %v, %v; want changed", changed, err)
 	}
-	if err := store.Store(ctx, user.ID, "", domain.HashRefreshToken("after-enable"), time.Now().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "", domain.HashRefreshToken("after-enable"), time.Now().Add(time.Hour)); err != nil {
 		t.Fatalf("Store after enable: %v", err)
 	}
 	if _, _, err := store.FindValid(ctx, live); err == nil {
@@ -186,7 +186,7 @@ func TestSignInRacingDisableLeavesNoLiveToken(t *testing.T) {
 		hash := domain.HashRefreshToken(uuid.NewString())
 		issued := make(chan error, 1)
 		go func() {
-			issued <- store.Store(ctx, user.ID, "", hash, time.Now().Add(time.Hour))
+			issued <- store.Store(ctx, user.ID, "", "", hash, time.Now().Add(time.Hour))
 		}()
 		if _, err := store.DisableUser(ctx, user.ID, by); err != nil {
 			t.Fatalf("round %d: DisableUser: %v", i, err)

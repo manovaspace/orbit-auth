@@ -94,20 +94,54 @@ type SignupStore interface {
 	CreateInviteSignup(ctx context.Context, user User, invite Invite, acceptedAt time.Time) (userID string, created bool, err error)
 }
 
+// RefreshReuseGrace is the window after a rotation in which presenting the
+// rotated token again is treated as a race, not theft. Two requests that race
+// with the same token (for example two browser tabs) must not sign the user
+// out, so a reuse inside this window is refused without revoking the family.
+const RefreshReuseGrace = 30 * time.Second
+
+// RefreshGrant is what a consumed refresh token grants: the account, the
+// organization the token selected (empty when none) and the family the token
+// belongs to.
+type RefreshGrant struct {
+	UserID   string
+	OrgID    string
+	FamilyID string
+}
+
+// RotatedRefreshToken describes a token that a rotation consumed. Presenting it
+// again is reuse; RotatedAt tells a race from theft.
+type RotatedRefreshToken struct {
+	UserID    string
+	FamilyID  string
+	RotatedAt time.Time
+}
+
 // RefreshTokenStore persists refresh tokens by their hash. A stored token
 // remembers the organization selected when the pair was issued; orgID is empty
-// when no organization was active.
+// when no organization was active. Each token belongs to a family: the tokens
+// of one sign-in, linked by rotation.
 type RefreshTokenStore interface {
-	// Store writes a token for userID. It takes a share lock on the account in
-	// the same transaction and writes nothing when the account is not active,
-	// returning ErrAccountNotActive. A concurrent disable therefore either
-	// refuses the token or revokes it.
-	Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error
+	// Store writes a token for userID in familyID. An empty familyID starts a
+	// new family whose id is the new token's id. It takes a share lock on the
+	// account in the same transaction and writes nothing when the account is
+	// not active, returning ErrAccountNotActive. A concurrent disable therefore
+	// either refuses the token or revokes it.
+	Store(ctx context.Context, userID, orgID, familyID, tokenHash string, expiresAt time.Time) error
 	FindValid(ctx context.Context, tokenHash string) (userID, orgID string, err error)
-	// Consume atomically revokes a valid token and returns its owner, so two
-	// concurrent redemptions of one token cannot both succeed. A missing,
-	// revoked or expired token returns ErrRefreshTokenNotFound.
-	Consume(ctx context.Context, tokenHash string) (userID, orgID string, err error)
+	// Consume atomically revokes a valid token and returns its grant, so two
+	// concurrent redemptions of one token cannot both succeed. rotate is true
+	// for a rotation (Refresh, SelectOrg), which marks the token rotated so a
+	// later presentation is detected as reuse; false is for logout, which is
+	// not a rotation. A missing, revoked or expired token returns
+	// ErrRefreshTokenNotFound.
+	Consume(ctx context.Context, tokenHash string, rotate bool) (RefreshGrant, error)
+	// FindRotated returns the token a rotation consumed. It returns
+	// ErrRefreshTokenNotFound when the hash is unknown or was never rotated.
+	FindRotated(ctx context.Context, tokenHash string) (RotatedRefreshToken, error)
+	// RevokeFamily revokes every live token of familyID and returns how many it
+	// revoked. Already revoked tokens are not counted.
+	RevokeFamily(ctx context.Context, familyID string) (int64, error)
 	Revoke(ctx context.Context, tokenHash string) error
 }
 

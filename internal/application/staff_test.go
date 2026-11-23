@@ -315,7 +315,7 @@ func TestStaffSuspendBlocksSelectAndRefreshUntilReactivated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, refreshToken, _, err := f.svc.issueTokensForOrg(ctx, "owner-1", org.ID)
+	_, refreshToken, _, err := f.svc.issueTokensForOrg(ctx, "owner-1", org.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

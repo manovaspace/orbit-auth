@@ -106,7 +106,7 @@ func TestSetPasswordRevokesOtherSessionsAndKeepsTheCurrentOne(t *testing.T) {
 	}
 	exp := now.Add(time.Hour)
 	for _, hash := range []string{"keep-hash", "other-hash"} {
-		if err := store.Store(ctx, user.ID, "", hash, exp); err != nil {
+		if err := store.Store(ctx, user.ID, "", "", hash, exp); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -143,7 +143,7 @@ func TestRevokeSessionsKeepsOnlyThePresentedToken(t *testing.T) {
 	}
 	exp := now.Add(time.Hour)
 	for _, hash := range []string{"rev-keep", "rev-one", "rev-two"} {
-		if err := store.Store(ctx, user.ID, "", hash, exp); err != nil {
+		if err := store.Store(ctx, user.ID, "", "", hash, exp); err != nil {
 			t.Fatal(err)
 		}
 	}

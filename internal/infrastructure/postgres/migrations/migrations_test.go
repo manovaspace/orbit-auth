@@ -106,8 +106,8 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 21 {
-		t.Fatalf("applied %d migrations, want 21", len(results))
+	if len(results) != 22 {
+		t.Fatalf("applied %d migrations, want 22", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "organization_provisions", "outbox_events", "feature_flags", "oauth_sign_in_states", "user_identities", "goose_db_version"} {
 		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
@@ -120,15 +120,15 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if !columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") {
 		t.Fatal("organizations.status was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 21 || target != 21 {
-		t.Fatalf("version = %d/%d, err=%v, want 21/21", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 22 || target != 22 {
+		t.Fatalf("version = %d/%d, err=%v, want 22/22", current, target, err)
 	}
 }
 
 // TestAdoptionOnLegacyDatabaseChangesNothing is the production adoption proof:
 // a database created by the old runner (real users, OTP, session and API-token
 // rows) is adopted without running migration SQL. Table and index relfilenodes
-// and every row must be identical afterwards. Only migrations 014 to 021,
+// and every row must be identical afterwards. Only migrations 014 to 022,
 // which the old runner never applied, run, and a second `up` is a no-op.
 func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	db := testutil.OpenPostgres(t)
@@ -151,7 +151,7 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("adopt legacy database: %v", err)
 	}
-	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21)
+	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
 	if after := schemaSnapshot(t, ctx, db.Pool, db.Schema); after != beforeSchema {
 		t.Fatalf("adoption changed the schema:\nbefore: %s\nafter:  %s", beforeSchema, after)
@@ -162,10 +162,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 21 || target != 21 {
-		t.Fatalf("version = %d/%d, err=%v, want 21/21", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 22 || target != 22 {
+		t.Fatalf("version = %d/%d, err=%v, want 22/22", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -218,7 +218,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -972,9 +972,9 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 
 	results, err := m.Up(ctx)
 	if err != nil {
-		t.Fatalf("apply 014 to 021: %v", err)
+		t.Fatalf("apply 014 to 022: %v", err)
 	}
-	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21)
+	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 	if shapeSnapshot(t, ctx, db.Pool, db.Schema) == beforeShape {
 		t.Fatal("migration 014 left the organization shape unchanged")
 	}
@@ -1069,8 +1069,8 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 		`SELECT status FROM organizations WHERE id = 'a2000000-0000-0000-0000-000000000002'`).Scan(&status); err != nil || status != "active" {
 		t.Fatalf("status after reapplying 014 = %q, %v; want active", status, err)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 21 || target != 21 {
-		t.Fatalf("version = %d/%d, err=%v, want 21/21", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 22 || target != 22 {
+		t.Fatalf("version = %d/%d, err=%v, want 22/22", current, target, err)
 	}
 }
 

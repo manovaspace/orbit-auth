@@ -194,7 +194,7 @@ func (s *Service) completeInviteSignIn(ctx context.Context, st domain.OAuthState
 	if org.Status == domain.OrgStatusSuspended {
 		orgID = ""
 	}
-	access, refresh, expires, err := s.issueTokensForOrg(ctx, acceptance.User.ID, orgID)
+	access, refresh, expires, err := s.issueTokensForOrg(ctx, acceptance.User.ID, orgID, "")
 	if err != nil {
 		return GoogleSignInResult{}, err
 	}

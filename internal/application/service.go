@@ -352,14 +352,15 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (access, ref
 			return "", "", time.Time{}, domain.ErrOrgSuspended
 		}
 	}
-	userID, orgID, err := s.refresh.Consume(ctx, hash)
+	grant, err := s.refresh.Consume(ctx, hash, true)
 	if err != nil {
+		s.detectRefreshReuse(ctx, hash)
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	if s.requireActiveUser(ctx, userID) != nil {
+	if s.requireActiveUser(ctx, grant.UserID) != nil {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	access, refresh, expires, err = s.issueTokensForOrg(ctx, userID, s.activeOrg(ctx, userID, orgID))
+	access, refresh, expires, err = s.issueTokensForOrg(ctx, grant.UserID, s.activeOrg(ctx, grant.UserID, grant.OrgID), grant.FamilyID)
 	return access, refresh, expires, generic(err, ErrInvalidRefresh)
 }
 
@@ -395,15 +396,22 @@ func (s *Service) SelectOrg(ctx context.Context, userID, refreshToken, orgID str
 	}
 	hash := domain.HashRefreshToken(refreshToken)
 	tokenUserID, _, err := s.refresh.FindValid(ctx, hash)
-	if err != nil || tokenUserID != userID {
+	if err != nil {
+		// A rotated token is no longer valid, so this is where its reuse shows.
+		s.detectRefreshReuse(ctx, hash)
+		return "", "", time.Time{}, ErrInvalidRefresh
+	}
+	if tokenUserID != userID {
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
 	// Consume, not Revoke: a concurrent redemption that wins the race must
 	// make this one fail.
-	if _, _, err := s.refresh.Consume(ctx, hash); err != nil {
+	grant, err := s.refresh.Consume(ctx, hash, true)
+	if err != nil {
+		s.detectRefreshReuse(ctx, hash)
 		return "", "", time.Time{}, ErrInvalidRefresh
 	}
-	access, refresh, expires, err = s.issueTokensForOrg(ctx, userID, orgID)
+	access, refresh, expires, err = s.issueTokensForOrg(ctx, userID, orgID, grant.FamilyID)
 	return access, refresh, expires, generic(err, ErrInvalidRefresh)
 }
 
@@ -415,11 +423,35 @@ func (s *Service) RevokeRefresh(ctx context.Context, refreshToken string) error 
 	if strings.TrimSpace(refreshToken) == "" {
 		return nil
 	}
-	_, _, err := s.refresh.Consume(ctx, domain.HashRefreshToken(refreshToken))
+	_, err := s.refresh.Consume(ctx, domain.HashRefreshToken(refreshToken), false)
 	if err != nil && !errors.Is(err, domain.ErrRefreshTokenNotFound) {
 		return err
 	}
 	return nil
+}
+
+// detectRefreshReuse runs after a refresh token was refused. If the token was
+// consumed by a rotation, it has been copied: the legitimate client rotated it
+// and the copy is being used now. A reuse inside domain.RefreshReuseGrace is a
+// race between two requests with the same token and only is logged. A later
+// reuse revokes every live token of the family. The token and its hash are
+// never logged. A lookup failure does nothing: the caller already refuses the
+// request.
+func (s *Service) detectRefreshReuse(ctx context.Context, hash string) {
+	rotated, err := s.refresh.FindRotated(ctx, hash)
+	if err != nil {
+		return
+	}
+	if s.clock.Now().Sub(rotated.RotatedAt) <= domain.RefreshReuseGrace {
+		s.logger("refresh_token_race", "user_id", rotated.UserID, "family_id", rotated.FamilyID)
+		return
+	}
+	revoked, err := s.refresh.RevokeFamily(ctx, rotated.FamilyID)
+	if err != nil {
+		s.logger("refresh_token_family_revoke_failed", "user_id", rotated.UserID, "family_id", rotated.FamilyID, "error", err)
+		return
+	}
+	s.logger("refresh_token_reuse_detected", "user_id", rotated.UserID, "family_id", rotated.FamilyID, "revoked", revoked)
 }
 
 // issueTokens issues a pair for a login, applying single-organization
@@ -429,7 +461,7 @@ func (s *Service) issueTokens(ctx context.Context, userID string) (access, refre
 	if s.autoSelectSingleOrg {
 		orgID = s.singleActiveOrg(ctx, userID)
 	}
-	return s.issueTokensForOrg(ctx, userID, orgID)
+	return s.issueTokensForOrg(ctx, userID, orgID, "")
 }
 
 // singleActiveOrg returns the only active organization of userID, or an empty
@@ -460,7 +492,10 @@ func (s *Service) activeOrg(ctx context.Context, userID, orgID string) string {
 	return orgID
 }
 
-func (s *Service) issueTokensForOrg(ctx context.Context, userID, orgID string) (access, refresh string, expires time.Time, err error) {
+// issueTokensForOrg issues a pair for userID. An empty familyID starts a new
+// refresh-token family (a sign-in); a rotation passes the family of the token it
+// consumed.
+func (s *Service) issueTokensForOrg(ctx context.Context, userID, orgID, familyID string) (access, refresh string, expires time.Time, err error) {
 	now := s.clock.Now()
 	expires = now.Add(domain.AccessTokenTTL)
 	if orgID == "" {
@@ -472,7 +507,7 @@ func (s *Service) issueTokensForOrg(ctx context.Context, userID, orgID string) (
 		return "", "", time.Time{}, err
 	}
 	refresh = s.ids.NewID() + s.ids.NewID()
-	if err := s.refresh.Store(ctx, userID, orgID, domain.HashRefreshToken(refresh), now.Add(domain.RefreshTokenTTL)); err != nil {
+	if err := s.refresh.Store(ctx, userID, orgID, familyID, domain.HashRefreshToken(refresh), now.Add(domain.RefreshTokenTTL)); err != nil {
 		return "", "", time.Time{}, err
 	}
 	return access, refresh, expires, nil
