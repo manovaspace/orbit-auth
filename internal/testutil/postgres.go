@@ -1,6 +1,8 @@
 // Package testutil provides opt-in integration-test infrastructure. Tests that
 // call OpenPostgres skip when TEST_DATABASE_URL is unset, and refuse any
-// database whose name does not start with "test".
+// database whose name does not start with "test". Each call gets its own
+// database, created from template0, so tests never share schema-qualified
+// objects or search_path state.
 package testutil
 
 import (
@@ -14,22 +16,28 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/searchpath"
 )
 
-// Database is one isolated schema inside the disposable test database.
+// Database is one isolated, freshly created database on the test server.
 type Database struct {
-	// Pool has search_path set to Schema,public.
+	// Pool connects with the orbit-auth search_path (searchpath.Value).
 	Pool *pgxpool.Pool
-	// URL is a DSN with search_path set to Schema,public.
+	// URL is the DSN Pool uses: the base URL with Name as the database and
+	// the orbit-auth search_path applied.
 	URL string
-	// Schema is the isolated schema every object is created in.
+	// Name is the database created for this test.
+	Name string
+	// Schema is "public": the schema the pre-schema-move migrations create
+	// objects in and where goose_db_version lives. Tests that filter
+	// information_schema by schema use it.
 	Schema string
 
 	basePool *pgxpool.Pool
 }
 
 // OpenPostgres skips unless TEST_DATABASE_URL names a database whose name
-// starts with "test", then creates an isolated schema and drops it on cleanup.
+// starts with "test", then creates a fresh database and drops it on cleanup.
 func OpenPostgres(t testing.TB) *Database {
 	t.Helper()
 
@@ -57,42 +65,55 @@ func OpenPostgres(t testing.TB) *Database {
 		t.Fatalf("ping test database: %v", err)
 	}
 
-	schema := "auth_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	if _, err := basePool.Exec(ctx, `CREATE SCHEMA "`+schema+`"`); err != nil {
+	dbName := "test_auth_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err := basePool.Exec(ctx, `CREATE DATABASE "`+dbName+`" TEMPLATE template0`); err != nil {
 		basePool.Close()
-		t.Fatalf("create isolated test schema: %v", err)
+		t.Fatalf("create isolated test database: %v", err)
 	}
 
-	scopedURL, err := withSearchPath(rawURL, schema)
+	scopedBase, err := withDatabaseName(rawURL, dbName)
 	if err != nil {
-		_, _ = basePool.Exec(context.Background(), `DROP SCHEMA "`+schema+`" CASCADE`)
+		dropDatabase(basePool, dbName)
 		basePool.Close()
 		t.Fatalf("scope test database URL: %v", err)
 	}
+	scopedURL, err := searchpath.Apply(scopedBase)
+	if err != nil {
+		dropDatabase(basePool, dbName)
+		basePool.Close()
+		t.Fatalf("apply search_path to test database URL: %v", err)
+	}
 	pool, err := pgxpool.New(ctx, scopedURL)
 	if err != nil {
-		_, _ = basePool.Exec(context.Background(), `DROP SCHEMA "`+schema+`" CASCADE`)
+		dropDatabase(basePool, dbName)
 		basePool.Close()
-		t.Fatalf("connect isolated test schema: %v", err)
+		t.Fatalf("connect isolated test database: %v", err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		_, _ = basePool.Exec(context.Background(), `DROP SCHEMA "`+schema+`" CASCADE`)
+		dropDatabase(basePool, dbName)
 		basePool.Close()
-		t.Fatalf("ping isolated test schema: %v", err)
+		t.Fatalf("ping isolated test database: %v", err)
 	}
 
-	db := &Database{Pool: pool, URL: scopedURL, Schema: schema, basePool: basePool}
+	db := &Database{Pool: pool, URL: scopedURL, Name: dbName, Schema: "public", basePool: basePool}
 	t.Cleanup(func() {
 		pool.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if _, err := basePool.Exec(ctx, `DROP SCHEMA "`+schema+`" CASCADE`); err != nil {
-			t.Errorf("drop isolated test schema: %v", err)
+		if err := dropDatabase(basePool, dbName); err != nil {
+			t.Errorf("drop isolated test database: %v", err)
 		}
 		basePool.Close()
 	})
 	return db
+}
+
+// dropDatabase force-drops name through pool. Callers close every connection
+// to the database first; WITH (FORCE) ends any that remain.
+func dropDatabase(pool *pgxpool.Pool, name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, err := pool.Exec(ctx, `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
+	return err
 }
 
 // databaseName returns the database name from a PostgreSQL URL.
@@ -108,14 +129,14 @@ func databaseName(rawURL string) (string, error) {
 	return name, nil
 }
 
-// withSearchPath adds search_path=schema,public to a PostgreSQL URL.
-func withSearchPath(rawURL, schema string) (string, error) {
+// withDatabaseName returns rawURL with its database name replaced by name.
+// Host, credentials and query parameters are kept.
+func withDatabaseName(rawURL, name string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return "", err
 	}
-	query := parsed.Query()
-	query.Set("search_path", schema+",public")
-	parsed.RawQuery = query.Encode()
+	parsed.Path = "/" + name
+	parsed.RawPath = ""
 	return parsed.String(), nil
 }
