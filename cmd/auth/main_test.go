@@ -36,3 +36,31 @@ func TestInviteAcceptHostsFromEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestDevSMSCodeFromEnv(t *testing.T) {
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "dev")
+	t.Setenv("AUTH_DEV_SMS_CODE", "")
+	if got, err := devSMSCodeFromEnv(); err != nil || got != "" {
+		t.Fatalf("unset: got %q, %v; want empty, nil", got, err)
+	}
+	t.Setenv("AUTH_DEV_SMS_CODE", "123456")
+	if got, err := devSMSCodeFromEnv(); err != nil || got != "123456" {
+		t.Fatalf("six digits in dev: got %q, %v", got, err)
+	}
+	for _, value := range []string{"12345", "1234567", "12345a", " 123456", "١٢٣٤٥٦"} {
+		t.Setenv("AUTH_DEV_SMS_CODE", value)
+		if _, err := devSMSCodeFromEnv(); err == nil {
+			t.Fatalf("AUTH_DEV_SMS_CODE=%q accepted in dev", value)
+		}
+	}
+}
+
+func TestDevSMSCodeRefusedOutsideDev(t *testing.T) {
+	t.Setenv("AUTH_DEV_SMS_CODE", "123456")
+	for _, env := range []string{"", "staging", "production", "Dev"} {
+		t.Setenv("DEPLOYMENT_ENVIRONMENT", env)
+		if _, err := devSMSCodeFromEnv(); err == nil {
+			t.Fatalf("DEPLOYMENT_ENVIRONMENT=%q accepted AUTH_DEV_SMS_CODE", env)
+		}
+	}
+}

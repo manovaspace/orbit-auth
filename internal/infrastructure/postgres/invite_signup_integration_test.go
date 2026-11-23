@@ -414,3 +414,36 @@ func TestEmailInviteSignupRollsBackTakeoverWhenInviteIsNotPending(t *testing.T) 
 		t.Fatalf("pending account changed after rollback: %+v", found)
 	}
 }
+
+func TestPhoneInviteSignupWithVerifiedMobileSetsVerification(t *testing.T) {
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	const phone = "+989121230002"
+
+	inviter, err := store.FindOrCreateByEmail(ctx, "owner-verified@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	org := testOrg("Verified Acme", now)
+	if err := store.CreateOrg(ctx, org, inviter.ID); err != nil {
+		t.Fatal(err)
+	}
+	invite := pendingPhoneInvite(org.ID, inviter.ID, phone, domain.RoleMember, "phone-verified-token")
+	if err := store.CreateInvite(ctx, invite, domain.SystemAuditActor()); err != nil {
+		t.Fatal(err)
+	}
+
+	user := phoneSignupUser(phone)
+	user.MobileVerified = true
+	if _, created, err := store.CreateInviteSignup(ctx, user, invite, now); err != nil || !created {
+		t.Fatalf("created = %v, err = %v", created, err)
+	}
+	found, err := store.FindByMobile(ctx, phone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found.MobileVerified {
+		t.Fatal("a verified phone invite sign-up left the mobile unverified")
+	}
+}

@@ -57,19 +57,14 @@ func TestOTPChallengesRoundTrip(t *testing.T) {
 		t.Fatalf("expires_at = %v, want %v", got.ExpiresAt, challenge.ExpiresAt)
 	}
 
-	if err := store.IncrementAttempts(ctx, challenge.ID); err != nil {
-		t.Fatal(err)
-	}
-	got, err = store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel)
-	if err != nil || got.Attempts != 1 {
-		t.Fatalf("attempts = %d, err = %v", got.Attempts, err)
-	}
-
 	if err := store.ConsumeChallenge(ctx, challenge.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("consumed challenge err = %v, want no rows", err)
+	if _, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel); !errors.Is(err, domain.ErrChallengeNotFound) {
+		t.Fatalf("consumed challenge err = %v, want ErrChallengeNotFound", err)
+	}
+	if err := store.ConsumeChallenge(ctx, challenge.ID); !errors.Is(err, domain.ErrChallengeConsumed) {
+		t.Fatalf("second consume err = %v, want ErrChallengeConsumed", err)
 	}
 
 	// Expired challenges are deleted; live ones are kept.

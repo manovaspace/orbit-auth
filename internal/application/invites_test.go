@@ -725,7 +725,7 @@ func TestAcceptPhoneInviteByMatchingMobile(t *testing.T) {
 	svc.users = inviteUsers{
 		fakeUsers: &fakeUsers{},
 		byID: map[string]domain.User{
-			"phone-user": {ID: "phone-user", Mobile: testMobile, Status: domain.UserActive},
+			"phone-user": {ID: "phone-user", Mobile: testMobile, MobileVerified: true, Status: domain.UserActive},
 		},
 	}
 	accepted, err := svc.AcceptInvite(ctx, "phone-user", token)
@@ -750,7 +750,8 @@ func TestAcceptPhoneInviteRefusesOtherAccountsGenerically(t *testing.T) {
 		name string
 		user domain.User
 	}{
-		{"different mobile", domain.User{ID: "u", Mobile: "+989129999999", Status: domain.UserActive}},
+		{"different mobile", domain.User{ID: "u", Mobile: "+989129999999", MobileVerified: true, Status: domain.UserActive}},
+		{"matching mobile not verified", domain.User{ID: "u", Mobile: testMobile, Status: domain.UserActive}},
 		{"no mobile", domain.User{ID: "u", Email: "member@example.com", EmailVerified: true, Status: domain.UserActive}},
 		{"signup pending with matching mobile", domain.User{ID: "u", Mobile: testMobile, Status: domain.UserSignupPending}},
 	} {

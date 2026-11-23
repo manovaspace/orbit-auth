@@ -76,15 +76,23 @@ service InviteService {
   // in: the organization, its tier and the expiry. It never returns the
   // recipient's email address or phone number.
   rpc GetInvitePreview(GetInvitePreviewRequest) returns (InvitePreview);
+  // RequestInvitePhoneCode sends a one-time code to the number of a phone
+  // invitation. The code is the proof AcceptInviteWithSignup needs. A new code
+  // is refused with ResourceExhausted until 60 seconds after the last one, and
+  // also while the newest code has a failed guess and has not yet expired. While the
+  // mobile OTP flag is off, the call is FailedPrecondition. An email invitation
+  // or an unusable token is the generic NotFound.
+  rpc RequestInvitePhoneCode(RequestInvitePhoneCodeRequest) returns (RequestInvitePhoneCodeResponse);
   // AcceptInviteWithSignup creates the account for an invitation, sets its
   // password and display name, joins the organization with the invited tier
-  // and returns the new user. A phone invitation gets an account whose mobile
-  // number is the invited number and is not verified: no OTP proved it. An
-  // email invitation gets an account whose email is verified, because the
-  // token reached only that mailbox. If an active account already uses the
+  // and returns the new user. A phone invitation needs phone_code, the code
+  // RequestInvitePhoneCode sent to the invited number; the account's mobile is
+  // then verified. A wrong or used code is Unauthenticated. An email invitation
+  // gets an account whose email is verified, because the token reached only
+  // that mailbox, and ignores phone_code. If an active account already uses the
   // number or email, the call is AlreadyExists and the person must sign in and
-  // call AcceptInvite instead. A signup_pending account with the invited email
-  // is taken over with the new password and becomes active.
+  // call AcceptInvite. A signup_pending account with the invited email is taken
+  // over with the new password and becomes active.
   rpc AcceptInviteWithSignup(AcceptInviteWithSignupRequest) returns (AcceptInviteWithSignupResponse);
 }
 
@@ -118,10 +126,22 @@ message InvitePreview {
   bool account_exists = 7;
 }
 
+message RequestInvitePhoneCodeRequest {
+  string token = 1;
+}
+
+message RequestInvitePhoneCodeResponse {
+  // expires_at is when the code stops being valid, RFC 3339.
+  string expires_at = 1;
+}
+
 message AcceptInviteWithSignupRequest {
   string token = 1;
   string password = 2;
   string display_name = 3;
+  // phone_code is the one-time code RequestInvitePhoneCode sent. Required for
+  // a phone invitation; ignored for an email invitation.
+  string phone_code = 4;
 }
 
 message AcceptInviteWithSignupResponse {

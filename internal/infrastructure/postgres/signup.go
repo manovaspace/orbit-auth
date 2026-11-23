@@ -123,9 +123,10 @@ func (s *Store) CreateSignupUser(ctx context.Context, user domain.User, org *dom
 
 // CreateInviteSignup writes the account for an invitation and, in one
 // transaction, accepts the invitation and adds the active membership with the
-// invited role. A phone invitation inserts the account with the invited number
-// left unverified; ON CONFLICT (mobile) DO NOTHING makes a number that already
-// belongs to an account a no-op. An email invitation inserts the account with
+// invited role. A phone invitation inserts the account with the invited number,
+// with mobile_verified_at set to acceptedAt only when user.MobileVerified is
+// true; ON CONFLICT (mobile) DO NOTHING makes a number that already belongs to
+// an account a no-op. An email invitation inserts the account with
 // email_verified_at set; if the email belongs to a signup_pending account that
 // account is taken over (password, display name, status active, verification
 // time replaced) and no user.created is emitted, as for the existing pending
@@ -219,12 +220,17 @@ func (s *Store) CreateInviteSignup(ctx context.Context, user domain.User, invite
 // number or an active email already belongs to an account.
 func writeInviteAccount(ctx context.Context, queries *sqlcgen.Queries, user domain.User, invite domain.Invite, userID uuid.UUID, acceptedAt time.Time) (string, bool, error) {
 	if invite.Phone != "" {
+		var mobileVerifiedAt pgtype.Timestamptz
+		if user.MobileVerified {
+			mobileVerifiedAt = timestamptz(acceptedAt)
+		}
 		created, err := queries.CreatePhoneSignupUser(ctx, sqlcgen.CreatePhoneSignupUserParams{
-			ID:           userID,
-			Mobile:       user.Mobile,
-			PasswordHash: user.PasswordHash,
-			DisplayName:  user.DisplayName,
-			Status:       domain.UserActive,
+			ID:               userID,
+			Mobile:           user.Mobile,
+			PasswordHash:     user.PasswordHash,
+			DisplayName:      user.DisplayName,
+			Status:           domain.UserActive,
+			MobileVerifiedAt: mobileVerifiedAt,
 		})
 		if err != nil {
 			return "", false, fmt.Errorf("postgres: create phone signup user: %w", err)

@@ -13,23 +13,25 @@ import (
 )
 
 const createPhoneSignupUser = `-- name: CreatePhoneSignupUser :execrows
-INSERT INTO users (id, mobile, password_hash, display_name, status)
+INSERT INTO users (id, mobile, password_hash, display_name, status, mobile_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
     $3::text,
     $4::text,
-    $5::text
+    $5::text,
+    $6::timestamptz
 )
 ON CONFLICT (mobile) DO NOTHING
 `
 
 type CreatePhoneSignupUserParams struct {
-	ID           uuid.UUID
-	Mobile       string
-	PasswordHash string
-	DisplayName  string
-	Status       string
+	ID               uuid.UUID
+	Mobile           string
+	PasswordHash     string
+	DisplayName      string
+	Status           string
+	MobileVerifiedAt pgtype.Timestamptz
 }
 
 func (q *Queries) CreatePhoneSignupUser(ctx context.Context, arg CreatePhoneSignupUserParams) (int64, error) {
@@ -39,6 +41,7 @@ func (q *Queries) CreatePhoneSignupUser(ctx context.Context, arg CreatePhoneSign
 		arg.PasswordHash,
 		arg.DisplayName,
 		arg.Status,
+		arg.MobileVerifiedAt,
 	)
 	if err != nil {
 		return 0, err

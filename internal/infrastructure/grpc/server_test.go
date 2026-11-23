@@ -176,6 +176,10 @@ func TestRequestOTPInfersChannelAndMapsDisabledFlag(t *testing.T) {
 	_, err = srv.RequestOTP(context.Background(), &authv1.RequestOTPRequest{Identifier: "+989121234567", Channel: "sms"})
 	assertCode(t, err, codes.FailedPrecondition, "mobile OTP is disabled")
 
+	app.requestErr = application.ErrOTPCooldown
+	_, err = srv.RequestOTP(context.Background(), &authv1.RequestOTPRequest{Identifier: "person@example.com", Channel: "email"})
+	assertCode(t, err, codes.ResourceExhausted, application.ErrOTPCooldown.Error())
+
 	app.requestErr = errors.New("notifier down")
 	_, err = srv.RequestOTP(context.Background(), &authv1.RequestOTPRequest{Identifier: "person@example.com", Channel: "email"})
 	if err == nil || status.Code(err) != codes.Unknown {

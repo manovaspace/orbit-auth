@@ -17,15 +17,12 @@ WHERE identifier = sqlc.arg('identifier') AND channel = sqlc.arg('channel')
 ORDER BY created_at DESC
 LIMIT 1;
 
--- name: IncrementChallengeAttempts :exec
-UPDATE otp_challenges SET attempts = attempts + 1 WHERE id = sqlc.arg('id')::uuid;
-
 -- name: ConsumeChallengeAttempt :one
 UPDATE otp_challenges SET attempts = attempts + 1
 WHERE id = sqlc.arg('id')::uuid AND attempts < sqlc.arg('max_attempts')::int
 RETURNING attempts;
 
--- name: ConsumeChallenge :exec
+-- name: ConsumeChallenge :execrows
 DELETE FROM otp_challenges WHERE id = sqlc.arg('id')::uuid;
 
 -- name: DeleteChallengesForIdentifier :exec

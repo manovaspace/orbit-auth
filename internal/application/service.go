@@ -32,6 +32,11 @@ type Deps struct {
 	Codes      domain.CodeGenerator
 	Secrets    domain.SecretGenerator
 
+	// DevSMSCode is AUTH_DEV_SMS_CODE, a fixed six-digit code. When set, every
+	// SMS challenge stores the hash of this code, and no SMS is sent. It is
+	// accepted only in dev; cmd refuses it elsewhere.
+	DevSMSCode string
+
 	// SignupOpen is AUTH_SIGNUP=open. The default is false, so deployments
 	// that do not opt in keep self-serve registration disabled.
 	SignupOpen bool
@@ -88,6 +93,7 @@ type Service struct {
 	hasher              domain.Hasher
 	codes               domain.CodeGenerator
 	secrets             domain.SecretGenerator
+	devSMSCode          string
 	signupOpen          bool
 	inviteSignupOff     bool
 	inviteAcceptHosts   []string
@@ -125,6 +131,7 @@ func NewService(deps Deps) *Service {
 		hasher:              deps.Hasher,
 		codes:               deps.Codes,
 		secrets:             deps.Secrets,
+		devSMSCode:          deps.DevSMSCode,
 		signupOpen:          deps.SignupOpen,
 		inviteSignupOff:     deps.InviteSignupDisabled,
 		inviteAcceptHosts:   deps.InviteAcceptHosts,
@@ -147,8 +154,32 @@ func (s *Service) flag(ctx context.Context, name string) bool {
 	return s.flags.Bool(ctx, name, false)
 }
 
+// otpResendCooldown is how long a number must wait before a new challenge is
+// issued, when no guess has been made against the current one.
+const otpResendCooldown = 60 * time.Second
+
+// otpResendBlocked reports whether a new challenge for (identifier, channel)
+// must wait. The newest challenge blocks while it is unexpired and either was
+// created less than otpResendCooldown ago or has a failed attempt. After
+// guessing started, the code in flight stays the only one until it expires. A
+// store failure does not block (it is logged); no challenge does not block.
+func (s *Service) otpResendBlocked(ctx context.Context, identifier, channel string, now time.Time) bool {
+	ch, err := s.otp.GetLatestChallenge(ctx, identifier, channel)
+	if err != nil {
+		if !errors.Is(err, domain.ErrChallengeNotFound) {
+			s.logger("otp_resend_check_failed", "channel", channel, "identifier_hash", domain.HashIdentifier(identifier), "error", err)
+		}
+		return false
+	}
+	if !now.Before(ch.ExpiresAt) {
+		return false
+	}
+	return ch.Attempts > 0 || now.Sub(ch.CreatedAt) < otpResendCooldown
+}
+
 // RequestOTP creates a one-time challenge and asks orbit-notifications to
-// deliver it.
+// deliver it. A resend inside the cooldown, or while the current code is being
+// guessed, is ErrOTPCooldown and nothing is sent.
 func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlationID string) (time.Time, error) {
 	identifier = strings.TrimSpace(identifier)
 	channel = strings.TrimSpace(channel)
@@ -170,13 +201,18 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 	default:
 		return time.Time{}, fmt.Errorf("unsupported channel %q", channel)
 	}
+	if s.otpResendBlocked(ctx, identifier, channel, s.clock.Now()) {
+		return time.Time{}, ErrOTPCooldown
+	}
 
 	ch, code, err := s.newOTPChallenge(ctx, identifier, channel)
 	if err != nil {
 		return time.Time{}, err
 	}
-	if err := s.notifier.SendOTP(ctx, channel, identifier, code, correlationID); err != nil {
-		return time.Time{}, err
+	if !s.usesDevSMSCode(channel) {
+		if err := s.notifier.SendOTP(ctx, channel, identifier, code, correlationID); err != nil {
+			return time.Time{}, err
+		}
 	}
 	s.logger("otp_requested", "channel", channel, "identifier_hash", domain.HashIdentifier(identifier), "correlation_id", correlationID)
 	return ch.ExpiresAt, nil
@@ -197,11 +233,17 @@ func (s *Service) newOTPChallenge(ctx context.Context, identifier, channel strin
 	return ch, code, nil
 }
 
+// usesDevSMSCode reports whether challenges on channel carry the fixed dev code
+// (AUTH_DEV_SMS_CODE) instead of a random one, and so send nothing.
+func (s *Service) usesDevSMSCode(channel string) bool {
+	return channel == domain.ChannelSMS && s.devSMSCode != ""
+}
+
 // buildOTPChallenge creates the challenge and code without writing them. The
 // sign-up retry path writes the challenge through the signup store so the
 // credential update and challenge rotation share one transaction.
 func (s *Service) buildOTPChallenge(identifier, channel string) (domain.OTPChallenge, string, error) {
-	code, err := s.codes.NewCode()
+	code, err := s.challengeCode(channel)
 	if err != nil {
 		return domain.OTPChallenge{}, "", err
 	}
@@ -218,6 +260,25 @@ func (s *Service) buildOTPChallenge(identifier, channel string) (domain.OTPChall
 		ExpiresAt:  now.Add(domain.OTPTTL),
 		CreatedAt:  now,
 	}, code, nil
+}
+
+// challengeCode returns the code for a new challenge on channel: the fixed dev
+// code for SMS when one is configured, otherwise a random code.
+func (s *Service) challengeCode(channel string) (string, error) {
+	if s.usesDevSMSCode(channel) {
+		return s.devSMSCode, nil
+	}
+	return s.codes.NewCode()
+}
+
+// consumeOTPChallenge deletes a challenge whose code was proven. A challenge
+// that another request already consumed is the generic invalid-code error.
+func (s *Service) consumeOTPChallenge(ctx context.Context, id string) error {
+	err := s.otp.ConsumeChallenge(ctx, id)
+	if errors.Is(err, domain.ErrChallengeConsumed) {
+		return ErrInvalidOTPCode
+	}
+	return err
 }
 
 // VerifyOTP consumes a valid challenge and issues a token pair.
@@ -246,7 +307,7 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	if !s.hasher.Compare(ch.CodeHash, code) {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
-	if err := s.otp.ConsumeChallenge(ctx, ch.ID); err != nil {
+	if err := s.consumeOTPChallenge(ctx, ch.ID); err != nil {
 		return "", "", time.Time{}, err
 	}
 	var user domain.User

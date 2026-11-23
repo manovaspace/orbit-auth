@@ -29,4 +29,11 @@ var (
 	// failures shared by login and sign-up verification.
 	ErrInvalidOTPCode     = errors.New("invalid or expired code")
 	ErrTooManyOTPAttempts = errors.New("too many attempts")
+	// ErrPhoneCodeRequired is returned by AcceptInviteWithSignup for a phone
+	// invitation without the code RequestInvitePhoneCode sent. Nothing is
+	// written.
+	ErrPhoneCodeRequired = errors.New("phone code is required")
+	// ErrOTPCooldown is returned when a code was sent to the same number in the
+	// last 60 seconds. Nothing new is sent.
+	ErrOTPCooldown = errors.New("a code was sent recently, try again shortly")
 )
