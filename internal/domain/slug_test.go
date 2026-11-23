@@ -16,7 +16,7 @@ func TestValidateSlug(t *testing.T) {
 	invalid := []string{
 		"", "ab", strings.Repeat("a", 31), "1abc", "-abc", "abc-", "ab--cd", "Fryto", "has space",
 		"under_score", "dot.ted", "فرایتو", "xn--abc", "abc\u200d", "a/b",
-		"www", "api", "admin", "falak", "internal", "demo", "staging", "login",
+		"www", "api", "admin", "console", "falak", "internal", "demo", "staging", "login",
 	}
 	for _, slug := range invalid {
 		if err := ValidateSlug(slug); !errors.Is(err, ErrInvalidSlug) {
