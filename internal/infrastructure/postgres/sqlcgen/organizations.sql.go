@@ -13,7 +13,7 @@ import (
 )
 
 const addOrganizationMembership = `-- name: AddOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status, role)
+INSERT INTO tenancy.organization_memberships (org_id, user_id, status, role)
 VALUES (
     $1::uuid,
     $2::uuid,
@@ -42,7 +42,7 @@ func (q *Queries) AddOrganizationMembership(ctx context.Context, arg AddOrganiza
 
 const countActiveOrganizationMembers = `-- name: CountActiveOrganizationMembers :one
 SELECT count(*)::bigint AS count
-FROM organization_memberships
+FROM tenancy.organization_memberships
 WHERE org_id = $1::uuid
   AND status = 'active'
 `
@@ -56,7 +56,7 @@ func (q *Queries) CountActiveOrganizationMembers(ctx context.Context, orgID uuid
 
 const countActiveOrganizationOwners = `-- name: CountActiveOrganizationOwners :one
 SELECT count(*)::bigint AS count
-FROM organization_memberships
+FROM tenancy.organization_memberships
 WHERE org_id = $1::uuid
   AND status = 'active'
   AND role = 'owner'
@@ -70,7 +70,7 @@ func (q *Queries) CountActiveOrganizationOwners(ctx context.Context, orgID uuid.
 }
 
 const createOrganization = `-- name: CreateOrganization :exec
-INSERT INTO organizations (id, name, slug, created_at, updated_at)
+INSERT INTO tenancy.organizations (id, name, slug, created_at, updated_at)
 VALUES (
     $1::uuid,
     $2::text,
@@ -100,9 +100,9 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 }
 
 const deleteEmptyOrganizations = `-- name: DeleteEmptyOrganizations :execrows
-DELETE FROM organizations o
+DELETE FROM tenancy.organizations o
 WHERE NOT EXISTS (
-    SELECT 1 FROM organization_memberships m WHERE m.org_id = o.id
+    SELECT 1 FROM tenancy.organization_memberships m WHERE m.org_id = o.id
 )
 `
 
@@ -115,7 +115,7 @@ func (q *Queries) DeleteEmptyOrganizations(ctx context.Context) (int64, error) {
 }
 
 const deleteOrganizationMembership = `-- name: DeleteOrganizationMembership :exec
-DELETE FROM organization_memberships
+DELETE FROM tenancy.organization_memberships
 WHERE org_id = $1::uuid
   AND user_id = $2::uuid
 `
@@ -132,7 +132,7 @@ func (q *Queries) DeleteOrganizationMembership(ctx context.Context, arg DeleteOr
 
 const findOrganizationProvision = `-- name: FindOrganizationProvision :one
 SELECT org_id, owner_email, owner_phone
-FROM organization_provisions
+FROM tenancy.organization_provisions
 WHERE idempotency_key = $1::text
 `
 
@@ -151,7 +151,7 @@ func (q *Queries) FindOrganizationProvision(ctx context.Context, idempotencyKey 
 
 const getOrganization = `-- name: GetOrganization :one
 SELECT id::text AS id, name, slug, status, suspended_at, suspended_reason, created_at, updated_at
-FROM organizations
+FROM tenancy.organizations
 WHERE id = $1::uuid
 `
 
@@ -189,7 +189,7 @@ SELECT org_id::text AS org_id,
        role,
        created_at,
        updated_at
-FROM organization_memberships
+FROM tenancy.organization_memberships
 WHERE org_id = $1::uuid
   AND user_id = $2::uuid
 `
@@ -223,7 +223,7 @@ func (q *Queries) GetOrganizationMembership(ctx context.Context, arg GetOrganiza
 }
 
 const insertOrganizationProvision = `-- name: InsertOrganizationProvision :execrows
-INSERT INTO organization_provisions (idempotency_key, org_id, owner_email, owner_phone)
+INSERT INTO tenancy.organization_provisions (idempotency_key, org_id, owner_email, owner_phone)
 VALUES ($1::text, $2::uuid,
         $3::text, $4::text)
 ON CONFLICT (idempotency_key) DO NOTHING
@@ -250,7 +250,7 @@ func (q *Queries) InsertOrganizationProvision(ctx context.Context, arg InsertOrg
 }
 
 const insertOrganizationSlug = `-- name: InsertOrganizationSlug :exec
-INSERT INTO organization_slugs (slug, org_id)
+INSERT INTO tenancy.organization_slugs (slug, org_id)
 VALUES ($1::text, $2::uuid)
 `
 
@@ -271,7 +271,7 @@ SELECT org_id::text AS org_id,
        role,
        created_at,
        updated_at
-FROM organization_memberships
+FROM tenancy.organization_memberships
 WHERE org_id = $1::uuid
 ORDER BY created_at, user_id
 `
@@ -321,16 +321,16 @@ SELECT o.id::text AS id,
        o.suspended_reason,
        o.created_at,
        o.updated_at,
-       (SELECT count(*)::bigint FROM organization_memberships m WHERE m.org_id = o.id) AS member_count,
+       (SELECT count(*)::bigint FROM tenancy.organization_memberships m WHERE m.org_id = o.id) AS member_count,
        ARRAY(
            SELECT m.user_id::text
-           FROM organization_memberships m
+           FROM tenancy.organization_memberships m
            WHERE m.org_id = o.id
              AND m.role = 'owner'
              AND m.status = 'active'
            ORDER BY m.created_at, m.user_id
        )::text[] AS owner_user_ids
-FROM organizations o
+FROM tenancy.organizations o
 WHERE ($1::text = '' OR o.status = $1::text)
   AND ($2::text = '' OR o.name ILIKE $2::text OR o.slug ILIKE $2::text)
   AND (NOT $3::bool OR (o.created_at, o.id) > ($4::timestamptz, $5::uuid))
@@ -406,8 +406,8 @@ func (q *Queries) ListOrganizationsForStaff(ctx context.Context, arg ListOrganiz
 
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
 SELECT o.id::text AS id, o.name, o.slug, o.status, o.suspended_at, o.suspended_reason, o.created_at, o.updated_at
-FROM organizations o
-JOIN organization_memberships m ON m.org_id = o.id
+FROM tenancy.organizations o
+JOIN tenancy.organization_memberships m ON m.org_id = o.id
 WHERE m.user_id = $1::uuid
   AND m.status = 'active'
 ORDER BY o.created_at, o.id
@@ -455,7 +455,7 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 
 const lockOrganization = `-- name: LockOrganization :one
 SELECT id
-FROM organizations
+FROM tenancy.organizations
 WHERE id = $1::uuid
 FOR UPDATE
 `
@@ -479,7 +479,7 @@ func (q *Queries) LockProvisionKey(ctx context.Context, idempotencyKey string) e
 }
 
 const organizationSlugExists = `-- name: OrganizationSlugExists :one
-SELECT EXISTS (SELECT 1 FROM organization_slugs WHERE slug = $1::text) AS found
+SELECT EXISTS (SELECT 1 FROM tenancy.organization_slugs WHERE slug = $1::text) AS found
 `
 
 func (q *Queries) OrganizationSlugExists(ctx context.Context, slug string) (bool, error) {
@@ -491,8 +491,8 @@ func (q *Queries) OrganizationSlugExists(ctx context.Context, slug string) (bool
 
 const resolveOrganizationSlug = `-- name: ResolveOrganizationSlug :one
 SELECT o.id::text AS id, o.name, o.slug, o.status, o.suspended_at, o.suspended_reason, o.created_at, o.updated_at
-FROM organization_slugs s
-JOIN organizations o ON o.id = s.org_id
+FROM tenancy.organization_slugs s
+JOIN tenancy.organizations o ON o.id = s.org_id
 WHERE s.slug = $1::text
 `
 
@@ -524,7 +524,7 @@ func (q *Queries) ResolveOrganizationSlug(ctx context.Context, slug string) (Res
 }
 
 const retireCurrentOrganizationSlug = `-- name: RetireCurrentOrganizationSlug :exec
-UPDATE organization_slugs
+UPDATE tenancy.organization_slugs
 SET retired_at = NOW()
 WHERE org_id = $1::uuid
   AND retired_at IS NULL
@@ -536,7 +536,7 @@ func (q *Queries) RetireCurrentOrganizationSlug(ctx context.Context, orgID uuid.
 }
 
 const reviveOwnOrganizationSlug = `-- name: ReviveOwnOrganizationSlug :execrows
-UPDATE organization_slugs
+UPDATE tenancy.organization_slugs
 SET retired_at = NULL
 WHERE slug = $1::text
   AND org_id = $2::uuid
@@ -556,7 +556,7 @@ func (q *Queries) ReviveOwnOrganizationSlug(ctx context.Context, arg ReviveOwnOr
 }
 
 const setOrganizationStatus = `-- name: SetOrganizationStatus :exec
-UPDATE organizations
+UPDATE tenancy.organizations
 SET status = $1::text,
     suspended_at = $2::timestamptz,
     suspended_reason = $3::text,
@@ -582,7 +582,7 @@ func (q *Queries) SetOrganizationStatus(ctx context.Context, arg SetOrganization
 }
 
 const updateOrganizationMembershipRole = `-- name: UpdateOrganizationMembershipRole :exec
-UPDATE organization_memberships
+UPDATE tenancy.organization_memberships
 SET role = $1::text,
     updated_at = NOW()
 WHERE org_id = $2::uuid
@@ -601,7 +601,7 @@ func (q *Queries) UpdateOrganizationMembershipRole(ctx context.Context, arg Upda
 }
 
 const updateOrganizationMembershipStatus = `-- name: UpdateOrganizationMembershipStatus :exec
-UPDATE organization_memberships
+UPDATE tenancy.organization_memberships
 SET status = $1::text,
     updated_at = NOW()
 WHERE org_id = $2::uuid
@@ -620,7 +620,7 @@ func (q *Queries) UpdateOrganizationMembershipStatus(ctx context.Context, arg Up
 }
 
 const updateOrganizationSlug = `-- name: UpdateOrganizationSlug :exec
-UPDATE organizations
+UPDATE tenancy.organizations
 SET slug = $1::text,
     updated_at = NOW()
 WHERE id = $2::uuid

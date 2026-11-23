@@ -27,13 +27,41 @@ func TestDatabaseName(t *testing.T) {
 	}
 }
 
-func TestWithSearchPath(t *testing.T) {
-	got, err := withSearchPath("postgres://postgres:postgres@localhost:5432/test?sslmode=disable", "auth_test_abc")
-	if err != nil {
-		t.Fatal(err)
+func TestWithDatabaseName(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		db   string
+		want string
+	}{
+		{
+			name: "replaces database and keeps query",
+			url:  "postgres://postgres:postgres@localhost:5432/test?sslmode=disable",
+			db:   "test_auth_abc",
+			want: "postgres://postgres:postgres@localhost:5432/test_auth_abc?sslmode=disable",
+		},
+		{
+			name: "URL without query",
+			url:  "postgres://postgres:postgres@localhost:5432/test",
+			db:   "test_auth_abc",
+			want: "postgres://postgres:postgres@localhost:5432/test_auth_abc",
+		},
+		{
+			name: "keeps an existing search_path untouched",
+			url:  "postgres://postgres:postgres@localhost:5432/test?search_path=public",
+			db:   "test_auth_abc",
+			want: "postgres://postgres:postgres@localhost:5432/test_auth_abc?search_path=public",
+		},
 	}
-	want := "postgres://postgres:postgres@localhost:5432/test?search_path=auth_test_abc%2Cpublic&sslmode=disable"
-	if got != want {
-		t.Fatalf("withSearchPath = %q, want %q", got, want)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := withDatabaseName(tc.url, tc.db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("withDatabaseName = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

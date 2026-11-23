@@ -8,7 +8,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE lower(email) = lower(sqlc.arg('email')::text);
 
 -- name: FindUserByMobile :one
@@ -21,7 +21,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE mobile = sqlc.arg('mobile')::text;
 
 -- name: FindUserByID :one
@@ -34,7 +34,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE id = sqlc.arg('id')::uuid;
 
 -- name: FindUserByUsername :one
@@ -47,28 +47,28 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE username = sqlc.arg('username')::text;
 
 -- name: CreateUserWithEmail :exec
-INSERT INTO users (id, email, status, email_verified_at)
+INSERT INTO identity.users (id, email, status, email_verified_at)
 VALUES (sqlc.arg('id')::uuid, sqlc.arg('email')::text, sqlc.arg('status')::text, NOW());
 
 -- name: CreateUserWithMobile :exec
-INSERT INTO users (id, mobile)
+INSERT INTO identity.users (id, mobile)
 VALUES (sqlc.arg('id')::uuid, sqlc.arg('mobile')::text);
 
 -- name: UpdateLastLogin :exec
-UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = sqlc.arg('id')::uuid;
+UPDATE identity.users SET last_login_at = NOW(), updated_at = NOW() WHERE id = sqlc.arg('id')::uuid;
 
 -- name: SetUsername :execrows
-UPDATE users
+UPDATE identity.users
 SET username = sqlc.arg('username')::text,
     updated_at = NOW()
 WHERE id = sqlc.arg('id')::uuid;
 
 -- name: CreateSignupUser :execrows
-INSERT INTO users (id, email, password_hash, display_name, status, email_verified_at)
+INSERT INTO identity.users (id, email, password_hash, display_name, status, email_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.arg('email')::text,
@@ -80,7 +80,7 @@ VALUES (
 ON CONFLICT (email) DO NOTHING;
 
 -- name: ReissueSignupUser :one
-UPDATE users
+UPDATE identity.users
 SET password_hash = sqlc.arg('password_hash')::text,
     display_name = sqlc.arg('display_name')::text,
     updated_at = NOW()
@@ -90,7 +90,7 @@ WHERE lower(email) = lower(sqlc.arg('email')::text)
 RETURNING id::text AS id;
 
 -- name: TakeOverPendingSignupUser :one
-UPDATE users
+UPDATE identity.users
 SET password_hash = sqlc.arg('password_hash')::text,
     display_name = sqlc.arg('display_name')::text,
     status = 'active',
@@ -102,7 +102,7 @@ WHERE lower(email) = lower(sqlc.arg('email')::text)
 RETURNING id::text AS id;
 
 -- name: VerifySignupUser :execrows
-UPDATE users
+UPDATE identity.users
 SET status = 'active',
     email_verified_at = sqlc.arg('email_verified_at')::timestamptz,
     updated_at = NOW()
@@ -111,13 +111,13 @@ WHERE id = sqlc.arg('id')::uuid
   AND email_verified_at IS NULL;
 
 -- name: PurgeUnverifiedSignups :execrows
-DELETE FROM users
+DELETE FROM identity.users
 WHERE status = 'signup_pending'
   AND email_verified_at IS NULL
   AND created_at < sqlc.arg('before')::timestamptz;
 
 -- name: UpsertDemoUserByEmail :exec
-INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO identity.users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.narg('email')::text,
@@ -147,7 +147,7 @@ ON CONFLICT (email) DO UPDATE SET
     updated_at = NOW();
 
 -- name: UpsertDemoUserByMobile :exec
-INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO identity.users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.narg('email')::text,
@@ -177,7 +177,7 @@ ON CONFLICT (mobile) DO UPDATE SET
     updated_at = NOW();
 
 -- name: CreatePhoneSignupUser :execrows
-INSERT INTO users (id, mobile, password_hash, display_name, status, mobile_verified_at)
+INSERT INTO identity.users (id, mobile, password_hash, display_name, status, mobile_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.arg('mobile')::text,
@@ -189,7 +189,7 @@ VALUES (
 ON CONFLICT (mobile) DO NOTHING;
 
 -- name: MarkMobileVerified :execrows
-UPDATE users
+UPDATE identity.users
 SET mobile_verified_at = COALESCE(mobile_verified_at, sqlc.arg('verified_at')::timestamptz),
     updated_at = NOW()
 WHERE id = sqlc.arg('id')::uuid;

@@ -13,7 +13,7 @@ import (
 )
 
 const consumeChallenge = `-- name: ConsumeChallenge :execrows
-DELETE FROM otp_challenges WHERE id = $1::uuid
+DELETE FROM identity.otp_challenges WHERE id = $1::uuid
 `
 
 func (q *Queries) ConsumeChallenge(ctx context.Context, id uuid.UUID) (int64, error) {
@@ -25,7 +25,7 @@ func (q *Queries) ConsumeChallenge(ctx context.Context, id uuid.UUID) (int64, er
 }
 
 const consumeChallengeAttempt = `-- name: ConsumeChallengeAttempt :one
-UPDATE otp_challenges SET attempts = attempts + 1
+UPDATE identity.otp_challenges SET attempts = attempts + 1
 WHERE id = $1::uuid AND attempts < $2::int
 RETURNING attempts
 `
@@ -43,7 +43,7 @@ func (q *Queries) ConsumeChallengeAttempt(ctx context.Context, arg ConsumeChalle
 }
 
 const deleteChallengesForIdentifier = `-- name: DeleteChallengesForIdentifier :exec
-DELETE FROM otp_challenges
+DELETE FROM identity.otp_challenges
 WHERE identifier = $1
   AND channel = $2
   AND purpose = $3
@@ -61,7 +61,7 @@ func (q *Queries) DeleteChallengesForIdentifier(ctx context.Context, arg DeleteC
 }
 
 const deleteExpiredChallenges = `-- name: DeleteExpiredChallenges :exec
-DELETE FROM otp_challenges WHERE expires_at < NOW()
+DELETE FROM identity.otp_challenges WHERE expires_at < NOW()
 `
 
 func (q *Queries) DeleteExpiredChallenges(ctx context.Context) error {
@@ -71,7 +71,7 @@ func (q *Queries) DeleteExpiredChallenges(ctx context.Context) error {
 
 const getLatestChallenge = `-- name: GetLatestChallenge :one
 SELECT id::text AS id, identifier, channel, purpose, code_hash, expires_at, created_at, attempts
-FROM otp_challenges
+FROM identity.otp_challenges
 WHERE identifier = $1
   AND channel = $2
   AND purpose = $3
@@ -113,7 +113,7 @@ func (q *Queries) GetLatestChallenge(ctx context.Context, arg GetLatestChallenge
 }
 
 const upsertChallenge = `-- name: UpsertChallenge :exec
-INSERT INTO otp_challenges (id, identifier, channel, purpose, code_hash, expires_at, attempts, created_at)
+INSERT INTO identity.otp_challenges (id, identifier, channel, purpose, code_hash, expires_at, attempts, created_at)
 VALUES (
     $1::uuid,
     $2,

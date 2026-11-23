@@ -1,5 +1,5 @@
 -- name: UpsertChallenge :exec
-INSERT INTO otp_challenges (id, identifier, channel, purpose, code_hash, expires_at, attempts, created_at)
+INSERT INTO identity.otp_challenges (id, identifier, channel, purpose, code_hash, expires_at, attempts, created_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.arg('identifier'),
@@ -13,7 +13,7 @@ VALUES (
 
 -- name: GetLatestChallenge :one
 SELECT id::text AS id, identifier, channel, purpose, code_hash, expires_at, created_at, attempts
-FROM otp_challenges
+FROM identity.otp_challenges
 WHERE identifier = sqlc.arg('identifier')
   AND channel = sqlc.arg('channel')
   AND purpose = sqlc.arg('purpose')
@@ -21,18 +21,18 @@ ORDER BY created_at DESC
 LIMIT 1;
 
 -- name: ConsumeChallengeAttempt :one
-UPDATE otp_challenges SET attempts = attempts + 1
+UPDATE identity.otp_challenges SET attempts = attempts + 1
 WHERE id = sqlc.arg('id')::uuid AND attempts < sqlc.arg('max_attempts')::int
 RETURNING attempts;
 
 -- name: ConsumeChallenge :execrows
-DELETE FROM otp_challenges WHERE id = sqlc.arg('id')::uuid;
+DELETE FROM identity.otp_challenges WHERE id = sqlc.arg('id')::uuid;
 
 -- name: DeleteChallengesForIdentifier :exec
-DELETE FROM otp_challenges
+DELETE FROM identity.otp_challenges
 WHERE identifier = sqlc.arg('identifier')
   AND channel = sqlc.arg('channel')
   AND purpose = sqlc.arg('purpose');
 
 -- name: DeleteExpiredChallenges :exec
-DELETE FROM otp_challenges WHERE expires_at < NOW();
+DELETE FROM identity.otp_challenges WHERE expires_at < NOW();

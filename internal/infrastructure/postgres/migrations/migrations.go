@@ -22,6 +22,10 @@ const (
 	legacyTableName  = "schema_migrations"
 	// advisoryLockID serialises first-start adoption between processes.
 	advisoryLockID = 741238419
+	// lastLegacyVersion is the newest migration the previous hand-written
+	// runner knew (013_mobile_verified.sql). Adoption never marks a later
+	// version applied: those migrations must run.
+	lastLegacyVersion = 13
 )
 
 // Migrator applies the embedded migrations to one database.
@@ -146,13 +150,18 @@ func (m *Migrator) adoptLegacy(ctx context.Context) error {
 	applyAll := false
 	if len(names) == 0 {
 		// The old runner also adopted a database whose schema_migrations was
-		// empty but whose users table already existed: it marked every file
-		// applied. Keep that state safe without running any SQL.
+		// empty but whose users table already existed: it marked every file it
+		// knew applied. Keep that state safe without running any SQL, and mark
+		// only the versions the old runner knew (up to lastLegacyVersion).
+		//
+		// The legacy users table is in public. current_schema() is not used
+		// here: with the forced search_path it returns identity once migration
+		// 024 has created that schema.
 		var hasUsers bool
 		if err := tx.QueryRowContext(ctx, `
 			SELECT EXISTS (
 				SELECT 1 FROM information_schema.tables
-				WHERE table_schema = current_schema() AND table_name = 'users'
+				WHERE table_schema = 'public' AND table_name = 'users'
 			)`).Scan(&hasUsers); err != nil {
 			return fmt.Errorf("migrations: inspect legacy users table: %w", err)
 		}
@@ -177,6 +186,9 @@ func (m *Migrator) adoptLegacy(ctx context.Context) error {
 	}
 
 	for _, source := range m.provider.ListSources() {
+		if applyAll && source.Version > lastLegacyVersion {
+			continue
+		}
 		if !applyAll && !names[path.Base(source.Path)] {
 			continue
 		}

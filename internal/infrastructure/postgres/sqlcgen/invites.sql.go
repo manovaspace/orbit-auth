@@ -13,7 +13,7 @@ import (
 )
 
 const acceptOrganizationInvite = `-- name: AcceptOrganizationInvite :execrows
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'accepted',
     accepted_at = $1::timestamptz
 WHERE id = $2::uuid
@@ -36,7 +36,7 @@ func (q *Queries) AcceptOrganizationInvite(ctx context.Context, arg AcceptOrgani
 }
 
 const addActiveOrganizationMembership = `-- name: AddActiveOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status, role)
+INSERT INTO tenancy.organization_memberships (org_id, user_id, status, role)
 VALUES (
     $1::uuid,
     $2::uuid,
@@ -62,7 +62,7 @@ func (q *Queries) AddActiveOrganizationMembership(ctx context.Context, arg AddAc
 }
 
 const createOrganizationInvite = `-- name: CreateOrganizationInvite :exec
-INSERT INTO organization_invites (
+INSERT INTO tenancy.organization_invites (
     id, org_id, email, phone, role, token_hash, inviter_id, inviter_staff_subject, status, expires_at, created_at
 )
 VALUES (
@@ -124,7 +124,7 @@ SELECT id::text AS id,
        expires_at,
        accepted_at,
        created_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE token_hash = $1::text
 `
 
@@ -170,7 +170,7 @@ SELECT id::text AS id,
        role,
        status,
        expires_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE id = $1::uuid
 `
 
@@ -212,7 +212,7 @@ SELECT id::text AS id,
        expires_at,
        accepted_at,
        created_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE org_id = $1::uuid
 ORDER BY created_at DESC, id
 `
@@ -270,7 +270,7 @@ SELECT id::text AS id,
        role,
        status,
        expires_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE id = $1::uuid
 FOR UPDATE
 `
@@ -299,7 +299,7 @@ func (q *Queries) LockOrganizationInviteForAccept(ctx context.Context, id uuid.U
 }
 
 const revokeOrganizationInvite = `-- name: RevokeOrganizationInvite :execrows
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'revoked'
 WHERE id = $1::uuid
   AND org_id = $2::uuid
@@ -320,7 +320,7 @@ func (q *Queries) RevokeOrganizationInvite(ctx context.Context, arg RevokeOrgani
 }
 
 const revokePendingOrganizationInvitesForEmail = `-- name: RevokePendingOrganizationInvitesForEmail :many
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'revoked'
 WHERE org_id = $1::uuid
   AND lower(email) = lower($2::text)
@@ -355,7 +355,7 @@ func (q *Queries) RevokePendingOrganizationInvitesForEmail(ctx context.Context, 
 }
 
 const revokePendingOrganizationInvitesForPhone = `-- name: RevokePendingOrganizationInvitesForPhone :many
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'revoked'
 WHERE org_id = $1::uuid
   AND phone = $2::text

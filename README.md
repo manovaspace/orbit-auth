@@ -66,7 +66,7 @@ internal/infrastructure/
   notifications/                   orbit-notifications gRPC client
   postgres/                        stores, sqlc queries and generated code
   postgres/migrations/             embedded goose migrations
-internal/testutil/                 disposable-schema integration-test helper
+internal/testutil/                 disposable-database integration-test helper
 ```
 
 The domain imports no infrastructure package. The application layer receives
@@ -94,7 +94,7 @@ docker stop auth-pg
 ```
 
 `TEST_DATABASE_URL` is accepted only when the connected database name starts
-with `test`; each test creates and drops its own schema. The migration tests
+with `test`; each test creates and drops its own database. The migration tests
 also prove adoption of a database created by the old runner: schema, data and
 `schema_migrations` stay unchanged.
 
@@ -150,7 +150,7 @@ must never be edited by hand.
 - **OTP purpose:** Each challenge carries a purpose (`sign_in`, `invite`, `signup`; migration 023), a code only works for the purpose it was issued for, and resend cooldowns are per purpose.
 - **Usernames:** `LoginWithPassword` accepts a username, an E.164 mobile number (or a local one when `AUTH_DEFAULT_CALLING_CODE` is set) or an email address as the identifier. A username is 3 to 32 characters: a letter first, then letters, digits, `.`, `_` or `-`, stored lower case. It never contains `@` or `+`, so it cannot be read as an email or a mobile number. `AuthService.SetUsername` sets it for the account of the verified bearer access token (`Unauthenticated` without a valid one; the request carries no `user_id`); a name another account holds is `AlreadyExists`, an invalid one `InvalidArgument`.
 - **Internal Auth:** Secured across Orbit gRPC mesh via `ORBIT_INTERNAL_TOKEN`.
-- **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`).
+- **Migrations:** embedded goose, `MIGRATE_ON_START` (default `true`). Tables sit in the `identity`, `tenancy` and `platform` schemas (migration 024), and every connection forces `search_path` to them.
 - **Google sign-in:** `StartGoogleSignIn(redirect_uri, return_to)` returns the Google authorization URL (authorization code flow, PKCE S256, nonce, `prompt=select_account`) and a single-use `state`. The state is stored as its SHA-256 only and expires after ten minutes; the PKCE verifier and the nonce are derived from it with HMAC, so neither is stored. `CompleteGoogleSignIn(state, code)` consumes the state first, exchanges the code, verifies the ID token (RS256, issuer, audience, `azp` for several audiences, `exp`, `iat`, nonce, subject) and returns the token pair with the `return_to`. Both RPCs need no bearer token. Without a configured client they return `FailedPrecondition` "google sign-in is off". A verified Google email links to an existing account only when that account's email is verified and has no Google identity yet; a Google email is used for a new account only when it is authoritative (verified, and the domain is `gmail.com` or the hosted domain). A new account is created only while `AUTH_SIGNUP=open`; a suspended or pending account gets no tokens.
 - **Organization auto-select:** `AUTH_AUTO_SELECT_SINGLE_ORG` (default `true`) puts the `org` claim in a new login pair when the user has exactly one active membership. A suspended organization is never auto-selected. `SelectOrg` switches organization and rotates the refresh token.
 - **Refresh tokens:** `RefreshToken` and `SelectOrg` consume the presented token atomically, so a token can be redeemed once even under concurrent requests. Refreshing into or selecting a suspended organization fails with `FailedPrecondition` (`organization suspended`) and does not consume the token. `RevokeRefreshToken` revokes a token on logout and is idempotent: unknown, revoked or expired tokens succeed. Each sign-in starts a refresh-token family (migration 022), and every rotation stays in it. Presenting a token that a rotation already consumed is reuse: within 30 seconds (`domain.RefreshReuseGrace`) it is treated as a race between two requests and only refused; later, every live token of the family is revoked, so the person signs in again (`refresh_token_reuse_detected` in the log). A token revoked by logout is not a rotation and revokes nothing.

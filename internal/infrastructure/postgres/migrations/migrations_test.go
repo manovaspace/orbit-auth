@@ -18,6 +18,25 @@ import (
 // Later migrations run through goose after adoption, as they do on production.
 const legacyLastMigration = "013_mobile_verified.sql"
 
+// allSchemas lists every schema a table can be in before and after migration
+// 024. Tables stay in public until 024 runs; goose_db_version never moves.
+var allSchemas = []string{"public", "identity", "tenancy", "platform"}
+
+// schemaOf returns the schema a table is in once every migration is applied.
+// Migration 024 moves the tables listed here. Every other table, and
+// goose_db_version, stays in public.
+func schemaOf(table string) string {
+	switch table {
+	case "users", "user_identities", "otp_challenges", "refresh_tokens", "api_tokens", "oauth_sign_in_states":
+		return "identity"
+	case "organizations", "organization_memberships", "organization_invites", "organization_slugs", "organization_provisions":
+		return "tenancy"
+	case "feature_flags", "outbox_events", "audit_events":
+		return "platform"
+	}
+	return "public"
+}
+
 // applyLegacyRunner reproduces the state the previous hand-written runner left
 // behind: schema_migrations with every file name through legacyLastMigration and
 // the Up SQL applied.
@@ -106,29 +125,29 @@ func TestFreshDatabaseAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 23 {
-		t.Fatalf("applied %d migrations, want 23", len(results))
+	if len(results) != 24 {
+		t.Fatalf("applied %d migrations, want 24", len(results))
 	}
 	for _, table := range []string{"users", "otp_challenges", "refresh_tokens", "api_tokens", "organizations", "organization_memberships", "organization_invites", "organization_provisions", "outbox_events", "feature_flags", "oauth_sign_in_states", "user_identities", "goose_db_version"} {
-		if !tableExists(t, ctx, db.Pool, db.Schema, table) {
-			t.Fatalf("%s was not created", table)
+		if !tableExists(t, ctx, db.Pool, schemaOf(table), table) {
+			t.Fatalf("%s was not created in %s", table, schemaOf(table))
 		}
 	}
-	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
+	if !columnExists(t, ctx, db.Pool, schemaOf("users"), "users", "email_verified_at") {
 		t.Fatal("users.email_verified_at was not created")
 	}
-	if !columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") {
+	if !columnExists(t, ctx, db.Pool, schemaOf("organizations"), "organizations", "status") {
 		t.Fatal("organizations.status was not created")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 23 || target != 23 {
-		t.Fatalf("version = %d/%d, err=%v, want 23/23", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 24 || target != 24 {
+		t.Fatalf("version = %d/%d, err=%v, want 24/24", current, target, err)
 	}
 }
 
 // TestAdoptionOnLegacyDatabaseChangesNothing is the production adoption proof:
 // a database created by the old runner (real users, OTP, session and API-token
 // rows) is adopted without running migration SQL. Table and index relfilenodes
-// and every row must be identical afterwards. Only migrations 014 to 023,
+// and every row must be identical afterwards. Only migrations 014 to 024,
 // which the old runner never applied, run, and a second `up` is a no-op.
 func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	db := testutil.OpenPostgres(t)
@@ -137,7 +156,7 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 
 	applyLegacyRunner(t, ctx, db.Pool)
 	insertLegacyData(t, ctx, db.Pool)
-	beforeSchema := schemaSnapshot(t, ctx, db.Pool, db.Schema)
+	beforeSchema := schemaSnapshot(t, ctx, db.Pool, allSchemas...)
 	beforeData := dataSnapshot(t, ctx, db.Pool)
 	beforeLegacy := legacySnapshot(t, ctx, db.Pool)
 
@@ -151,9 +170,9 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("adopt legacy database: %v", err)
 	}
-	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 
-	if after := schemaSnapshot(t, ctx, db.Pool, db.Schema); after != beforeSchema {
+	if after := schemaSnapshot(t, ctx, db.Pool, allSchemas...); after != beforeSchema {
 		t.Fatalf("adoption changed the schema:\nbefore: %s\nafter:  %s", beforeSchema, after)
 	}
 	if after := dataSnapshot(t, ctx, db.Pool); after != beforeData {
@@ -162,10 +181,10 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("adoption changed schema_migrations:\nbefore: %s\nafter:  %s", beforeLegacy, after)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 23 || target != 23 {
-		t.Fatalf("version = %d/%d, err=%v, want 23/23", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 24 || target != 24 {
+		t.Fatalf("version = %d/%d, err=%v, want 24/24", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 
 	// A second migrate up must change nothing and run no migration.
 	again, err := m.Up(ctx)
@@ -175,7 +194,7 @@ func TestAdoptionOnLegacyDatabaseChangesNothing(t *testing.T) {
 	if len(again) != 0 {
 		t.Fatalf("second up ran %d migrations, want 0", len(again))
 	}
-	if after := schemaSnapshot(t, ctx, db.Pool, db.Schema); after != beforeSchema {
+	if after := schemaSnapshot(t, ctx, db.Pool, allSchemas...); after != beforeSchema {
 		t.Fatalf("second up changed the schema:\nbefore: %s\nafter:  %s", beforeSchema, after)
 	}
 	if after := dataSnapshot(t, ctx, db.Pool); after != beforeData {
@@ -193,7 +212,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 
 	applyLegacyRunner(t, ctx, db.Pool)
 	insertLegacyData(t, ctx, db.Pool)
-	beforeSchema := schemaSnapshot(t, ctx, db.Pool, db.Schema)
+	beforeSchema := schemaSnapshot(t, ctx, db.Pool, allSchemas...)
 	beforeData := dataSnapshot(t, ctx, db.Pool)
 	beforeLegacy := legacySnapshot(t, ctx, db.Pool)
 
@@ -209,7 +228,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("up after status: %v", err)
 	}
-	if after := schemaSnapshot(t, ctx, db.Pool, db.Schema); after != beforeSchema {
+	if after := schemaSnapshot(t, ctx, db.Pool, allSchemas...); after != beforeSchema {
 		t.Fatalf("status then up changed the schema:\nbefore: %s\nafter:  %s", beforeSchema, after)
 	}
 	if after := dataSnapshot(t, ctx, db.Pool); after != beforeData {
@@ -218,7 +237,7 @@ func TestStatusBeforeUpStillAdopts(t *testing.T) {
 	if after := legacySnapshot(t, ctx, db.Pool); after != beforeLegacy {
 		t.Fatalf("status then up changed schema_migrations")
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 }
 
 func TestEmailVerifiedBackfillLeavesExistingUsersVerified(t *testing.T) {
@@ -488,29 +507,31 @@ func TestDownRemovesTheLastMigrationAndUpReappliesIt(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("reapply after down: %v", err)
 	}
-	if !tableExists(t, ctx, db.Pool, db.Schema, "feature_flags") {
+	if !tableExists(t, ctx, db.Pool, schemaOf("feature_flags"), "feature_flags") {
 		t.Fatal("up after down did not recreate feature_flags")
 	}
-	if !columnExists(t, ctx, db.Pool, db.Schema, "users", "email_verified_at") {
+	if !columnExists(t, ctx, db.Pool, schemaOf("users"), "users", "email_verified_at") {
 		t.Fatal("up after down did not recreate users.email_verified_at")
 	}
-	if !columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "org_id") {
+	if !columnExists(t, ctx, db.Pool, schemaOf("refresh_tokens"), "refresh_tokens", "org_id") {
 		t.Fatal("up after down did not recreate refresh_tokens.org_id")
 	}
-	if !tableExists(t, ctx, db.Pool, db.Schema, "organization_invites") {
+	if !tableExists(t, ctx, db.Pool, schemaOf("organization_invites"), "organization_invites") {
 		t.Fatal("up after down did not recreate organization_invites")
 	}
-	if !tableExists(t, ctx, db.Pool, db.Schema, "outbox_events") {
+	if !tableExists(t, ctx, db.Pool, schemaOf("outbox_events"), "outbox_events") {
 		t.Fatal("up after down did not recreate outbox_events")
 	}
-	if !columnExists(t, ctx, db.Pool, db.Schema, "organizations", "status") || !tableExists(t, ctx, db.Pool, db.Schema, "organization_provisions") {
+	if !columnExists(t, ctx, db.Pool, schemaOf("organizations"), "organizations", "status") || !tableExists(t, ctx, db.Pool, schemaOf("organization_provisions"), "organization_provisions") {
 		t.Fatal("up after down did not recreate the organization status objects")
 	}
 }
 
-// schemaSnapshot is stable text for every legacy table and index. A
-// relfilenode changes when an object is dropped and recreated.
-func schemaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema string) string {
+// schemaSnapshot is stable text for every legacy table and index, in the given
+// schemas. A relfilenode changes when an object is dropped and recreated; a
+// table moved by SET SCHEMA (migration 024) keeps its relfilenode, so the text
+// is the same before and after the move.
+func schemaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schemas ...string) string {
 	t.Helper()
 	// users_mobile_idx is not listed: migration 019 drops it on purpose.
 	// otp_challenges_identifier_idx is not listed either: migration 023 replaces
@@ -519,7 +540,7 @@ func schemaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schem
 		SELECT c.relname || ':' || c.relfilenode::text || ':' || c.relkind::text
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE n.nspname = $1
+		WHERE n.nspname = ANY($1::text[])
 		  AND c.relname IN (
 			'users', 'users_email_key', 'users_mobile_key', 'users_pkey',
 			'otp_challenges', 'otp_challenges_pkey',
@@ -529,7 +550,7 @@ func schemaSnapshot(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schem
 			'organization_memberships', 'organization_memberships_pkey', 'organization_memberships_user_idx'
 		  )
 		ORDER BY c.relname`
-	rows, err := pool.Query(ctx, query, schema)
+	rows, err := pool.Query(ctx, query, schemas)
 	if err != nil {
 		t.Fatalf("read schema snapshot: %v", err)
 	}
@@ -974,13 +995,13 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 
 	results, err := m.Up(ctx)
 	if err != nil {
-		t.Fatalf("apply 014 to 023: %v", err)
+		t.Fatalf("apply 014 to 024: %v", err)
 	}
-	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
-	if shapeSnapshot(t, ctx, db.Pool, db.Schema) == beforeShape {
+	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
+	if shapeSnapshot(t, ctx, db.Pool, "tenancy") == beforeShape {
 		t.Fatal("migration 014 left the organization shape unchanged")
 	}
-	if shapeSnapshot(t, ctx, db.Pool, db.Schema) == beforeShape {
+	if shapeSnapshot(t, ctx, db.Pool, "tenancy") == beforeShape {
 		t.Fatal("migration 014 left the organization shape unchanged")
 	}
 	var status, reason string
@@ -1071,8 +1092,8 @@ func TestOrganizationStatusMigrationAppliesAndRollsBackCleanly(t *testing.T) {
 		`SELECT status FROM organizations WHERE id = 'a2000000-0000-0000-0000-000000000002'`).Scan(&status); err != nil || status != "active" {
 		t.Fatalf("status after reapplying 014 = %q, %v; want active", status, err)
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 23 || target != 23 {
-		t.Fatalf("version = %d/%d, err=%v, want 23/23", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 24 || target != 24 {
+		t.Fatalf("version = %d/%d, err=%v, want 24/24", current, target, err)
 	}
 }
 
@@ -1118,4 +1139,40 @@ func queryLines(t *testing.T, ctx context.Context, pool *pgxpool.Pool, query, sc
 		t.Fatal(err)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// TestAdoptionWithEmptyLegacyHistoryRunsLaterMigrations covers the old
+// runner's other adoption state: schema_migrations exists but is empty while
+// the users table is there. Adoption marks only the versions the old runner
+// knew (001 to 013); 014 and later must still run, including the schema move.
+func TestAdoptionWithEmptyLegacyHistoryRunsLaterMigrations(t *testing.T) {
+	db := testutil.OpenPostgres(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	applyLegacyRunner(t, ctx, db.Pool)
+	insertLegacyData(t, ctx, db.Pool)
+	if _, err := db.Pool.Exec(ctx, `DELETE FROM schema_migrations`); err != nil {
+		t.Fatalf("empty legacy history: %v", err)
+	}
+
+	m, err := Open(db.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Close() }()
+
+	results, err := m.Up(ctx)
+	if err != nil {
+		t.Fatalf("adopt legacy database with empty history: %v", err)
+	}
+	assertAppliedVersions(t, results, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
+
+	var inIdentity bool
+	if err := db.Pool.QueryRow(ctx, `SELECT to_regclass('identity.users') IS NOT NULL`).Scan(&inIdentity); err != nil {
+		t.Fatal(err)
+	}
+	if !inIdentity {
+		t.Fatal("users was not moved to identity: adoption skipped migration 024")
+	}
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/notifications"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres"
 	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/migrations"
+	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/searchpath"
 	messagebus "github.com/manovaspace/orbit-kit/messagebus"
 	"github.com/manovaspace/orbit-kit/messagebus/outbox"
 	"github.com/manovaspace/orbit-kit/messagebus/transport"
@@ -45,6 +46,12 @@ func main() {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
+	// One search_path for the migrator, the migrate subcommand and the pool.
+	dsn, err := searchpath.Apply(dsn)
+	if err != nil {
+		log.Error("database search_path failed", "error", err)
 		os.Exit(1)
 	}
 

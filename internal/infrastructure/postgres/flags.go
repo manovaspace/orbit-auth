@@ -10,7 +10,7 @@ import (
 // ListFeatureFlags returns every platform flag ordered by name.
 func (s *Store) ListFeatureFlags(ctx context.Context) ([]domain.FeatureFlag, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT name, enabled, description, updated_at FROM feature_flags ORDER BY name`)
+		`SELECT name, enabled, description, updated_at FROM platform.feature_flags ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: list feature flags: %w", err)
 	}

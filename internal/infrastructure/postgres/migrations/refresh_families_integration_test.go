@@ -11,8 +11,8 @@ import (
 
 // TestRefreshTokenFamilyMigrationAppliesAndRollsBack checks migration 022 up,
 // down and up. Tokens that exist before 022 runs become families of one, and
-// the family and rotation rules hold after it. Migration 023 sits on top of
-// 022, so it is rolled back first.
+// the family and rotation rules hold after it. Migrations 024 and 023 sit on
+// top of 022, so they are rolled back first.
 func TestRefreshTokenFamilyMigrationAppliesAndRollsBack(t *testing.T) {
 	db := testutil.OpenPostgres(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -27,18 +27,20 @@ func TestRefreshTokenFamilyMigrationAppliesAndRollsBack(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("up: %v", err)
 	}
-	if !columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "family_id") ||
-		!columnExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "rotated_at") ||
-		!indexExists(t, ctx, db.Pool, db.Schema, "refresh_tokens_family_live_idx") ||
-		!constraintExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "refresh_tokens_rotated_is_revoked_chk") {
+	if !columnExists(t, ctx, db.Pool, "identity", "refresh_tokens", "family_id") ||
+		!columnExists(t, ctx, db.Pool, "identity", "refresh_tokens", "rotated_at") ||
+		!indexExists(t, ctx, db.Pool, "identity", "refresh_tokens_family_live_idx") ||
+		!constraintExists(t, ctx, db.Pool, "identity", "refresh_tokens", "refresh_tokens_rotated_is_revoked_chk") {
 		t.Fatal("up did not create the refresh token family objects")
 	}
-	if constraintExists(t, ctx, db.Pool, db.Schema, "refresh_tokens", "refresh_tokens_family_not_null_chk") {
+	if constraintExists(t, ctx, db.Pool, "identity", "refresh_tokens", "refresh_tokens_family_not_null_chk") {
 		t.Fatal("up left the temporary family NOT NULL check in place")
 	}
 
-	// Roll back 023, then 022, and put a token in the old shape, as a database
-	// that ran migrations 001 to 021 holds it, then apply 022 and 023 again.
+	// Roll back 024, 023, then 022, and put a token in the old shape, as a
+	// database that ran migrations 001 to 021 holds it, then apply 022 to 024
+	// again.
+	rollBackSchemaMove(t, ctx, m)
 	if result, err := m.Down(ctx); err != nil {
 		t.Fatalf("down 023: %v", err)
 	} else if result.Source.Version != 23 {
@@ -67,9 +69,9 @@ func TestRefreshTokenFamilyMigrationAppliesAndRollsBack(t *testing.T) {
 
 	results, err := m.Up(ctx)
 	if err != nil {
-		t.Fatalf("reapply 022 and 023: %v", err)
+		t.Fatalf("reapply 022 to 024: %v", err)
 	}
-	assertAppliedVersions(t, results, 22, 23)
+	assertAppliedVersions(t, results, 22, 23, 24)
 
 	var familyID, id string
 	if err := db.Pool.QueryRow(ctx, `SELECT id::text, family_id::text FROM refresh_tokens WHERE token_hash = 'legacy-family-hash'`).Scan(&id, &familyID); err != nil {
@@ -86,8 +88,8 @@ func TestRefreshTokenFamilyMigrationAppliesAndRollsBack(t *testing.T) {
 		t.Fatalf("rotated_at with NULL revoked_at: got %v, want refresh_tokens_rotated_is_revoked_chk", err)
 	}
 
-	if current, target, err := m.Version(ctx); err != nil || current != 23 || target != 23 {
-		t.Fatalf("version = %d/%d, err=%v, want 23/23", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 24 || target != 24 {
+		t.Fatalf("version = %d/%d, err=%v, want 24/24", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 }

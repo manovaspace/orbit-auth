@@ -13,7 +13,7 @@ import (
 )
 
 const activatePendingUserForGoogle = `-- name: ActivatePendingUserForGoogle :execrows
-UPDATE users
+UPDATE identity.users
 SET status = 'active',
     email_verified_at = NOW(),
     password_hash = NULL,
@@ -40,7 +40,7 @@ func (q *Queries) ActivatePendingUserForGoogle(ctx context.Context, arg Activate
 }
 
 const consumeOAuthSignInState = `-- name: ConsumeOAuthSignInState :one
-DELETE FROM oauth_sign_in_states
+DELETE FROM identity.oauth_sign_in_states
 WHERE state_hash = $1::text
   AND expires_at > $2::timestamptz
 RETURNING redirect_uri,
@@ -77,7 +77,7 @@ func (q *Queries) ConsumeOAuthSignInState(ctx context.Context, arg ConsumeOAuthS
 }
 
 const createGoogleUser = `-- name: CreateGoogleUser :exec
-INSERT INTO users (id, email, display_name, status, email_verified_at)
+INSERT INTO identity.users (id, email, display_name, status, email_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
@@ -99,7 +99,7 @@ func (q *Queries) CreateGoogleUser(ctx context.Context, arg CreateGoogleUserPara
 }
 
 const createOAuthSignInState = `-- name: CreateOAuthSignInState :exec
-INSERT INTO oauth_sign_in_states (state_hash, redirect_uri, return_to, expires_at, purpose, invite_id, user_id)
+INSERT INTO identity.oauth_sign_in_states (state_hash, redirect_uri, return_to, expires_at, purpose, invite_id, user_id)
 VALUES (
     $1::text,
     $2::text,
@@ -135,7 +135,7 @@ func (q *Queries) CreateOAuthSignInState(ctx context.Context, arg CreateOAuthSig
 }
 
 const deleteExpiredOAuthSignInStates = `-- name: DeleteExpiredOAuthSignInStates :execrows
-DELETE FROM oauth_sign_in_states
+DELETE FROM identity.oauth_sign_in_states
 WHERE expires_at <= $1::timestamptz
 `
 
@@ -148,7 +148,7 @@ func (q *Queries) DeleteExpiredOAuthSignInStates(ctx context.Context, now pgtype
 }
 
 const deleteGoogleIdentityForUser = `-- name: DeleteGoogleIdentityForUser :execrows
-DELETE FROM user_identities
+DELETE FROM identity.user_identities
 WHERE provider = $1::text
   AND user_id = $2::uuid
 `
@@ -168,7 +168,7 @@ func (q *Queries) DeleteGoogleIdentityForUser(ctx context.Context, arg DeleteGoo
 
 const findGoogleIdentityForUser = `-- name: FindGoogleIdentityForUser :one
 SELECT email, created_at, last_login_at
-FROM user_identities
+FROM identity.user_identities
 WHERE provider = $1::text
   AND user_id = $2::uuid
 `
@@ -194,7 +194,7 @@ func (q *Queries) FindGoogleIdentityForUser(ctx context.Context, arg FindGoogleI
 
 const findGoogleIdentityUser = `-- name: FindGoogleIdentityUser :one
 SELECT user_id::text AS user_id
-FROM user_identities
+FROM identity.user_identities
 WHERE provider = $1::text
   AND subject = $2::text
 `
@@ -214,7 +214,7 @@ func (q *Queries) FindGoogleIdentityUser(ctx context.Context, arg FindGoogleIden
 
 const hasIdentityForProvider = `-- name: HasIdentityForProvider :one
 SELECT EXISTS (
-    SELECT 1 FROM user_identities
+    SELECT 1 FROM identity.user_identities
     WHERE provider = $1::text
       AND user_id = $2::uuid
 )::boolean AS linked
@@ -233,7 +233,7 @@ func (q *Queries) HasIdentityForProvider(ctx context.Context, arg HasIdentityFor
 }
 
 const insertUserIdentity = `-- name: InsertUserIdentity :exec
-INSERT INTO user_identities (provider, subject, user_id, email)
+INSERT INTO identity.user_identities (provider, subject, user_id, email)
 VALUES (
     $1::text,
     $2::text,
@@ -262,7 +262,7 @@ func (q *Queries) InsertUserIdentity(ctx context.Context, arg InsertUserIdentity
 const lockUserByEmail = `-- name: LockUserByEmail :many
 SELECT id::text AS id,
        (email_verified_at IS NOT NULL)::boolean AS email_verified
-FROM users
+FROM identity.users
 WHERE lower(email) = $1::text
 ORDER BY id
 FOR UPDATE
@@ -294,7 +294,7 @@ func (q *Queries) LockUserByEmail(ctx context.Context, email string) ([]LockUser
 }
 
 const setUserPasswordHash = `-- name: SetUserPasswordHash :execrows
-UPDATE users
+UPDATE identity.users
 SET password_hash = $1::text,
     updated_at = NOW()
 WHERE id = $2::uuid
@@ -316,7 +316,7 @@ func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHa
 }
 
 const updateGoogleIdentityLogin = `-- name: UpdateGoogleIdentityLogin :one
-UPDATE user_identities
+UPDATE identity.user_identities
 SET email = COALESCE($1::text, email),
     last_login_at = NOW()
 WHERE provider = $2::text
