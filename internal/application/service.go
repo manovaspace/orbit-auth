@@ -158,13 +158,15 @@ func (s *Service) flag(ctx context.Context, name string) bool {
 // issued, when no guess has been made against the current one.
 const otpResendCooldown = 60 * time.Second
 
-// otpResendBlocked reports whether a new challenge for (identifier, channel)
-// must wait. The newest challenge blocks while it is unexpired and either was
-// created less than otpResendCooldown ago or has a failed attempt. After
-// guessing started, the code in flight stays the only one until it expires. A
-// store failure does not block (it is logged); no challenge does not block.
-func (s *Service) otpResendBlocked(ctx context.Context, identifier, channel string, now time.Time) bool {
-	ch, err := s.otp.GetLatestChallenge(ctx, identifier, channel)
+// otpResendBlocked reports whether a new challenge for (identifier, channel,
+// purpose) must wait. The cooldown is per purpose: a sign-in request never
+// blocks or breaks a pending invitation code, and the other way round. The
+// newest challenge blocks while it is unexpired and either was created less
+// than otpResendCooldown ago or has a failed attempt. After guessing started,
+// the code in flight stays the only one until it expires. A store failure does
+// not block (it is logged); no challenge does not block.
+func (s *Service) otpResendBlocked(ctx context.Context, identifier, channel string, purpose domain.OTPPurpose, now time.Time) bool {
+	ch, err := s.otp.GetLatestChallenge(ctx, identifier, channel, purpose)
 	if err != nil {
 		if !errors.Is(err, domain.ErrChallengeNotFound) {
 			s.logger("otp_resend_check_failed", "channel", channel, "identifier_hash", domain.HashIdentifier(identifier), "error", err)
@@ -201,11 +203,11 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 	default:
 		return time.Time{}, fmt.Errorf("unsupported channel %q", channel)
 	}
-	if s.otpResendBlocked(ctx, identifier, channel, s.clock.Now()) {
+	if s.otpResendBlocked(ctx, identifier, channel, domain.OTPPurposeSignIn, s.clock.Now()) {
 		return time.Time{}, ErrOTPCooldown
 	}
 
-	ch, code, err := s.newOTPChallenge(ctx, identifier, channel)
+	ch, code, err := s.newOTPChallenge(ctx, identifier, channel, domain.OTPPurposeSignIn)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -218,12 +220,12 @@ func (s *Service) RequestOTP(ctx context.Context, identifier, channel, correlati
 	return ch.ExpiresAt, nil
 }
 
-// newOTPChallenge creates and stores one challenge. RequestOTP and sign-up
-// registration share it so both use the pinned TTL, code format and attempt
-// limits.
-func (s *Service) newOTPChallenge(ctx context.Context, identifier, channel string) (domain.OTPChallenge, string, error) {
+// newOTPChallenge creates and stores one challenge for purpose. RequestOTP,
+// the invitation phone code and sign-up registration share it so all use the
+// pinned TTL, code format and attempt limits.
+func (s *Service) newOTPChallenge(ctx context.Context, identifier, channel string, purpose domain.OTPPurpose) (domain.OTPChallenge, string, error) {
 	_ = s.otp.DeleteExpiredChallenges(ctx)
-	ch, code, err := s.buildOTPChallenge(identifier, channel)
+	ch, code, err := s.buildOTPChallenge(identifier, channel, purpose)
 	if err != nil {
 		return domain.OTPChallenge{}, "", err
 	}
@@ -239,10 +241,10 @@ func (s *Service) usesDevSMSCode(channel string) bool {
 	return channel == domain.ChannelSMS && s.devSMSCode != ""
 }
 
-// buildOTPChallenge creates the challenge and code without writing them. The
-// sign-up retry path writes the challenge through the signup store so the
-// credential update and challenge rotation share one transaction.
-func (s *Service) buildOTPChallenge(identifier, channel string) (domain.OTPChallenge, string, error) {
+// buildOTPChallenge creates the challenge and code for purpose without writing
+// them. The sign-up retry path writes the challenge through the signup store so
+// the credential update and challenge rotation share one transaction.
+func (s *Service) buildOTPChallenge(identifier, channel string, purpose domain.OTPPurpose) (domain.OTPChallenge, string, error) {
 	code, err := s.challengeCode(channel)
 	if err != nil {
 		return domain.OTPChallenge{}, "", err
@@ -256,6 +258,7 @@ func (s *Service) buildOTPChallenge(identifier, channel string) (domain.OTPChall
 		ID:         s.ids.NewID(),
 		Identifier: identifier,
 		Channel:    channel,
+		Purpose:    purpose,
 		CodeHash:   hash,
 		ExpiresAt:  now.Add(domain.OTPTTL),
 		CreatedAt:  now,
@@ -288,7 +291,7 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	if identifier == "" || channel == "" || code == "" {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
-	ch, err := s.otp.GetLatestChallenge(ctx, identifier, channel)
+	ch, err := s.otp.GetLatestChallenge(ctx, identifier, channel, domain.OTPPurposeSignIn)
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}

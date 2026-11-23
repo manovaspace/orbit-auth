@@ -28,11 +28,16 @@ func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, queries: sqlcgen.New(pool)}
 }
 
-// UpsertChallenge writes one challenge.
+// UpsertChallenge writes one challenge. The purpose must be set: the database
+// default exists only for rows written during a rollout, so nothing here relies
+// on it.
 func (s *Store) UpsertChallenge(ctx context.Context, ch domain.OTPChallenge) error {
 	id, err := uuid.Parse(ch.ID)
 	if err != nil {
 		return fmt.Errorf("postgres: challenge id %q: %w", ch.ID, err)
+	}
+	if ch.Purpose == "" {
+		return fmt.Errorf("postgres: challenge %s has no purpose", ch.ID)
 	}
 	createdAt := ch.CreatedAt
 	if createdAt.IsZero() {
@@ -42,18 +47,21 @@ func (s *Store) UpsertChallenge(ctx context.Context, ch domain.OTPChallenge) err
 		ID:         id,
 		Identifier: ch.Identifier,
 		Channel:    ch.Channel,
+		Purpose:    string(ch.Purpose),
 		CodeHash:   ch.CodeHash,
 		ExpiresAt:  timestamptz(ch.ExpiresAt),
 		CreatedAt:  timestamptz(createdAt),
 	})
 }
 
-// GetLatestChallenge returns the newest challenge for identifier and channel.
-// A missing challenge matches both domain.ErrChallengeNotFound and pgx.ErrNoRows.
-func (s *Store) GetLatestChallenge(ctx context.Context, identifier, channel string) (domain.OTPChallenge, error) {
+// GetLatestChallenge returns the newest challenge for identifier, channel and
+// purpose. A missing challenge matches both domain.ErrChallengeNotFound and
+// pgx.ErrNoRows.
+func (s *Store) GetLatestChallenge(ctx context.Context, identifier, channel string, purpose domain.OTPPurpose) (domain.OTPChallenge, error) {
 	row, err := s.queries.GetLatestChallenge(ctx, sqlcgen.GetLatestChallengeParams{
 		Identifier: identifier,
 		Channel:    channel,
+		Purpose:    string(purpose),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.OTPChallenge{}, fmt.Errorf("%w: %w", domain.ErrChallengeNotFound, err)
@@ -65,6 +73,7 @@ func (s *Store) GetLatestChallenge(ctx context.Context, identifier, channel stri
 		ID:         row.ID,
 		Identifier: row.Identifier,
 		Channel:    row.Channel,
+		Purpose:    domain.OTPPurpose(row.Purpose),
 		CodeHash:   row.CodeHash,
 		ExpiresAt:  row.ExpiresAt.Time,
 		CreatedAt:  row.CreatedAt.Time,

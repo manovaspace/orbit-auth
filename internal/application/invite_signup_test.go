@@ -288,6 +288,7 @@ func TestVerifyOTPMobileMarksNumberVerified(t *testing.T) {
 		ID:         "ch-mobile-verified",
 		Identifier: invitedMobile,
 		Channel:    domain.ChannelSMS,
+		Purpose:    domain.OTPPurposeSignIn,
 		CodeHash:   hash,
 		ExpiresAt:  time.Now().UTC().Add(10 * time.Minute),
 	}); err != nil {

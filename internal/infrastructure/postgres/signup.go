@@ -296,9 +296,13 @@ func (s *Store) ReissuePendingSignup(ctx context.Context, user domain.User, chal
 	}
 
 	if challenge != nil {
+		if challenge.Purpose == "" {
+			return "", false, fmt.Errorf("postgres: signup challenge %s has no purpose", challenge.ID)
+		}
 		if err := queries.DeleteChallengesForIdentifier(ctx, sqlcgen.DeleteChallengesForIdentifierParams{
 			Identifier: challenge.Identifier,
 			Channel:    challenge.Channel,
+			Purpose:    string(challenge.Purpose),
 		}); err != nil {
 			return "", false, fmt.Errorf("postgres: invalidate signup challenges: %w", err)
 		}
@@ -314,6 +318,7 @@ func (s *Store) ReissuePendingSignup(ctx context.Context, user domain.User, chal
 			ID:         challengeID,
 			Identifier: challenge.Identifier,
 			Channel:    challenge.Channel,
+			Purpose:    string(challenge.Purpose),
 			CodeHash:   challenge.CodeHash,
 			ExpiresAt:  timestamptz(challenge.ExpiresAt),
 			CreatedAt:  timestamptz(createdAt),

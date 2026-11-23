@@ -26,6 +26,7 @@ func seedPhoneChallenge(t *testing.T, otp *fakeOTP, phone, code string, createdA
 		ID:         "ch-invite-phone",
 		Identifier: phone,
 		Channel:    domain.ChannelSMS,
+		Purpose:    domain.OTPPurposeInvite,
 		CodeHash:   string(hash),
 		ExpiresAt:  createdAt.Add(domain.OTPTTL),
 		CreatedAt:  createdAt,
@@ -283,7 +284,7 @@ type erroringOTP struct {
 	*fakeOTP
 }
 
-func (e erroringOTP) GetLatestChallenge(context.Context, string, string) (domain.OTPChallenge, error) {
+func (e erroringOTP) GetLatestChallenge(context.Context, string, string, domain.OTPPurpose) (domain.OTPChallenge, error) {
 	return domain.OTPChallenge{}, errors.New("database down")
 }
 
@@ -337,8 +338,8 @@ func TestAcceptPhoneInviteRequiresCode(t *testing.T) {
 	if _, err := svc.AcceptInviteWithSignup(ctx, token, "correct horse", "Sara", "000000"); !errors.Is(err, ErrInvalidOTPCode) {
 		t.Fatalf("wrong code: err = %v, want ErrInvalidOTPCode", err)
 	}
-	if store.otp.attempts != 1 {
-		t.Fatalf("attempts = %d, want the wrong guess counted once", store.otp.attempts)
+	if got := store.otp.latest().ch.Attempts; got != 1 {
+		t.Fatalf("attempts = %d, want the wrong guess counted once", got)
 	}
 	if _, ok := store.userByMobile(invitedMobile); ok {
 		t.Fatal("a refused code wrote an account")

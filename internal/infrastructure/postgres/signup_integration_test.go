@@ -116,7 +116,7 @@ func TestReissuePendingSignupRotatesChallengeAndCredentials(t *testing.T) {
 		t.Fatalf("create pending signup = %v, %v", created, err)
 	}
 	oldChallenge := domain.OTPChallenge{
-		ID: uuid.NewString(), Identifier: user.Email, Channel: domain.ChannelEmail,
+		ID: uuid.NewString(), Identifier: user.Email, Channel: domain.ChannelEmail, Purpose: domain.OTPPurposeSignup,
 		CodeHash: "old-hash", ExpiresAt: now.Add(domain.OTPTTL), CreatedAt: now,
 	}
 	if err := store.UpsertChallenge(ctx, oldChallenge); err != nil {
@@ -124,7 +124,7 @@ func TestReissuePendingSignupRotatesChallengeAndCredentials(t *testing.T) {
 	}
 
 	newChallenge := domain.OTPChallenge{
-		ID: uuid.NewString(), Identifier: user.Email, Channel: domain.ChannelEmail,
+		ID: uuid.NewString(), Identifier: user.Email, Channel: domain.ChannelEmail, Purpose: domain.OTPPurposeSignup,
 		CodeHash: "new-hash", ExpiresAt: now.Add(2 * domain.OTPTTL), CreatedAt: now.Add(time.Minute),
 	}
 	updated := domain.User{Email: user.Email, PasswordHash: "owner-hash", DisplayName: "Owner"}
@@ -142,7 +142,7 @@ func TestReissuePendingSignupRotatesChallengeAndCredentials(t *testing.T) {
 	if found.PasswordHash != "owner-hash" || found.DisplayName != "Owner" || found.Status != domain.UserSignupPending {
 		t.Fatalf("reissued user = %+v", found)
 	}
-	latest, err := store.GetLatestChallenge(ctx, user.Email, domain.ChannelEmail)
+	latest, err := store.GetLatestChallenge(ctx, user.Email, domain.ChannelEmail, domain.OTPPurposeSignup)
 	if err != nil {
 		t.Fatal(err)
 	}

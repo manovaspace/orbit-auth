@@ -13,43 +13,62 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/domain"
 )
 
+// fakeOTP mirrors the Postgres store. Challenges are rows keyed by identifier,
+// channel and purpose; a lookup returns the newest live row of its own purpose
+// only, and a consumed or deleted row is gone. Rows keep write order, so the
+// last row is the newest.
 type fakeOTP struct {
-	mu       sync.RWMutex
+	mu   sync.RWMutex
+	rows []*fakeChallenge
+}
+
+type fakeChallenge struct {
 	ch       domain.OTPChallenge
 	consumed bool
-	attempts int
 }
 
 func (f *fakeOTP) UpsertChallenge(_ context.Context, ch domain.OTPChallenge) error {
+	if ch.Purpose == "" {
+		return errors.New("fakeOTP: challenge has no purpose")
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.ch = ch
-	f.consumed = false
-	f.attempts = ch.Attempts
+	f.rows = append(f.rows, &fakeChallenge{ch: ch})
 	return nil
 }
 
-func (f *fakeOTP) GetLatestChallenge(_ context.Context, identifier, channel string) (domain.OTPChallenge, error) {
+func (f *fakeOTP) GetLatestChallenge(_ context.Context, identifier, channel string, purpose domain.OTPPurpose) (domain.OTPChallenge, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	if f.consumed {
-		return domain.OTPChallenge{}, domain.ErrChallengeNotFound
-	}
-	if f.ch.Identifier == identifier && f.ch.Channel == channel {
-		return f.ch, nil
+	for i := len(f.rows) - 1; i >= 0; i-- {
+		r := f.rows[i]
+		if r.ch.Identifier == identifier && r.ch.Channel == channel && r.ch.Purpose == purpose {
+			return r.ch, nil
+		}
 	}
 	return domain.OTPChallenge{}, domain.ErrChallengeNotFound
+}
+
+// live returns the newest row with id that is not consumed, or nil. Callers
+// hold the lock.
+func (f *fakeOTP) live(id string) *fakeChallenge {
+	for i := len(f.rows) - 1; i >= 0; i-- {
+		if r := f.rows[i]; r.ch.ID == id && !r.consumed {
+			return r
+		}
+	}
+	return nil
 }
 
 // ConsumeAttempt mirrors the store: one guarded increment under the lock.
 func (f *fakeOTP) ConsumeAttempt(_ context.Context, id string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.ch.ID != id || f.attempts >= domain.MaxOTPAttempts {
+	r := f.live(id)
+	if r == nil || r.ch.Attempts >= domain.MaxOTPAttempts {
 		return false, nil
 	}
-	f.attempts++
-	f.ch.Attempts = f.attempts
+	r.ch.Attempts++
 	return true, nil
 }
 
@@ -58,23 +77,40 @@ func (f *fakeOTP) ConsumeAttempt(_ context.Context, id string) (bool, error) {
 func (f *fakeOTP) ConsumeChallenge(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.ch.ID != id || f.consumed {
+	r := f.live(id)
+	if r == nil {
 		return domain.ErrChallengeConsumed
 	}
-	f.consumed = true
+	r.consumed = true
 	return nil
 }
 
 func (f *fakeOTP) DeleteExpiredChallenges(context.Context) error { return nil }
 
-func (f *fakeOTP) deleteChallenges(identifier, channel string) {
+// deleteChallenges mirrors DeleteChallengesForIdentifier: it removes every row
+// of identifier, channel and purpose, and no other purpose.
+func (f *fakeOTP) deleteChallenges(identifier, channel string, purpose domain.OTPPurpose) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.ch.Identifier == identifier && f.ch.Channel == channel {
-		f.ch = domain.OTPChallenge{}
-		f.consumed = false
-		f.attempts = 0
+	kept := f.rows[:0]
+	for _, r := range f.rows {
+		if r.ch.Identifier == identifier && r.ch.Channel == channel && r.ch.Purpose == purpose {
+			continue
+		}
+		kept = append(kept, r)
 	}
+	f.rows = kept
+}
+
+// latest returns the newest row, consumed or not, for tests that inspect the
+// challenge a flow last wrote. The zero value when there is none.
+func (f *fakeOTP) latest() fakeChallenge {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if len(f.rows) == 0 {
+		return fakeChallenge{}
+	}
+	return *f.rows[len(f.rows)-1]
 }
 
 type fakeUsers struct {
@@ -401,8 +437,8 @@ func TestRequestOTP_MobileHappyPath(t *testing.T) {
 	if notifier.lastChannel != domain.ChannelSMS {
 		t.Fatalf("channel %q", notifier.lastChannel)
 	}
-	if otp.ch.Channel != domain.ChannelSMS {
-		t.Fatalf("stored channel %q", otp.ch.Channel)
+	if got := otp.latest().ch; got.Channel != domain.ChannelSMS || got.Purpose != domain.OTPPurposeSignIn {
+		t.Fatalf("stored channel %q purpose %q", got.Channel, got.Purpose)
 	}
 }
 
@@ -418,6 +454,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 			ID:         "ch-email-1",
 			Identifier: "test@example.com",
 			Channel:    domain.ChannelEmail,
+			Purpose:    domain.OTPPurposeSignIn,
 			CodeHash:   string(hash),
 			ExpiresAt:  time.Now().UTC().Add(10 * time.Minute),
 		})
@@ -438,7 +475,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 		if expires.Before(time.Now().UTC()) {
 			t.Fatalf("expected future expiration, got %v", expires)
 		}
-		if !otp.consumed {
+		if !otp.latest().consumed {
 			t.Fatal("expected challenge to be marked consumed")
 		}
 		uid, _, err := refreshStore.FindValid(context.Background(), domain.HashRefreshToken(refresh))
@@ -464,6 +501,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 			ID:         "ch-mobile-1",
 			Identifier: "+989121234567",
 			Channel:    domain.ChannelSMS,
+			Purpose:    domain.OTPPurposeSignIn,
 			CodeHash:   string(hash),
 			ExpiresAt:  time.Now().UTC().Add(10 * time.Minute),
 		})
@@ -478,7 +516,7 @@ func TestVerifyOTP_ValidCodeAndSingleUse(t *testing.T) {
 		if access == "" || refresh == "" || expires.IsZero() {
 			t.Fatal("expected valid tokens and expiry")
 		}
-		if !otp.consumed {
+		if !otp.latest().consumed {
 			t.Fatal("expected challenge to be marked consumed")
 		}
 
@@ -501,6 +539,7 @@ func TestVerifyOTP_InvalidCode(t *testing.T) {
 		ID:         "ch-invalid-1",
 		Identifier: "user@example.com",
 		Channel:    domain.ChannelEmail,
+		Purpose:    domain.OTPPurposeSignIn,
 		CodeHash:   string(hash),
 		ExpiresAt:  time.Now().UTC().Add(10 * time.Minute),
 	})
@@ -514,11 +553,11 @@ func TestVerifyOTP_InvalidCode(t *testing.T) {
 	if access != "" || refresh != "" {
 		t.Fatalf("expected empty tokens, got access=%q refresh=%q", access, refresh)
 	}
-	if otp.consumed {
+	if otp.latest().consumed {
 		t.Fatal("expected challenge NOT to be consumed on invalid code")
 	}
-	if otp.attempts != 1 {
-		t.Fatalf("expected attempts to be incremented to 1, got %d", otp.attempts)
+	if otp.latest().ch.Attempts != 1 {
+		t.Fatalf("expected attempts to be incremented to 1, got %d", otp.latest().ch.Attempts)
 	}
 
 	t.Run("too many attempts", func(t *testing.T) {
@@ -527,6 +566,7 @@ func TestVerifyOTP_InvalidCode(t *testing.T) {
 			ID:         "ch-too-many-attempts",
 			Identifier: "user@example.com",
 			Channel:    domain.ChannelEmail,
+			Purpose:    domain.OTPPurposeSignIn,
 			CodeHash:   string(hash),
 			ExpiresAt:  time.Now().UTC().Add(10 * time.Minute),
 			Attempts:   5,
@@ -550,6 +590,7 @@ func TestVerifyOTP_ExpiredChallenge(t *testing.T) {
 		ID:         "ch-expired-1",
 		Identifier: "user@example.com",
 		Channel:    domain.ChannelEmail,
+		Purpose:    domain.OTPPurposeSignIn,
 		CodeHash:   string(hash),
 		ExpiresAt:  time.Now().UTC().Add(-1 * time.Minute),
 	})
@@ -562,7 +603,7 @@ func TestVerifyOTP_ExpiredChallenge(t *testing.T) {
 	if access != "" || refresh != "" {
 		t.Fatalf("expected empty tokens, got access=%q refresh=%q", access, refresh)
 	}
-	if otp.consumed {
+	if otp.latest().consumed {
 		t.Fatal("expected expired challenge NOT to be consumed")
 	}
 }

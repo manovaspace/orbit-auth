@@ -114,7 +114,7 @@ func (s *Service) RegisterWithEmail(ctx context.Context, email, password, displa
 		return nil
 	}
 
-	ch, code, err := s.newOTPChallenge(ctx, email, domain.ChannelEmail)
+	ch, code, err := s.newOTPChallenge(ctx, email, domain.ChannelEmail, domain.OTPPurposeSignup)
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (s *Service) retryPendingSignup(ctx context.Context, user domain.User, invi
 		return err
 	}
 
-	challenge, code, err := s.buildOTPChallenge(user.Email, domain.ChannelEmail)
+	challenge, code, err := s.buildOTPChallenge(user.Email, domain.ChannelEmail, domain.OTPPurposeSignup)
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func (s *Service) retryPendingSignup(ctx context.Context, user domain.User, invi
 // signupCooldownActive reports whether the address received a verification
 // code within the cooldown window. A missing challenge is not a cooldown.
 func (s *Service) signupCooldownActive(ctx context.Context, email string, now time.Time) (bool, error) {
-	ch, err := s.otp.GetLatestChallenge(ctx, email, domain.ChannelEmail)
+	ch, err := s.otp.GetLatestChallenge(ctx, email, domain.ChannelEmail, domain.OTPPurposeSignup)
 	if err != nil {
 		return false, nil
 	}
@@ -245,7 +245,7 @@ func (s *Service) VerifySignup(ctx context.Context, email, code, password string
 	if email == "" || code == "" {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
-	ch, err := s.otp.GetLatestChallenge(ctx, email, domain.ChannelEmail)
+	ch, err := s.otp.GetLatestChallenge(ctx, email, domain.ChannelEmail, domain.OTPPurposeSignup)
 	if err != nil {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}

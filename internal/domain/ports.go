@@ -11,8 +11,8 @@ import (
 var ErrRefreshTokenNotFound = errors.New("refresh token not found")
 
 // ErrChallengeNotFound is returned by OTPStore.GetLatestChallenge when no
-// challenge exists for the identifier and channel. A store failure is another
-// error.
+// challenge exists for the identifier, channel and purpose. A store failure is
+// another error.
 var ErrChallengeNotFound = errors.New("otp challenge not found")
 
 // ErrChallengeConsumed is returned by OTPStore.ConsumeChallenge when no
@@ -24,10 +24,16 @@ var ErrChallengeConsumed = errors.New("otp challenge already consumed")
 // user's token gets the same error.
 var ErrAPITokenNotFound = errors.New("api token not found")
 
-// OTPStore persists one-time challenges.
+// OTPStore persists one-time challenges. Challenges are keyed by identifier,
+// channel and purpose: a challenge of one purpose never answers a lookup of
+// another.
 type OTPStore interface {
+	// UpsertChallenge writes one challenge. It returns an error when the
+	// challenge has no purpose.
 	UpsertChallenge(ctx context.Context, ch OTPChallenge) error
-	GetLatestChallenge(ctx context.Context, identifier, channel string) (OTPChallenge, error)
+	// GetLatestChallenge returns the newest challenge for identifier, channel
+	// and purpose, or ErrChallengeNotFound.
+	GetLatestChallenge(ctx context.Context, identifier, channel string, purpose OTPPurpose) (OTPChallenge, error)
 	// ConsumeAttempt counts one verification attempt against the challenge in
 	// a single atomic step, before the code is compared. It returns false, and
 	// counts nothing, when the challenge is missing or has already used
@@ -72,7 +78,8 @@ type SignupStore interface {
 	CreateSignupUser(ctx context.Context, user User, org *Organization, invite *Invite, acceptedAt time.Time) (created bool, err error)
 	// ReissuePendingSignup replaces the credentials of an existing unverified
 	// sign-up. When challenge is non-nil it also invalidates the address's
-	// older challenges and writes the new one; when invite is non-nil it
+	// older sign-up challenges (the challenge purpose must be OTPPurposeSignup)
+	// and writes the new one; when invite is non-nil it
 	// activates the account and accepts that invitation instead. It returns
 	// false when the address is not a pending sign-up.
 	ReissuePendingSignup(ctx context.Context, user User, challenge *OTPChallenge, invite *Invite, acceptedAt time.Time) (userID string, reissued bool, err error)

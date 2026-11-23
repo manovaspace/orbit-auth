@@ -72,11 +72,27 @@ type User struct {
 	MobileVerified bool
 }
 
-// OTPChallenge is a pending one-time code.
+// OTPPurpose names what a one-time code was issued for. A code only works for
+// the purpose it was issued for, and each purpose has its own resend cooldown.
+type OTPPurpose string
+
+const (
+	// OTPPurposeSignIn is a code that signs in an existing account (RequestOTP).
+	OTPPurposeSignIn OTPPurpose = "sign_in"
+	// OTPPurposeInvite is a code that proves the number of a phone invitation
+	// (RequestInvitePhoneCode).
+	OTPPurposeInvite OTPPurpose = "invite"
+	// OTPPurposeSignup is a code that verifies an email sign-up (RegisterWithEmail).
+	OTPPurposeSignup OTPPurpose = "signup"
+)
+
+// OTPChallenge is a pending one-time code. Purpose is required; a challenge
+// without one is refused by the store.
 type OTPChallenge struct {
 	ID         string
 	Identifier string
 	Channel    string
+	Purpose    OTPPurpose
 	CodeHash   string
 	ExpiresAt  time.Time
 	CreatedAt  time.Time
