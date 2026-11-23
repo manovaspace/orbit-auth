@@ -1,7 +1,8 @@
 // Package featureflags reads boolean feature flags from the platform flags
 // endpoint (GET /v1/flags, served on this service's own HTTP port).
 //
-// Flags are fetched once on startup and refreshed in the background. A failed
+// Flags are fetched on startup, retried quickly until the first successful fetch
+// (startupRetryDelays), and refreshed every refreshInterval after that. A failed
 // fetch never clears the last known values: the provider keeps the previous map
 // and degrades to the caller-supplied defaults until a later refresh succeeds.
 package featureflags
@@ -25,6 +26,17 @@ const (
 	fetchTimeout    = 5 * time.Second
 )
 
+// startupRetryDelays are the waits before each retry while the first successful
+// fetch has not happened yet. A var so tests can shorten it; newPlatformProvider
+// copies it, so a change applies to providers created after the change.
+var startupRetryDelays = []time.Duration{
+	250 * time.Millisecond,
+	500 * time.Millisecond,
+	1 * time.Second,
+	2 * time.Second,
+	4 * time.Second,
+}
+
 // Evaluator wraps OpenFeature for boolean flag checks.
 type Evaluator struct {
 	client *openfeature.Client
@@ -33,9 +45,10 @@ type Evaluator struct {
 // PlatformProvider resolves flags from the platform flags endpoint. It
 // implements both openfeature.FeatureProvider and openfeature.StateHandler.
 type PlatformProvider struct {
-	url    string
-	log    func(msg string, args ...any)
-	client *http.Client
+	url         string
+	log         func(msg string, args ...any)
+	client      *http.Client
+	retryDelays []time.Duration // startupRetryDelays, copied at construction
 
 	mu     sync.RWMutex
 	flags  map[string]bool
@@ -60,10 +73,12 @@ type flagRecord struct {
 	Description string `json:"description"`
 }
 
-// NewFromEnv connects to the platform flags endpoint when configured. On
-// failure, returns an evaluator that always returns the safe default
-// (ponytail: duplicated in orbit-notifications; extract to shared module when
-// a third consumer appears — no retry loop; restart to reconnect).
+// NewFromEnv connects to the platform flags endpoint when configured. When the
+// endpoint is unreachable at startup, evaluations return the safe default until
+// a fetch succeeds (ponytail: duplicated in orbit-notifications; extract to
+// shared module when a third consumer appears). The background loop retries
+// quickly with startupRetryDelays, then falls back to refreshInterval, so
+// flags recover without a restart once the endpoint is up.
 //
 // Provider registration is non-blocking: the OpenFeature SDK initialises
 // asynchronously, so evaluations return the safe default until the first fetch
@@ -86,10 +101,11 @@ func NewFromEnv(appName string, log func(msg string, args ...any)) *Evaluator {
 
 func newPlatformProvider(url string, log func(msg string, args ...any)) *PlatformProvider {
 	return &PlatformProvider{
-		url:    url,
-		log:    log,
-		client: &http.Client{Timeout: fetchTimeout},
-		flags:  make(map[string]bool),
+		url:         url,
+		log:         log,
+		client:      &http.Client{Timeout: fetchTimeout},
+		retryDelays: startupRetryDelays,
+		flags:       make(map[string]bool),
 	}
 }
 
@@ -98,7 +114,9 @@ func (p *PlatformProvider) Metadata() openfeature.Metadata {
 	return openfeature.Metadata{Name: "platform"}
 }
 
-// Init fetches the flags once and starts the background refresh loop.
+// Init makes the first fetch and starts the background refresh loop. A failed
+// first fetch is logged as feature_flags_first_fetch_pending, not as an error;
+// the loop retries it (see refreshLoop). Init never waits for those retries.
 func (p *PlatformProvider) Init(_ openfeature.EvaluationContext) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -108,11 +126,12 @@ func (p *PlatformProvider) Init(_ openfeature.EvaluationContext) error {
 	p.done = done
 	p.mu.Unlock()
 
-	if err := p.refresh(ctx); err != nil {
-		p.log("feature_flags_refresh_failed", "error", err)
+	firstErr := p.refresh(ctx)
+	if firstErr != nil {
+		p.log("feature_flags_first_fetch_pending", "error", firstErr)
 	}
 
-	go p.refreshLoop(ctx, done)
+	go p.refreshLoop(ctx, done, firstErr)
 	return nil
 }
 
@@ -132,8 +151,36 @@ func (p *PlatformProvider) Shutdown() {
 	}
 }
 
-func (p *PlatformProvider) refreshLoop(ctx context.Context, done chan<- struct{}) {
+// refreshLoop runs until ctx is cancelled. When the first fetch failed
+// (firstErr non-nil), it retries after each startupRetryDelays entry until one
+// fetch succeeds. If every retry fails it logs feature_flags_refresh_failed once.
+// Then it refreshes every refreshInterval: a failed tick logs
+// feature_flags_refresh_failed, and the first success after a failure logs
+// feature_flags_recovered once.
+func (p *PlatformProvider) refreshLoop(ctx context.Context, done chan<- struct{}, firstErr error) {
 	defer close(done)
+
+	failing := firstErr != nil
+	if failing {
+		err := firstErr
+		for _, delay := range p.retryDelays {
+			if !sleepOrDone(ctx, delay) {
+				return
+			}
+			if err = p.refresh(ctx); err == nil {
+				break
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if err == nil {
+			failing = false
+			p.log("feature_flags_recovered")
+		} else {
+			p.log("feature_flags_refresh_failed", "error", err)
+		}
+	}
 
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
@@ -144,9 +191,27 @@ func (p *PlatformProvider) refreshLoop(ctx context.Context, done chan<- struct{}
 			return
 		case <-ticker.C:
 			if err := p.refresh(ctx); err != nil {
+				failing = true
 				p.log("feature_flags_refresh_failed", "error", err)
+			} else if failing {
+				failing = false
+				p.log("feature_flags_recovered")
 			}
 		}
+	}
+}
+
+// sleepOrDone waits for d and reports true, or returns false early when ctx is
+// cancelled.
+func sleepOrDone(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

@@ -39,6 +39,40 @@ func (r *recorder) contains(want string) bool {
 	return false
 }
 
+// count returns how many logged messages equal want exactly.
+func (r *recorder) count(want string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, msg := range r.msgs {
+		if msg == want {
+			n++
+		}
+	}
+	return n
+}
+
+// useStartupRetryDelays replaces startupRetryDelays for one test. Call it before
+// newEvaluator so the restore runs after the provider has shut down.
+func useStartupRetryDelays(t *testing.T, delays ...time.Duration) {
+	t.Helper()
+	orig := startupRetryDelays
+	startupRetryDelays = delays
+	t.Cleanup(func() { startupRetryDelays = orig })
+}
+
+// waitUntil polls cond until it returns true or timeout passes.
+func waitUntil(timeout time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return true
+}
+
 // newEvaluator registers a provider pointing at url and returns an Evaluator
 // backed by the OpenFeature client. SetProviderAndWait makes the initial fetch
 // deterministic.
@@ -75,6 +109,8 @@ func TestBoolUsesServedFlags(t *testing.T) {
 }
 
 func TestBoolFallsBackToDefaultWhenFetchFails(t *testing.T) {
+	useStartupRetryDelays(t, 5*time.Millisecond, 5*time.Millisecond)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
@@ -89,7 +125,8 @@ func TestBoolFallsBackToDefaultWhenFetchFails(t *testing.T) {
 	if got := evaluator.Bool(context.Background(), knownFlag, false); got != false {
 		t.Fatalf("Bool(%s, false) = %v, want false", knownFlag, got)
 	}
-	if !rec.contains("feature_flags_refresh_failed") {
+	// The startup retries run in the background; wait for the final log.
+	if !waitUntil(time.Second, func() bool { return rec.count("feature_flags_refresh_failed") == 1 }) {
 		t.Fatalf("expected feature_flags_refresh_failed log, got %v", rec.msgs)
 	}
 }
@@ -175,5 +212,98 @@ func TestNewFromEnvDisabledURLReturnsDefaultsImmediately(t *testing.T) {
 				t.Fatalf("expected feature_flags_disabled log, got %v", rec.msgs)
 			}
 		})
+	}
+}
+
+// TestStartupRetriesRecoverAfterFailedFetches pins the startup race fix: the
+// first two fetches fail, the third succeeds, and the flag is served within a
+// second without waiting for refreshInterval.
+func TestStartupRetriesRecoverAfterFailedFetches(t *testing.T) {
+	useStartupRetryDelays(t, 5*time.Millisecond, 5*time.Millisecond, 5*time.Millisecond)
+
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) <= 2 {
+			http.Error(w, "boom", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"version":"2026-11-03T00:00:00Z","flags":[{"name":%q,"enabled":true,"description":"email otp"}]}`, knownFlag)
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := &recorder{}
+	evaluator, _ := newEvaluator(t, srv.URL, rec)
+
+	if !waitUntil(time.Second, func() bool {
+		return evaluator.Bool(context.Background(), knownFlag, false)
+	}) {
+		t.Fatalf("Bool(%s, false) did not become true within 1s; requests=%d", knownFlag, requests.Load())
+	}
+	if rec.contains("feature_flags_refresh_failed") {
+		t.Fatalf("feature_flags_refresh_failed logged during startup retries")
+	}
+	if n := rec.count("feature_flags_first_fetch_pending"); n != 1 {
+		t.Fatalf("feature_flags_first_fetch_pending logged %d times, want 1", n)
+	}
+	if n := rec.count("feature_flags_recovered"); n != 1 {
+		t.Fatalf("feature_flags_recovered logged %d times, want 1", n)
+	}
+}
+
+// TestStartupRetriesExhaustedLogRefreshFailedOnce checks that an endpoint which
+// never recovers gets the first fetch plus one request per retry, and that the
+// startup phase logs feature_flags_refresh_failed exactly once.
+func TestStartupRetriesExhaustedLogRefreshFailedOnce(t *testing.T) {
+	const retries = 3
+	useStartupRetryDelays(t, 5*time.Millisecond, 5*time.Millisecond, 5*time.Millisecond)
+
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := &recorder{}
+	_, _ = newEvaluator(t, srv.URL, rec)
+
+	if !waitUntil(time.Second, func() bool {
+		return rec.count("feature_flags_refresh_failed") == 1
+	}) {
+		t.Fatalf("feature_flags_refresh_failed not logged within 1s; requests=%d", requests.Load())
+	}
+	if n := rec.count("feature_flags_first_fetch_pending"); n != 1 {
+		t.Fatalf("feature_flags_first_fetch_pending logged %d times, want 1", n)
+	}
+	if got, want := requests.Load(), int32(1+retries); got != want {
+		t.Fatalf("requests = %d, want %d (first fetch plus one per retry)", got, want)
+	}
+}
+
+// TestShutdownDuringStartupRetryWaitReturnsPromptly checks that Shutdown does
+// not wait out a long startup retry delay.
+func TestShutdownDuringStartupRetryWaitReturnsPromptly(t *testing.T) {
+	useStartupRetryDelays(t, time.Minute)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := &recorder{}
+	provider := newPlatformProvider(srv.URL, rec.log)
+	t.Cleanup(provider.Shutdown)
+	if err := provider.Init(openfeature.EvaluationContext{}); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	start := time.Now()
+	provider.Shutdown()
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("Shutdown took %s during the retry wait, want under 1s", elapsed)
+	}
+	if rec.contains("feature_flags_refresh_failed") {
+		t.Fatalf("Shutdown during the retry wait logged feature_flags_refresh_failed")
 	}
 }
