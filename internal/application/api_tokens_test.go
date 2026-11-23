@@ -145,3 +145,84 @@ func TestSeedDemoUsersRejectsInvalidEntries(t *testing.T) {
 		})
 	}
 }
+
+// ownedTokenStore keeps tokens per owner, so a list or revoke that names another
+// user's token finds nothing.
+type ownedTokenStore struct {
+	records []ownedTokenRecord
+}
+
+type ownedTokenRecord struct {
+	userID string
+	info   domain.APITokenInfo
+}
+
+func (s *ownedTokenStore) Create(_ context.Context, t domain.APIToken) error {
+	s.records = append(s.records, ownedTokenRecord{userID: t.UserID, info: domain.APITokenInfo{
+		ID: t.ID, Name: t.Name, Prefix: t.Prefix, Scopes: t.Scopes, ExpiresAt: t.ExpiresAt,
+	}})
+	return nil
+}
+
+func (s *ownedTokenStore) ListByUser(_ context.Context, userID string) ([]domain.APITokenInfo, error) {
+	var out []domain.APITokenInfo
+	for _, r := range s.records {
+		if r.userID == userID {
+			out = append(out, r.info)
+		}
+	}
+	return out, nil
+}
+
+func (s *ownedTokenStore) RevokeToken(_ context.Context, userID, tokenID string) error {
+	for i, r := range s.records {
+		if r.userID == userID && r.info.ID == tokenID {
+			s.records = append(s.records[:i], s.records[i+1:]...)
+			return nil
+		}
+	}
+	return domain.ErrAPITokenNotFound
+}
+
+func (s *ownedTokenStore) FindByPrefix(context.Context, string) (domain.APIToken, error) {
+	return domain.APIToken{}, errCharTokenNotFound
+}
+
+func TestApiTokensAreScopedToTheirOwner(t *testing.T) {
+	tokens := &ownedTokenStore{}
+	svc := charBuildService(t, &fakeOTP{}, newFakeRefreshStore(), tokens)
+	ctx := context.Background()
+	const userA, userB = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+
+	aToken, _, _, err := svc.CreateApiToken(ctx, userA, "a-token", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bToken, _, _, err := svc.CreateApiToken(ctx, userB, "b-token", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	listA, err := svc.ListApiTokens(ctx, userA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listA) != 1 || listA[0].ID != aToken {
+		t.Fatalf("user A list = %+v, want only %q", listA, aToken)
+	}
+
+	if err := svc.RevokeApiToken(ctx, userA, bToken); !errors.Is(err, domain.ErrAPITokenNotFound) {
+		t.Fatalf("A revoking B's token err = %v, want ErrAPITokenNotFound", err)
+	}
+	listB, err := svc.ListApiTokens(ctx, userB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listB) != 1 || listB[0].ID != bToken {
+		t.Fatalf("B's token changed by A's revoke: %+v", listB)
+	}
+
+	if err := svc.RevokeApiToken(ctx, userA, aToken); err != nil {
+		t.Fatalf("A revoking own token: %v", err)
+	}
+}

@@ -16,7 +16,7 @@ FROM api_tokens
 WHERE user_id = sqlc.arg('user_id')::uuid AND revoked_at IS NULL
 ORDER BY created_at DESC;
 
--- name: RevokeAPIToken :exec
+-- name: RevokeAPIToken :execrows
 UPDATE api_tokens SET revoked_at = NOW()
 WHERE id = sqlc.arg('id')::uuid AND user_id = sqlc.arg('user_id')::uuid AND revoked_at IS NULL;
 

@@ -21,7 +21,7 @@ const (
 // RegisterWithEmail creates a self-serve account. The account stays
 // signup_pending until VerifySignup proves the address. A retry for an address
 // that is still signup_pending replaces the credentials and sends a fresh code,
-// so an attacker cannot squat on an address and block its owner. An address
+// so a stranger cannot claim an address and block its owner. An address
 // with an active/verified account receives the same successful result and is
 // left untouched, so the RPC cannot be used to enumerate accounts.
 //
@@ -253,24 +253,28 @@ func (s *Service) VerifySignup(ctx context.Context, email, code, password string
 	if now.After(ch.ExpiresAt) {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
-	if ch.Attempts >= domain.MaxOTPAttempts {
+	// Every attempt, right or wrong, is counted before any compare. A wrong
+	// code or password therefore spends one attempt, and the challenge stays
+	// unconsumed until both match.
+	ok, err := s.otp.ConsumeAttempt(ctx, ch.ID)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	if !ok {
 		return "", "", time.Time{}, ErrTooManyOTPAttempts
 	}
 	if !s.hasher.Compare(ch.CodeHash, code) {
-		_ = s.otp.IncrementAttempts(ctx, ch.ID)
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 
 	user, err := s.users.FindByEmail(ctx, email)
 	if err != nil {
-		_ = s.otp.IncrementAttempts(ctx, ch.ID)
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if user.Status != domain.UserSignupPending ||
 		user.EmailVerified ||
 		user.PasswordHash == "" ||
 		!s.hasher.Compare(user.PasswordHash, password) {
-		_ = s.otp.IncrementAttempts(ctx, ch.ID)
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if err := s.otp.ConsumeChallenge(ctx, ch.ID); err != nil {

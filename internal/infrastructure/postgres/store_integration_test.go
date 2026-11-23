@@ -367,3 +367,77 @@ func TestConsumeRefreshTokenRejectsExpired(t *testing.T) {
 		t.Fatalf("expired consume err = %v, want ErrRefreshTokenNotFound", err)
 	}
 }
+
+func TestConsumeChallengeAttemptStopsAtLimit(t *testing.T) {
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+
+	challenge := domain.OTPChallenge{
+		ID:         uuid.NewString(),
+		Identifier: "limit@example.com",
+		Channel:    domain.ChannelEmail,
+		CodeHash:   "code-hash",
+		ExpiresAt:  time.Now().UTC().Add(10 * time.Minute).Truncate(time.Microsecond),
+	}
+	if err := store.UpsertChallenge(ctx, challenge); err != nil {
+		t.Fatal(err)
+	}
+	for i := range domain.MaxOTPAttempts {
+		ok, err := store.ConsumeAttempt(ctx, challenge.ID)
+		if err != nil || !ok {
+			t.Fatalf("attempt %d: ok = %v, err = %v", i+1, ok, err)
+		}
+	}
+	ok, err := store.ConsumeAttempt(ctx, challenge.ID)
+	if err != nil || ok {
+		t.Fatalf("attempt past the limit: ok = %v, err = %v; want false, nil", ok, err)
+	}
+	got, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel)
+	if err != nil || got.Attempts != domain.MaxOTPAttempts {
+		t.Fatalf("attempts = %d, err = %v; want %d", got.Attempts, err, domain.MaxOTPAttempts)
+	}
+
+	ok, err = store.ConsumeAttempt(ctx, uuid.NewString())
+	if err != nil || ok {
+		t.Fatalf("unknown challenge: ok = %v, err = %v; want false, nil", ok, err)
+	}
+}
+
+func TestRevokeTokenOnlyForItsOwner(t *testing.T) {
+	store, _ := migrationPool(t)
+	ctx := context.Background()
+
+	owner, err := store.FindOrCreateByEmail(ctx, "owner@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := store.FindOrCreateByEmail(ctx, "other@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := domain.APIToken{
+		ID:        uuid.NewString(),
+		UserID:    owner.ID,
+		Name:      "deploy",
+		Prefix:    "ownerpfx",
+		TokenHash: "token-hash",
+	}
+	if err := store.Create(ctx, token); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.RevokeToken(ctx, other.ID, token.ID); !errors.Is(err, domain.ErrAPITokenNotFound) {
+		t.Fatalf("another user revoking the token: err = %v, want ErrAPITokenNotFound", err)
+	}
+	list, err := store.ListByUser(ctx, owner.ID)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("owner list after another user's revoke = %+v, err = %v", list, err)
+	}
+
+	if err := store.RevokeToken(ctx, owner.ID, token.ID); err != nil {
+		t.Fatalf("owner revoking own token: %v", err)
+	}
+	if err := store.RevokeToken(ctx, owner.ID, token.ID); !errors.Is(err, domain.ErrAPITokenNotFound) {
+		t.Fatalf("second revoke err = %v, want ErrAPITokenNotFound", err)
+	}
+}

@@ -21,6 +21,24 @@ func (q *Queries) ConsumeChallenge(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const consumeChallengeAttempt = `-- name: ConsumeChallengeAttempt :one
+UPDATE otp_challenges SET attempts = attempts + 1
+WHERE id = $1::uuid AND attempts < $2::int
+RETURNING attempts
+`
+
+type ConsumeChallengeAttemptParams struct {
+	ID          uuid.UUID
+	MaxAttempts int32
+}
+
+func (q *Queries) ConsumeChallengeAttempt(ctx context.Context, arg ConsumeChallengeAttemptParams) (int32, error) {
+	row := q.db.QueryRow(ctx, consumeChallengeAttempt, arg.ID, arg.MaxAttempts)
+	var attempts int32
+	err := row.Scan(&attempts)
+	return attempts, err
+}
+
 const deleteChallengesForIdentifier = `-- name: DeleteChallengesForIdentifier :exec
 DELETE FROM otp_challenges
 WHERE identifier = $1

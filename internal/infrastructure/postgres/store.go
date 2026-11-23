@@ -68,6 +68,26 @@ func (s *Store) GetLatestChallenge(ctx context.Context, identifier, channel stri
 	}, nil
 }
 
+// ConsumeAttempt counts one verification attempt in a single UPDATE that is
+// guarded by the attempt limit. It returns false when no row matched.
+func (s *Store) ConsumeAttempt(ctx context.Context, id string) (bool, error) {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return false, fmt.Errorf("postgres: challenge id %q: %w", id, err)
+	}
+	_, err = s.queries.ConsumeChallengeAttempt(ctx, sqlcgen.ConsumeChallengeAttemptParams{
+		ID:          parsed,
+		MaxAttempts: int32(domain.MaxOTPAttempts),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // IncrementAttempts adds one wrong attempt to a challenge.
 func (s *Store) IncrementAttempts(ctx context.Context, id string) error {
 	parsed, err := uuid.Parse(id)
@@ -545,7 +565,9 @@ func (s *Store) ListByUser(ctx context.Context, userID string) ([]domain.APIToke
 	return out, nil
 }
 
-// RevokeToken revokes one token owned by userID.
+// RevokeToken revokes one active token owned by userID. A token that another
+// user owns, or that is unknown or already revoked, returns
+// domain.ErrAPITokenNotFound.
 func (s *Store) RevokeToken(ctx context.Context, userID, tokenID string) error {
 	user, err := uuid.Parse(userID)
 	if err != nil {
@@ -555,7 +577,14 @@ func (s *Store) RevokeToken(ctx context.Context, userID, tokenID string) error {
 	if err != nil {
 		return fmt.Errorf("postgres: api token id %q: %w", tokenID, err)
 	}
-	return s.queries.RevokeAPIToken(ctx, sqlcgen.RevokeAPITokenParams{ID: token, UserID: user})
+	rows, err := s.queries.RevokeAPIToken(ctx, sqlcgen.RevokeAPITokenParams{ID: token, UserID: user})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrAPITokenNotFound
+	}
+	return nil
 }
 
 // FindByPrefix returns the newest live token with prefix.

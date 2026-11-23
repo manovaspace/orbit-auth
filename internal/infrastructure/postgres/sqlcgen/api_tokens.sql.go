@@ -136,7 +136,7 @@ func (q *Queries) ListAPITokensByUser(ctx context.Context, userID uuid.UUID) ([]
 	return items, nil
 }
 
-const revokeAPIToken = `-- name: RevokeAPIToken :exec
+const revokeAPIToken = `-- name: RevokeAPIToken :execrows
 UPDATE api_tokens SET revoked_at = NOW()
 WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL
 `
@@ -146,7 +146,10 @@ type RevokeAPITokenParams struct {
 	UserID uuid.UUID
 }
 
-func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) error {
-	_, err := q.db.Exec(ctx, revokeAPIToken, arg.ID, arg.UserID)
-	return err
+func (q *Queries) RevokeAPIToken(ctx context.Context, arg RevokeAPITokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAPIToken, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

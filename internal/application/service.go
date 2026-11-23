@@ -234,11 +234,16 @@ func (s *Service) VerifyOTP(ctx context.Context, identifier, channel, code strin
 	if s.clock.Now().After(ch.ExpiresAt) {
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
-	if ch.Attempts >= domain.MaxOTPAttempts {
+	// The attempt is counted before the slow compare, so concurrent guesses
+	// cannot all see the same remaining budget.
+	ok, err := s.otp.ConsumeAttempt(ctx, ch.ID)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	if !ok {
 		return "", "", time.Time{}, ErrTooManyOTPAttempts
 	}
 	if !s.hasher.Compare(ch.CodeHash, code) {
-		_ = s.otp.IncrementAttempts(ctx, ch.ID)
 		return "", "", time.Time{}, ErrInvalidOTPCode
 	}
 	if err := s.otp.ConsumeChallenge(ctx, ch.ID); err != nil {

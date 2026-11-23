@@ -99,7 +99,24 @@ func (s *Server) RevokeRefreshToken(ctx context.Context, req *authv1.RevokeRefre
 	return &authv1.RevokeRefreshTokenResponse{}, nil
 }
 
+// apiTokenOwner returns the verified caller, the only user the API-token RPCs
+// act for. A request that names another user is refused.
+func apiTokenOwner(ctx context.Context, requestedUserID string) (string, error) {
+	callerID, err := caller(ctx)
+	if err != nil {
+		return "", err
+	}
+	if requestedUserID != "" && requestedUserID != callerID {
+		return "", status.Error(codes.PermissionDenied, "user_id does not match the caller")
+	}
+	return callerID, nil
+}
+
 func (s *Server) CreateApiToken(ctx context.Context, req *authv1.CreateApiTokenRequest) (*authv1.CreateApiTokenResponse, error) {
+	userID, err := apiTokenOwner(ctx, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
 	var exp *time.Time
 	if req.GetExpiresAt() != "" {
 		t, err := time.Parse(time.RFC3339, req.GetExpiresAt())
@@ -108,7 +125,7 @@ func (s *Server) CreateApiToken(ctx context.Context, req *authv1.CreateApiTokenR
 		}
 		exp = &t
 	}
-	id, prefix, secret, err := s.svc.CreateApiToken(ctx, req.GetUserId(), req.GetName(), req.GetScopes(), exp)
+	id, prefix, secret, err := s.svc.CreateApiToken(ctx, userID, req.GetName(), req.GetScopes(), exp)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +133,11 @@ func (s *Server) CreateApiToken(ctx context.Context, req *authv1.CreateApiTokenR
 }
 
 func (s *Server) ListApiTokens(ctx context.Context, req *authv1.ListApiTokensRequest) (*authv1.ListApiTokensResponse, error) {
-	list, err := s.svc.ListApiTokens(ctx, req.GetUserId())
+	userID, err := apiTokenOwner(ctx, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	list, err := s.svc.ListApiTokens(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -137,8 +158,17 @@ func (s *Server) ListApiTokens(ctx context.Context, req *authv1.ListApiTokensReq
 	return &authv1.ListApiTokensResponse{Tokens: out}, nil
 }
 
+// RevokeApiToken revokes a token of the caller only. Another user's token, an
+// unknown one and a revoked one all return NotFound.
 func (s *Server) RevokeApiToken(ctx context.Context, req *authv1.RevokeApiTokenRequest) (*authv1.RevokeApiTokenResponse, error) {
-	if err := s.svc.RevokeApiToken(ctx, req.GetUserId(), req.GetTokenId()); err != nil {
+	userID, err := apiTokenOwner(ctx, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.svc.RevokeApiToken(ctx, userID, req.GetTokenId()); err != nil {
+		if errors.Is(err, domain.ErrAPITokenNotFound) {
+			return nil, status.Error(codes.NotFound, domain.ErrAPITokenNotFound.Error())
+		}
 		return nil, err
 	}
 	return &authv1.RevokeApiTokenResponse{}, nil

@@ -10,10 +10,21 @@ import (
 // missing, revoked or expired token.
 var ErrRefreshTokenNotFound = errors.New("refresh token not found")
 
+// ErrAPITokenNotFound is returned by APITokenStore.RevokeToken when no active
+// token with that id belongs to the user. An unknown, revoked or another
+// user's token gets the same error.
+var ErrAPITokenNotFound = errors.New("api token not found")
+
 // OTPStore persists one-time challenges.
 type OTPStore interface {
 	UpsertChallenge(ctx context.Context, ch OTPChallenge) error
 	GetLatestChallenge(ctx context.Context, identifier, channel string) (OTPChallenge, error)
+	// ConsumeAttempt counts one verification attempt against the challenge in
+	// a single atomic step, before the code is compared. It returns false, and
+	// counts nothing, when the challenge is missing or has already used
+	// MaxOTPAttempts attempts. Concurrent calls never admit more attempts than
+	// the limit.
+	ConsumeAttempt(ctx context.Context, id string) (ok bool, err error)
 	IncrementAttempts(ctx context.Context, id string) error
 	ConsumeChallenge(ctx context.Context, id string) error
 	DeleteExpiredChallenges(ctx context.Context) error
@@ -93,6 +104,8 @@ type RefreshTokenStore interface {
 type APITokenStore interface {
 	Create(ctx context.Context, t APIToken) error
 	ListByUser(ctx context.Context, userID string) ([]APITokenInfo, error)
+	// RevokeToken revokes the active token tokenID owned by userID. It returns
+	// ErrAPITokenNotFound when no such token is active.
 	RevokeToken(ctx context.Context, userID, tokenID string) error
 	FindByPrefix(ctx context.Context, prefix string) (APIToken, error)
 }
