@@ -34,7 +34,7 @@ func TestRefreshAndSelectOrgRefuseUnusableAccounts(t *testing.T) {
 			users := &fakeUsers{user: domain.User{ID: "u1", Status: domain.UserActive}}
 			svc := mustServiceWithRefresh(t, &fakeOTP{}, users, refreshStore, &fakeNotifier{}, fakeFlags{})
 			token := "refresh-token-for-account-state-tests"
-			if err := refreshStore.Store(context.Background(), "u1", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
+			if err := refreshStore.Store(context.Background(), "u1", "", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
 			}
 			users.user.Status = status
@@ -42,7 +42,7 @@ func TestRefreshAndSelectOrgRefuseUnusableAccounts(t *testing.T) {
 			if _, _, _, err := svc.Refresh(context.Background(), token); !errors.Is(err, ErrInvalidRefresh) {
 				t.Fatalf("Refresh err = %v, want ErrInvalidRefresh", err)
 			}
-			if err := refreshStore.Store(context.Background(), "u1", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
+			if err := refreshStore.Store(context.Background(), "u1", "", "", domain.HashRefreshToken(token), time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
 			}
 			if _, _, _, err := svc.SelectOrg(context.Background(), "u1", token, "org-1"); !errors.Is(err, ErrInvalidRefresh) {

@@ -107,7 +107,7 @@ func signInMethodsPasswordUser(t *testing.T) domain.User {
 func storeRefresh(t *testing.T, refresh *fakeRefreshStore, userID, raw string) string {
 	t.Helper()
 	hash := domain.HashRefreshToken(raw)
-	if err := refresh.Store(context.Background(), userID, "", hash, time.Now().Add(time.Hour)); err != nil {
+	if err := refresh.Store(context.Background(), userID, "", "", hash, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	return hash

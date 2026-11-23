@@ -130,6 +130,8 @@ type RefreshToken struct {
 	RevokedAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	OrgID     pgtype.UUID
+	FamilyID  uuid.UUID
+	RotatedAt pgtype.Timestamptz
 }
 
 type User struct {

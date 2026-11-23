@@ -198,7 +198,7 @@ func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Store(ctx, user.ID, "", "hash-1", time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "", "hash-1", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	userID, orgID, err := store.FindValid(ctx, "hash-1")
@@ -213,7 +213,7 @@ func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	}
 
 	// An expired token is not valid.
-	if err := store.Store(ctx, user.ID, "", "hash-2", time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "", "hash-2", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	expireRefreshToken(t, ctx, db, "hash-2")
@@ -226,7 +226,7 @@ func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	if err := store.CreateOrg(ctx, org, user.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Store(ctx, user.ID, org.ID, "hash-3", time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, org.ID, "", "hash-3", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	storedUserID, storedOrgID, err := store.FindValid(ctx, "hash-3")
@@ -333,7 +333,7 @@ func TestStoreRejectsInvalidUUIDs(t *testing.T) {
 	if err := store.Create(ctx, domain.APIToken{ID: "not-a-uuid", UserID: "also-bad"}); err == nil {
 		t.Fatal("invalid api token id was accepted")
 	}
-	if err := store.Store(ctx, "not-a-uuid", "", "hash", time.Now()); err == nil {
+	if err := store.Store(ctx, "not-a-uuid", "", "", "hash", time.Now()); err == nil {
 		t.Fatal("invalid user id was accepted")
 	}
 }
@@ -346,14 +346,14 @@ func TestConsumeRefreshTokenRedeemsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Store(ctx, user.ID, "", "consume-live", time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "", "consume-live", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	userID, orgID, err := store.Consume(ctx, "consume-live")
-	if err != nil || userID != user.ID || orgID != "" {
-		t.Fatalf("consume = %q, %q, %v", userID, orgID, err)
+	grant, err := store.Consume(ctx, "consume-live", false)
+	if err != nil || grant.UserID != user.ID || grant.OrgID != "" {
+		t.Fatalf("consume = %+v, %v", grant, err)
 	}
-	if _, _, err := store.Consume(ctx, "consume-live"); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
+	if _, err := store.Consume(ctx, "consume-live", false); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
 		t.Fatalf("second consume err = %v, want ErrRefreshTokenNotFound", err)
 	}
 	if _, _, err := store.FindValid(ctx, "consume-live"); !errors.Is(err, pgx.ErrNoRows) {
@@ -369,11 +369,11 @@ func TestConsumeRefreshTokenRejectsExpired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Store(ctx, user.ID, "", "consume-expired", time.Now().UTC().Add(time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "", "consume-expired", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	expireRefreshToken(t, ctx, db, "consume-expired")
-	if _, _, err := store.Consume(ctx, "consume-expired"); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
+	if _, err := store.Consume(ctx, "consume-expired", true); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
 		t.Fatalf("expired consume err = %v, want ErrRefreshTokenNotFound", err)
 	}
 }

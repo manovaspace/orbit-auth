@@ -134,7 +134,7 @@ func TestRefreshKeepsOrgWhileActiveMember(t *testing.T) {
 	svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
 
 	old := "refresh-with-org"
-	if err := refresh.Store(ctx, "u1", orgID, domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
+	if err := refresh.Store(ctx, "u1", orgID, "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	access, token, _, err := svc.Refresh(ctx, old)
@@ -183,7 +183,7 @@ func TestRefreshDropsOrgAfterSuspensionOrRemoval(t *testing.T) {
 			svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
 
 			old := "refresh-after-membership-change"
-			if err := refresh.Store(ctx, "u1", orgID, domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
+			if err := refresh.Store(ctx, "u1", orgID, "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
 			}
 			access, token, _, err := svc.Refresh(ctx, old)
@@ -212,7 +212,7 @@ func TestSelectOrgRotatesRefreshTokenAndCarriesOrg(t *testing.T) {
 	svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
 
 	old := "refresh-before-select"
-	if err := refresh.Store(ctx, "u1", "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
+	if err := refresh.Store(ctx, "u1", "", "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	access, token, _, err := svc.SelectOrg(ctx, "u1", old, orgID)
@@ -242,7 +242,7 @@ func TestSelectOrgRejectsAnotherUsersRefreshToken(t *testing.T) {
 	svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
 
 	old := "someone-elses-refresh"
-	if err := refresh.Store(ctx, "u2", "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
+	if err := refresh.Store(ctx, "u2", "", "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	_, _, _, err := svc.SelectOrg(ctx, "u1", old, orgID)
@@ -262,7 +262,7 @@ func TestSelectOrgNonMemberDoesNotRevokeOrIssue(t *testing.T) {
 	svc := serviceWithOrgs(t, &fakeUsers{}, refresh, orgs, false)
 
 	old := "non-member-refresh"
-	if err := refresh.Store(ctx, "u1", "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
+	if err := refresh.Store(ctx, "u1", "", "", domain.HashRefreshToken(old), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	access, token, _, err := svc.SelectOrg(ctx, "u1", old, orgID)

@@ -442,13 +442,14 @@ func (s *Store) UpsertDemoUser(ctx context.Context, email, mobile, username, pas
 	return nil
 }
 
-// Store writes one refresh token by hash, remembering the selected
-// organization when orgID is not empty. It takes a share lock on the account in
+// Store writes one refresh token by hash in familyID, remembering the selected
+// organization when orgID is not empty. An empty familyID starts a new family
+// identified by the token's id. It takes a share lock on the account in
 // the same transaction, so the token is written only while the account is
 // active. A disable that commits first makes the write return
 // domain.ErrAccountNotActive; a disable that waits for this transaction revokes
 // the token it stored.
-func (s *Store) Store(ctx context.Context, userID, orgID, tokenHash string, expiresAt time.Time) error {
+func (s *Store) Store(ctx context.Context, userID, orgID, familyID, tokenHash string, expiresAt time.Time) error {
 	user, err := uuid.Parse(userID)
 	if err != nil {
 		return fmt.Errorf("postgres: user id %q: %w", userID, err)
@@ -460,6 +461,14 @@ func (s *Store) Store(ctx context.Context, userID, orgID, tokenHash string, expi
 			return fmt.Errorf("postgres: org id %q: %w", orgID, err)
 		}
 		org = pgtype.UUID{Bytes: parsed, Valid: true}
+	}
+	var family pgtype.UUID
+	if familyID != "" {
+		parsed, err := uuid.Parse(familyID)
+		if err != nil {
+			return fmt.Errorf("postgres: family id %q: %w", familyID, err)
+		}
+		family = pgtype.UUID{Bytes: parsed, Valid: true}
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -485,6 +494,7 @@ func (s *Store) Store(ctx context.Context, userID, orgID, tokenHash string, expi
 		OrgID:     org,
 		TokenHash: tokenHash,
 		ExpiresAt: timestamptz(expiresAt),
+		FamilyID:  family,
 	}); err != nil {
 		return fmt.Errorf("postgres: store refresh token: %w", err)
 	}
@@ -504,18 +514,43 @@ func (s *Store) FindValid(ctx context.Context, tokenHash string) (string, string
 	return row.UserID, row.OrgID, nil
 }
 
-// Consume atomically revokes a live refresh token and returns its user ID and
-// remembered organization. A missing, revoked or expired token returns
+// Consume atomically revokes a live refresh token and returns its grant: the
+// user ID, the remembered organization and the family. rotate marks the token
+// rotated. A missing, revoked or expired token returns
 // domain.ErrRefreshTokenNotFound.
-func (s *Store) Consume(ctx context.Context, tokenHash string) (string, string, error) {
-	row, err := s.queries.ConsumeRefreshToken(ctx, tokenHash)
+func (s *Store) Consume(ctx context.Context, tokenHash string, rotate bool) (domain.RefreshGrant, error) {
+	row, err := s.queries.ConsumeRefreshToken(ctx, sqlcgen.ConsumeRefreshTokenParams{Rotate: rotate, TokenHash: tokenHash})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", domain.ErrRefreshTokenNotFound
+		return domain.RefreshGrant{}, domain.ErrRefreshTokenNotFound
 	}
 	if err != nil {
-		return "", "", err
+		return domain.RefreshGrant{}, err
 	}
-	return row.UserID, row.OrgID, nil
+	return domain.RefreshGrant{UserID: row.UserID, OrgID: row.OrgID, FamilyID: row.FamilyID}, nil
+}
+
+// FindRotated returns the token a rotation consumed. An unknown hash, or a
+// token that was revoked without a rotation, returns
+// domain.ErrRefreshTokenNotFound.
+func (s *Store) FindRotated(ctx context.Context, tokenHash string) (domain.RotatedRefreshToken, error) {
+	row, err := s.queries.FindRotatedRefreshToken(ctx, tokenHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.RotatedRefreshToken{}, domain.ErrRefreshTokenNotFound
+	}
+	if err != nil {
+		return domain.RotatedRefreshToken{}, err
+	}
+	return domain.RotatedRefreshToken{UserID: row.UserID, FamilyID: row.FamilyID, RotatedAt: row.RotatedAt.Time}, nil
+}
+
+// RevokeFamily revokes every live refresh token of familyID and returns how
+// many rows it revoked.
+func (s *Store) RevokeFamily(ctx context.Context, familyID string) (int64, error) {
+	family, err := uuid.Parse(familyID)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: family id %q: %w", familyID, err)
+	}
+	return s.queries.RevokeRefreshTokenFamily(ctx, family)
 }
 
 // Revoke marks one refresh token revoked.
