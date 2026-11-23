@@ -290,10 +290,10 @@ func (s *Service) RequestInvitePhoneCode(ctx context.Context, token string) (tim
 	if !s.usesDevSMSCode(domain.ChannelSMS) && !s.flag(ctx, "manova.auth.mobile_otp") {
 		return time.Time{}, ErrMobileOTPDisabled
 	}
-	if s.otpResendBlocked(ctx, invite.Phone, domain.ChannelSMS, now) {
+	if s.otpResendBlocked(ctx, invite.Phone, domain.ChannelSMS, domain.OTPPurposeInvite, now) {
 		return time.Time{}, ErrOTPCooldown
 	}
-	ch, code, err := s.newOTPChallenge(ctx, invite.Phone, domain.ChannelSMS)
+	ch, code, err := s.newOTPChallenge(ctx, invite.Phone, domain.ChannelSMS, domain.OTPPurposeInvite)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -317,7 +317,7 @@ func (s *Service) verifyInvitePhoneCode(ctx context.Context, invite domain.Invit
 	if code == "" {
 		return ErrPhoneCodeRequired
 	}
-	ch, err := s.otp.GetLatestChallenge(ctx, invite.Phone, domain.ChannelSMS)
+	ch, err := s.otp.GetLatestChallenge(ctx, invite.Phone, domain.ChannelSMS, domain.OTPPurposeInvite)
 	if err != nil || now.After(ch.ExpiresAt) {
 		return ErrInvalidOTPCode
 	}

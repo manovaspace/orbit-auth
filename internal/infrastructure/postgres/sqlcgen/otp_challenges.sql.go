@@ -46,15 +46,17 @@ const deleteChallengesForIdentifier = `-- name: DeleteChallengesForIdentifier :e
 DELETE FROM otp_challenges
 WHERE identifier = $1
   AND channel = $2
+  AND purpose = $3
 `
 
 type DeleteChallengesForIdentifierParams struct {
 	Identifier string
 	Channel    string
+	Purpose    string
 }
 
 func (q *Queries) DeleteChallengesForIdentifier(ctx context.Context, arg DeleteChallengesForIdentifierParams) error {
-	_, err := q.db.Exec(ctx, deleteChallengesForIdentifier, arg.Identifier, arg.Channel)
+	_, err := q.db.Exec(ctx, deleteChallengesForIdentifier, arg.Identifier, arg.Channel, arg.Purpose)
 	return err
 }
 
@@ -68,9 +70,11 @@ func (q *Queries) DeleteExpiredChallenges(ctx context.Context) error {
 }
 
 const getLatestChallenge = `-- name: GetLatestChallenge :one
-SELECT id::text AS id, identifier, channel, code_hash, expires_at, created_at, attempts
+SELECT id::text AS id, identifier, channel, purpose, code_hash, expires_at, created_at, attempts
 FROM otp_challenges
-WHERE identifier = $1 AND channel = $2
+WHERE identifier = $1
+  AND channel = $2
+  AND purpose = $3
 ORDER BY created_at DESC
 LIMIT 1
 `
@@ -78,12 +82,14 @@ LIMIT 1
 type GetLatestChallengeParams struct {
 	Identifier string
 	Channel    string
+	Purpose    string
 }
 
 type GetLatestChallengeRow struct {
 	ID         string
 	Identifier string
 	Channel    string
+	Purpose    string
 	CodeHash   string
 	ExpiresAt  pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
@@ -91,12 +97,13 @@ type GetLatestChallengeRow struct {
 }
 
 func (q *Queries) GetLatestChallenge(ctx context.Context, arg GetLatestChallengeParams) (GetLatestChallengeRow, error) {
-	row := q.db.QueryRow(ctx, getLatestChallenge, arg.Identifier, arg.Channel)
+	row := q.db.QueryRow(ctx, getLatestChallenge, arg.Identifier, arg.Channel, arg.Purpose)
 	var i GetLatestChallengeRow
 	err := row.Scan(
 		&i.ID,
 		&i.Identifier,
 		&i.Channel,
+		&i.Purpose,
 		&i.CodeHash,
 		&i.ExpiresAt,
 		&i.CreatedAt,
@@ -106,15 +113,16 @@ func (q *Queries) GetLatestChallenge(ctx context.Context, arg GetLatestChallenge
 }
 
 const upsertChallenge = `-- name: UpsertChallenge :exec
-INSERT INTO otp_challenges (id, identifier, channel, code_hash, expires_at, attempts, created_at)
+INSERT INTO otp_challenges (id, identifier, channel, purpose, code_hash, expires_at, attempts, created_at)
 VALUES (
     $1::uuid,
     $2,
     $3,
     $4,
     $5,
+    $6,
     0,
-    $6::timestamptz
+    $7::timestamptz
 )
 `
 
@@ -122,6 +130,7 @@ type UpsertChallengeParams struct {
 	ID         uuid.UUID
 	Identifier string
 	Channel    string
+	Purpose    string
 	CodeHash   string
 	ExpiresAt  pgtype.Timestamptz
 	CreatedAt  pgtype.Timestamptz
@@ -132,6 +141,7 @@ func (q *Queries) UpsertChallenge(ctx context.Context, arg UpsertChallengeParams
 		arg.ID,
 		arg.Identifier,
 		arg.Channel,
+		arg.Purpose,
 		arg.CodeHash,
 		arg.ExpiresAt,
 		arg.CreatedAt,

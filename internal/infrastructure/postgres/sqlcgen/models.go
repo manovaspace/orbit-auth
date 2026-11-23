@@ -110,6 +110,7 @@ type OtpChallenge struct {
 	Attempts   int32
 	CreatedAt  pgtype.Timestamptz
 	Channel    string
+	Purpose    string
 }
 
 type OutboxEvent struct {

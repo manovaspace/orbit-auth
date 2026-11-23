@@ -40,6 +40,7 @@ func seedAttemptChallenge(t *testing.T, otp *fakeOTP, code string) {
 		ID:         "ch-attempts",
 		Identifier: "user@example.com",
 		Channel:    domain.ChannelEmail,
+		Purpose:    domain.OTPPurposeSignIn,
 		CodeHash:   string(hash),
 		ExpiresAt:  time.Now().UTC().Add(10 * time.Minute),
 	}); err != nil {

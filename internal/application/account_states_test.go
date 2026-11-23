@@ -192,7 +192,7 @@ func TestVerifyOTPRefusesDisabledAccountLikeWrongCode(t *testing.T) {
 	build := func(status string) (*Service, *fakeRefreshStore) {
 		otp := &fakeOTP{}
 		_ = otp.UpsertChallenge(context.Background(), domain.OTPChallenge{
-			ID: "ch-1", Identifier: "u@example.com", Channel: domain.ChannelEmail,
+			ID: "ch-1", Identifier: "u@example.com", Channel: domain.ChannelEmail, Purpose: domain.OTPPurposeSignIn,
 			CodeHash: string(hash), ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
 		})
 		refresh := newFakeRefreshStore()

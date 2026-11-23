@@ -202,7 +202,7 @@ func (s *signupStore) ReissuePendingSignup(ctx context.Context, user domain.User
 	s.users[id] = existing
 
 	if challenge != nil {
-		s.otp.deleteChallenges(challenge.Identifier, challenge.Channel)
+		s.otp.deleteChallenges(challenge.Identifier, challenge.Channel, challenge.Purpose)
 		if err := s.otp.UpsertChallenge(ctx, *challenge); err != nil {
 			return "", false, err
 		}
@@ -623,11 +623,11 @@ func TestVerifySignupWrongPasswordDoesNotConsumeChallenge(t *testing.T) {
 	if _, _, _, err := svc.VerifySignup(ctx, "victim@example.com", code, "wrong-pass"); !errors.Is(err, ErrInvalidOTPCode) {
 		t.Fatalf("wrong password err = %v, want ErrInvalidOTPCode", err)
 	}
-	if store.otp.consumed {
+	if store.otp.latest().consumed {
 		t.Fatal("a wrong password consumed the challenge")
 	}
-	if store.otp.attempts != 1 {
-		t.Fatalf("attempts = %d, want 1", store.otp.attempts)
+	if got := store.otp.latest().ch.Attempts; got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
 	}
 	if store.verifyCalls != 0 {
 		t.Fatal("a wrong password activated the account")
@@ -670,11 +670,11 @@ func TestVerifySignupPreHijackRequiresCodeAndPassword(t *testing.T) {
 	if _, _, _, err := svc.VerifySignup(ctx, "victim@example.com", code, "owner-pass"); !errors.Is(err, ErrInvalidOTPCode) {
 		t.Fatalf("owner verify err = %v, want ErrInvalidOTPCode", err)
 	}
-	if store.otp.consumed {
+	if store.otp.latest().consumed {
 		t.Fatal("a mismatched password consumed the challenge")
 	}
-	if store.otp.attempts != 1 {
-		t.Fatalf("attempts = %d, want 1", store.otp.attempts)
+	if got := store.otp.latest().ch.Attempts; got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
 	}
 
 	// The attacker knows their own password but not the code.

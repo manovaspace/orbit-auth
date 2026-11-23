@@ -39,6 +39,7 @@ func TestOTPChallengesRoundTrip(t *testing.T) {
 		ID:         uuid.NewString(),
 		Identifier: "person@example.com",
 		Channel:    domain.ChannelEmail,
+		Purpose:    domain.OTPPurposeSignIn,
 		CodeHash:   "code-hash",
 		ExpiresAt:  time.Now().UTC().Add(10 * time.Minute).Truncate(time.Microsecond),
 	}
@@ -46,7 +47,7 @@ func TestOTPChallengesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel)
+	got, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel, challenge.Purpose)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestOTPChallengesRoundTrip(t *testing.T) {
 	if err := store.ConsumeChallenge(ctx, challenge.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel); !errors.Is(err, domain.ErrChallengeNotFound) {
+	if _, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel, challenge.Purpose); !errors.Is(err, domain.ErrChallengeNotFound) {
 		t.Fatalf("consumed challenge err = %v, want ErrChallengeNotFound", err)
 	}
 	if err := store.ConsumeChallenge(ctx, challenge.ID); !errors.Is(err, domain.ErrChallengeConsumed) {
@@ -70,7 +71,7 @@ func TestOTPChallengesRoundTrip(t *testing.T) {
 	// Expired challenges are deleted; live ones are kept.
 	// Created two minutes ago and expired one minute ago: the challenge was
 	// stored in the past, so created_at precedes expires_at.
-	expired := domain.OTPChallenge{ID: uuid.NewString(), Identifier: "old@example.com", Channel: domain.ChannelEmail, CodeHash: "h", CreatedAt: time.Now().UTC().Add(-2 * time.Minute), ExpiresAt: time.Now().UTC().Add(-time.Minute)}
+	expired := domain.OTPChallenge{ID: uuid.NewString(), Identifier: "old@example.com", Channel: domain.ChannelEmail, Purpose: domain.OTPPurposeSignIn, CodeHash: "h", CreatedAt: time.Now().UTC().Add(-2 * time.Minute), ExpiresAt: time.Now().UTC().Add(-time.Minute)}
 	if err := store.UpsertChallenge(ctx, expired); err != nil {
 		t.Fatal(err)
 	}
@@ -386,6 +387,7 @@ func TestConsumeChallengeAttemptStopsAtLimit(t *testing.T) {
 		ID:         uuid.NewString(),
 		Identifier: "limit@example.com",
 		Channel:    domain.ChannelEmail,
+		Purpose:    domain.OTPPurposeSignIn,
 		CodeHash:   "code-hash",
 		ExpiresAt:  time.Now().UTC().Add(10 * time.Minute).Truncate(time.Microsecond),
 	}
@@ -402,7 +404,7 @@ func TestConsumeChallengeAttemptStopsAtLimit(t *testing.T) {
 	if err != nil || ok {
 		t.Fatalf("attempt past the limit: ok = %v, err = %v; want false, nil", ok, err)
 	}
-	got, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel)
+	got, err := store.GetLatestChallenge(ctx, challenge.Identifier, challenge.Channel, challenge.Purpose)
 	if err != nil || got.Attempts != domain.MaxOTPAttempts {
 		t.Fatalf("attempts = %d, err = %v; want %d", got.Attempts, err, domain.MaxOTPAttempts)
 	}
