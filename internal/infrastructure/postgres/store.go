@@ -533,13 +533,18 @@ func (s *Store) Create(ctx context.Context, t domain.APIToken) error {
 	if err != nil {
 		return fmt.Errorf("postgres: user id %q: %w", t.UserID, err)
 	}
+	// api_tokens.scopes is NOT NULL; a token with no scopes stores an empty array.
+	scopes := t.Scopes
+	if scopes == nil {
+		scopes = []string{}
+	}
 	return s.queries.CreateAPIToken(ctx, sqlcgen.CreateAPITokenParams{
 		ID:        id,
 		UserID:    userID,
 		Name:      t.Name,
 		Prefix:    t.Prefix,
 		TokenHash: t.TokenHash,
-		Scopes:    t.Scopes,
+		Scopes:    scopes,
 		ExpiresAt: timestamptzPtr(t.ExpiresAt),
 	})
 }

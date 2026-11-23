@@ -128,7 +128,7 @@ SELECT id::text AS id,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
 FROM users
-WHERE email = $1::text
+WHERE lower(email) = lower($1::text)
 `
 
 type FindUserByEmailRow struct {
@@ -329,7 +329,7 @@ UPDATE users
 SET password_hash = $1::text,
     display_name = $2::text,
     updated_at = NOW()
-WHERE email = $3::text
+WHERE lower(email) = lower($3::text)
   AND status = 'signup_pending'
   AND email_verified_at IS NULL
 RETURNING id::text AS id
@@ -375,7 +375,7 @@ SET password_hash = $1::text,
     status = 'active',
     email_verified_at = $3::timestamptz,
     updated_at = NOW()
-WHERE email = $4::text
+WHERE lower(email) = lower($4::text)
   AND status = 'signup_pending'
   AND email_verified_at IS NULL
 RETURNING id::text AS id

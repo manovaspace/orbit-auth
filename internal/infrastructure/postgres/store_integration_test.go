@@ -68,7 +68,9 @@ func TestOTPChallengesRoundTrip(t *testing.T) {
 	}
 
 	// Expired challenges are deleted; live ones are kept.
-	expired := domain.OTPChallenge{ID: uuid.NewString(), Identifier: "old@example.com", Channel: domain.ChannelEmail, CodeHash: "h", ExpiresAt: time.Now().UTC().Add(-time.Minute)}
+	// Created two minutes ago and expired one minute ago: the challenge was
+	// stored in the past, so created_at precedes expires_at.
+	expired := domain.OTPChallenge{ID: uuid.NewString(), Identifier: "old@example.com", Channel: domain.ChannelEmail, CodeHash: "h", CreatedAt: time.Now().UTC().Add(-2 * time.Minute), ExpiresAt: time.Now().UTC().Add(-time.Minute)}
 	if err := store.UpsertChallenge(ctx, expired); err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +179,17 @@ func TestUpsertDemoUserUpdatesByEmailAndMobile(t *testing.T) {
 	}
 }
 
+// expireRefreshToken moves a stored token into the past: created two hours ago
+// and expired one minute ago. Both columns change in one statement, because
+// refresh_tokens_expiry_after_created_chk rejects a row that expires before it
+// was created, and the store always writes created_at from the database clock.
+func expireRefreshToken(t *testing.T, ctx context.Context, db *testutil.Database, tokenHash string) {
+	t.Helper()
+	if _, err := db.Pool.Exec(ctx, `UPDATE refresh_tokens SET created_at = NOW() - INTERVAL '2 hours', expires_at = NOW() - INTERVAL '1 minute' WHERE token_hash = $1`, tokenHash); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	store, db := migrationPool(t)
 	ctx := context.Background()
@@ -200,9 +213,10 @@ func TestRefreshTokensAreStoredHashedAndRevoked(t *testing.T) {
 	}
 
 	// An expired token is not valid.
-	if err := store.Store(ctx, user.ID, "", "hash-2", time.Now().UTC().Add(-time.Hour)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "hash-2", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	expireRefreshToken(t, ctx, db, "hash-2")
 	if _, _, err := store.FindValid(ctx, "hash-2"); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("expired token err = %v", err)
 	}
@@ -348,16 +362,17 @@ func TestConsumeRefreshTokenRedeemsOnce(t *testing.T) {
 }
 
 func TestConsumeRefreshTokenRejectsExpired(t *testing.T) {
-	store, _ := migrationPool(t)
+	store, db := migrationPool(t)
 	ctx := context.Background()
 
 	user, err := store.FindOrCreateByEmail(ctx, "expired@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Store(ctx, user.ID, "", "consume-expired", time.Now().UTC().Add(-time.Minute)); err != nil {
+	if err := store.Store(ctx, user.ID, "", "consume-expired", time.Now().UTC().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	expireRefreshToken(t, ctx, db, "consume-expired")
 	if _, _, err := store.Consume(ctx, "consume-expired"); !errors.Is(err, domain.ErrRefreshTokenNotFound) {
 		t.Fatalf("expired consume err = %v, want ErrRefreshTokenNotFound", err)
 	}
