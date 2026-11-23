@@ -1,5 +1,5 @@
 -- name: InsertAuditEvent :exec
-INSERT INTO audit_events (occurred_at, action, actor_kind, actor_id, org_id, subject_user_id, invite_id, reason, details)
+INSERT INTO platform.audit_events (occurred_at, action, actor_kind, actor_id, org_id, subject_user_id, invite_id, reason, details)
 VALUES (
     sqlc.arg('occurred_at')::timestamptz,
     sqlc.arg('action')::text,
@@ -25,7 +25,7 @@ SELECT id,
        COALESCE(invite_id::text, '')::text AS invite_id,
        reason,
        details::text AS details
-FROM audit_events
+FROM platform.audit_events
 WHERE (sqlc.narg('org_id')::uuid IS NULL OR org_id = sqlc.narg('org_id')::uuid)
   AND (sqlc.narg('subject_user_id')::uuid IS NULL OR subject_user_id = sqlc.narg('subject_user_id')::uuid)
   AND (sqlc.narg('after_id')::bigint IS NULL OR id < sqlc.narg('after_id')::bigint)

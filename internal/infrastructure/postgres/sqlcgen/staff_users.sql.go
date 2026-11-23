@@ -22,13 +22,13 @@ SELECT u.id::text AS id,
        (u.email_verified_at IS NOT NULL)::boolean AS email_verified,
        (u.mobile_verified_at IS NOT NULL)::boolean AS mobile_verified,
        (COALESCE(u.password_hash, '') <> '')::boolean AS has_password,
-       EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id)::boolean AS google_linked,
+       EXISTS (SELECT 1 FROM identity.user_identities i WHERE i.user_id = u.id)::boolean AS google_linked,
        u.created_at,
        u.last_login_at,
        u.disabled_at,
        u.disabled_reason,
-       (SELECT count(*)::bigint FROM organization_memberships m WHERE m.user_id = u.id) AS membership_count
-FROM users u
+       (SELECT count(*)::bigint FROM tenancy.organization_memberships m WHERE m.user_id = u.id) AS membership_count
+FROM identity.users u
 WHERE u.id = $1::uuid
 `
 
@@ -81,8 +81,8 @@ SELECT m.org_id::text AS org_id,
        m.role,
        m.status,
        m.created_at AS joined_at
-FROM organization_memberships m
-JOIN organizations o ON o.id = m.org_id
+FROM tenancy.organization_memberships m
+JOIN tenancy.organizations o ON o.id = m.org_id
 WHERE m.user_id = $1::uuid
 ORDER BY m.created_at, m.org_id
 `
@@ -135,13 +135,13 @@ SELECT u.id::text AS id,
        (u.email_verified_at IS NOT NULL)::boolean AS email_verified,
        (u.mobile_verified_at IS NOT NULL)::boolean AS mobile_verified,
        (COALESCE(u.password_hash, '') <> '')::boolean AS has_password,
-       EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id)::boolean AS google_linked,
+       EXISTS (SELECT 1 FROM identity.user_identities i WHERE i.user_id = u.id)::boolean AS google_linked,
        u.created_at,
        u.last_login_at,
        u.disabled_at,
        u.disabled_reason,
-       (SELECT count(*)::bigint FROM organization_memberships m WHERE m.user_id = u.id) AS membership_count
-FROM users u
+       (SELECT count(*)::bigint FROM tenancy.organization_memberships m WHERE m.user_id = u.id) AS membership_count
+FROM identity.users u
 WHERE ($1::text = '' OR u.status = $1::text)
   AND ($2::text = ''
        OR u.email ILIKE $2::text
@@ -229,7 +229,7 @@ func (q *Queries) ListUsersForStaff(ctx context.Context, arg ListUsersForStaffPa
 }
 
 const lockUserForUpdate = `-- name: LockUserForUpdate :one
-SELECT status FROM users WHERE id = $1::uuid FOR UPDATE
+SELECT status FROM identity.users WHERE id = $1::uuid FOR UPDATE
 `
 
 // Locks the account row for a staff disable or enable. It conflicts with the
@@ -242,7 +242,7 @@ func (q *Queries) LockUserForUpdate(ctx context.Context, id uuid.UUID) (string, 
 }
 
 const setUserDisabled = `-- name: SetUserDisabled :execrows
-UPDATE users
+UPDATE identity.users
 SET status = 'disabled',
     disabled_at = NOW(),
     disabled_reason = $1::text,
@@ -264,7 +264,7 @@ func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams
 }
 
 const setUserEnabled = `-- name: SetUserEnabled :execrows
-UPDATE users
+UPDATE identity.users
 SET status = 'active',
     disabled_at = NULL,
     disabled_reason = '',

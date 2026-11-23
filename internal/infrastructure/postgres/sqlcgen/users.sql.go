@@ -13,7 +13,7 @@ import (
 )
 
 const createPhoneSignupUser = `-- name: CreatePhoneSignupUser :execrows
-INSERT INTO users (id, mobile, password_hash, display_name, status, mobile_verified_at)
+INSERT INTO identity.users (id, mobile, password_hash, display_name, status, mobile_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
@@ -50,7 +50,7 @@ func (q *Queries) CreatePhoneSignupUser(ctx context.Context, arg CreatePhoneSign
 }
 
 const createSignupUser = `-- name: CreateSignupUser :execrows
-INSERT INTO users (id, email, password_hash, display_name, status, email_verified_at)
+INSERT INTO identity.users (id, email, password_hash, display_name, status, email_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
@@ -87,7 +87,7 @@ func (q *Queries) CreateSignupUser(ctx context.Context, arg CreateSignupUserPara
 }
 
 const createUserWithEmail = `-- name: CreateUserWithEmail :exec
-INSERT INTO users (id, email, status, email_verified_at)
+INSERT INTO identity.users (id, email, status, email_verified_at)
 VALUES ($1::uuid, $2::text, $3::text, NOW())
 `
 
@@ -103,7 +103,7 @@ func (q *Queries) CreateUserWithEmail(ctx context.Context, arg CreateUserWithEma
 }
 
 const createUserWithMobile = `-- name: CreateUserWithMobile :exec
-INSERT INTO users (id, mobile)
+INSERT INTO identity.users (id, mobile)
 VALUES ($1::uuid, $2::text)
 `
 
@@ -127,7 +127,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE lower(email) = lower($1::text)
 `
 
@@ -170,7 +170,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE id = $1::uuid
 `
 
@@ -213,7 +213,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE mobile = $1::text
 `
 
@@ -256,7 +256,7 @@ SELECT id::text AS id,
        COALESCE(status, 'active') AS status,
        (email_verified_at IS NOT NULL)::boolean AS email_verified,
        (mobile_verified_at IS NOT NULL)::boolean AS mobile_verified
-FROM users
+FROM identity.users
 WHERE username = $1::text
 `
 
@@ -290,7 +290,7 @@ func (q *Queries) FindUserByUsername(ctx context.Context, username string) (Find
 }
 
 const markMobileVerified = `-- name: MarkMobileVerified :execrows
-UPDATE users
+UPDATE identity.users
 SET mobile_verified_at = COALESCE(mobile_verified_at, $1::timestamptz),
     updated_at = NOW()
 WHERE id = $2::uuid
@@ -310,7 +310,7 @@ func (q *Queries) MarkMobileVerified(ctx context.Context, arg MarkMobileVerified
 }
 
 const purgeUnverifiedSignups = `-- name: PurgeUnverifiedSignups :execrows
-DELETE FROM users
+DELETE FROM identity.users
 WHERE status = 'signup_pending'
   AND email_verified_at IS NULL
   AND created_at < $1::timestamptz
@@ -325,7 +325,7 @@ func (q *Queries) PurgeUnverifiedSignups(ctx context.Context, before pgtype.Time
 }
 
 const reissueSignupUser = `-- name: ReissueSignupUser :one
-UPDATE users
+UPDATE identity.users
 SET password_hash = $1::text,
     display_name = $2::text,
     updated_at = NOW()
@@ -349,7 +349,7 @@ func (q *Queries) ReissueSignupUser(ctx context.Context, arg ReissueSignupUserPa
 }
 
 const setUsername = `-- name: SetUsername :execrows
-UPDATE users
+UPDATE identity.users
 SET username = $1::text,
     updated_at = NOW()
 WHERE id = $2::uuid
@@ -369,7 +369,7 @@ func (q *Queries) SetUsername(ctx context.Context, arg SetUsernameParams) (int64
 }
 
 const takeOverPendingSignupUser = `-- name: TakeOverPendingSignupUser :one
-UPDATE users
+UPDATE identity.users
 SET password_hash = $1::text,
     display_name = $2::text,
     status = 'active',
@@ -401,7 +401,7 @@ func (q *Queries) TakeOverPendingSignupUser(ctx context.Context, arg TakeOverPen
 }
 
 const updateLastLogin = `-- name: UpdateLastLogin :exec
-UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1::uuid
+UPDATE identity.users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1::uuid
 `
 
 func (q *Queries) UpdateLastLogin(ctx context.Context, id uuid.UUID) error {
@@ -410,7 +410,7 @@ func (q *Queries) UpdateLastLogin(ctx context.Context, id uuid.UUID) error {
 }
 
 const upsertDemoUserByEmail = `-- name: UpsertDemoUserByEmail :exec
-INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO identity.users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
@@ -462,7 +462,7 @@ func (q *Queries) UpsertDemoUserByEmail(ctx context.Context, arg UpsertDemoUserB
 }
 
 const upsertDemoUserByMobile = `-- name: UpsertDemoUserByMobile :exec
-INSERT INTO users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
+INSERT INTO identity.users (id, email, mobile, username, password_hash, display_name, status, email_verified_at, mobile_verified_at)
 VALUES (
     $1::uuid,
     $2::text,
@@ -514,7 +514,7 @@ func (q *Queries) UpsertDemoUserByMobile(ctx context.Context, arg UpsertDemoUser
 }
 
 const verifySignupUser = `-- name: VerifySignupUser :execrows
-UPDATE users
+UPDATE identity.users
 SET status = 'active',
     email_verified_at = $1::timestamptz,
     updated_at = NOW()

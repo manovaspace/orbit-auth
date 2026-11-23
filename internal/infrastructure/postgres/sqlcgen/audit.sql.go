@@ -12,7 +12,7 @@ import (
 )
 
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
-INSERT INTO audit_events (occurred_at, action, actor_kind, actor_id, org_id, subject_user_id, invite_id, reason, details)
+INSERT INTO platform.audit_events (occurred_at, action, actor_kind, actor_id, org_id, subject_user_id, invite_id, reason, details)
 VALUES (
     $1::timestamptz,
     $2::text,
@@ -64,7 +64,7 @@ SELECT id,
        COALESCE(invite_id::text, '')::text AS invite_id,
        reason,
        details::text AS details
-FROM audit_events
+FROM platform.audit_events
 WHERE ($1::uuid IS NULL OR org_id = $1::uuid)
   AND ($2::uuid IS NULL OR subject_user_id = $2::uuid)
   AND ($3::bigint IS NULL OR id < $3::bigint)

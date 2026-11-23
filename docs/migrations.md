@@ -40,6 +40,41 @@ service must not touch the schema.
 5. Fix a defect in a new migration; never edit a migration that has already run
    in production.
 
+## Schema layout (migration 024)
+
+Migration 024 moves the tables out of `public` into three schemas:
+
+- `identity`: `users`, `user_identities`, `otp_challenges`, `refresh_tokens`, `api_tokens`, `oauth_sign_in_states`;
+- `tenancy`: `organizations`, `organization_memberships`, `organization_invites`, `organization_slugs`, `organization_provisions`;
+- `platform`: `feature_flags`, `outbox_events`, `audit_events`.
+
+`goose_db_version` stays in `public`. Every connection forces
+`search_path=identity,tenancy,platform,public` (package
+`internal/infrastructure/postgres/searchpath`), the app, the migrator and the
+tests alike. Unqualified names in older migrations and in the outbox relay
+still resolve. Application queries and new migrations name tables with their
+schema.
+
+`SET SCHEMA` moves a table with its indexes, constraints and owned sequences,
+and foreign keys keep working. Down moves every table back to `public` and then
+drops the three schemas with `RESTRICT`, so a rollback fails rather than drop a
+schema that still holds an object.
+
+## Before 019 to 024 run on a database with data
+
+Run the read-only pre-checks as the service role before the first release that
+carries migrations 019 to 024 starts against a database that already holds
+data (production `auth`):
+
+```sh
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/prechecks-019-024.sql
+```
+
+Every row named `block:` must show `0`, or `true` where it says so. Anything
+else stops the rollout until the owner decides how to fix the data. Rows named
+`info:` are for the record. The script sets the session read-only and writes
+nothing.
+
 ## Production adoption (existing database)
 
 Production databases were created by the previous hand-written runner, which
@@ -139,22 +174,15 @@ A single release never drops an object that the previous release still reads.
 
 ## One schema per service
 
-`orbit-auth` owns the dedicated `auth` logical database and its `public`
-schema. No other service reads these tables; consumers call the gRPC API or
-verify access tokens through the public `token` package. That is the "one
-schema per service" rule for this service.
+`orbit-auth` owns the dedicated `auth` logical database. Its tables sit in the
+`identity`, `tenancy` and `platform` schemas (see Schema layout). No other
+service reads these tables; consumers call the gRPC API or verify access tokens
+through the public `token` package. That is the "one schema per service" rule
+for this service.
 
 No data moves in this change. `schema_migrations` stays in place until a later
 contract migration removes it; no release reads it after adoption.
 
-If the platform later gives every service a named schema inside a shared
-database, the move is:
-
-1. `CREATE SCHEMA auth;`
-2. Set `search_path=auth,public` for this service's role/DSN.
-3. `ALTER TABLE users SET SCHEMA auth;` (indexes and constraints follow the
-   table; repeat for every table and `goose_db_version`).
-4. Apply the same DSN change in every environment, then remove `public` from
-   the service's search path in a later release.
-
-That move is a deployment task with a maintenance window, not a migration.
+The `auth` database is not shared with another service, so the schemas above
+are the final layout: no further move into a per-service schema is planned.
+New tables are created schema-qualified (`CREATE TABLE identity.<name>`).

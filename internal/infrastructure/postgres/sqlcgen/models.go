@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type ApiToken struct {
+type IdentityApiToken struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	Name      string
@@ -21,27 +21,7 @@ type ApiToken struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-type AuditEvent struct {
-	ID            int64
-	OccurredAt    pgtype.Timestamptz
-	Action        string
-	ActorKind     string
-	ActorID       string
-	OrgID         pgtype.UUID
-	SubjectUserID pgtype.UUID
-	InviteID      pgtype.UUID
-	Reason        string
-	Details       []byte
-}
-
-type FeatureFlag struct {
-	Name        string
-	Enabled     bool
-	Description string
-	UpdatedAt   pgtype.Timestamptz
-}
-
-type OauthSignInState struct {
+type IdentityOauthSignInState struct {
 	StateHash   string
 	RedirectUri string
 	ReturnTo    string
@@ -52,57 +32,7 @@ type OauthSignInState struct {
 	UserID      pgtype.UUID
 }
 
-type Organization struct {
-	ID              uuid.UUID
-	Name            string
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	Slug            string
-	Status          string
-	SuspendedAt     pgtype.Timestamptz
-	SuspendedReason string
-}
-
-type OrganizationInvite struct {
-	ID                  uuid.UUID
-	OrgID               uuid.UUID
-	Email               *string
-	TokenHash           string
-	InviterID           pgtype.UUID
-	Status              string
-	ExpiresAt           pgtype.Timestamptz
-	AcceptedAt          pgtype.Timestamptz
-	CreatedAt           pgtype.Timestamptz
-	Phone               *string
-	Role                string
-	InviterStaffSubject *string
-}
-
-type OrganizationMembership struct {
-	OrgID     uuid.UUID
-	UserID    uuid.UUID
-	Status    string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	Role      string
-}
-
-type OrganizationProvision struct {
-	IdempotencyKey string
-	OrgID          uuid.UUID
-	OwnerEmail     *string
-	OwnerPhone     *string
-	CreatedAt      pgtype.Timestamptz
-}
-
-type OrganizationSlug struct {
-	Slug      string
-	OrgID     uuid.UUID
-	CreatedAt pgtype.Timestamptz
-	RetiredAt pgtype.Timestamptz
-}
-
-type OtpChallenge struct {
+type IdentityOtpChallenge struct {
 	ID         uuid.UUID
 	Identifier string
 	CodeHash   string
@@ -113,17 +43,7 @@ type OtpChallenge struct {
 	Purpose    string
 }
 
-type OutboxEvent struct {
-	ID          int64
-	Subject     string
-	Envelope    []byte
-	CreatedAt   pgtype.Timestamptz
-	PublishedAt pgtype.Timestamptz
-	Attempts    int32
-	LastError   *string
-}
-
-type RefreshToken struct {
+type IdentityRefreshToken struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	TokenHash string
@@ -135,7 +55,7 @@ type RefreshToken struct {
 	RotatedAt pgtype.Timestamptz
 }
 
-type User struct {
+type IdentityUser struct {
 	ID               uuid.UUID
 	Email            *string
 	CreatedAt        pgtype.Timestamptz
@@ -152,11 +72,91 @@ type User struct {
 	DisabledReason   string
 }
 
-type UserIdentity struct {
+type IdentityUserIdentity struct {
 	Provider    string
 	Subject     string
 	UserID      uuid.UUID
 	Email       *string
 	CreatedAt   pgtype.Timestamptz
 	LastLoginAt pgtype.Timestamptz
+}
+
+type PlatformAuditEvent struct {
+	ID            int64
+	OccurredAt    pgtype.Timestamptz
+	Action        string
+	ActorKind     string
+	ActorID       string
+	OrgID         pgtype.UUID
+	SubjectUserID pgtype.UUID
+	InviteID      pgtype.UUID
+	Reason        string
+	Details       []byte
+}
+
+type PlatformFeatureFlag struct {
+	Name        string
+	Enabled     bool
+	Description string
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type PlatformOutboxEvent struct {
+	ID          int64
+	Subject     string
+	Envelope    []byte
+	CreatedAt   pgtype.Timestamptz
+	PublishedAt pgtype.Timestamptz
+	Attempts    int32
+	LastError   *string
+}
+
+type TenancyOrganization struct {
+	ID              uuid.UUID
+	Name            string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	Slug            string
+	Status          string
+	SuspendedAt     pgtype.Timestamptz
+	SuspendedReason string
+}
+
+type TenancyOrganizationInvite struct {
+	ID                  uuid.UUID
+	OrgID               uuid.UUID
+	Email               *string
+	TokenHash           string
+	InviterID           pgtype.UUID
+	Status              string
+	ExpiresAt           pgtype.Timestamptz
+	AcceptedAt          pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	Phone               *string
+	Role                string
+	InviterStaffSubject *string
+}
+
+type TenancyOrganizationMembership struct {
+	OrgID     uuid.UUID
+	UserID    uuid.UUID
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	Role      string
+}
+
+type TenancyOrganizationProvision struct {
+	IdempotencyKey string
+	OrgID          uuid.UUID
+	OwnerEmail     *string
+	OwnerPhone     *string
+	CreatedAt      pgtype.Timestamptz
+}
+
+type TenancyOrganizationSlug struct {
+	Slug      string
+	OrgID     uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	RetiredAt pgtype.Timestamptz
 }

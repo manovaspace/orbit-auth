@@ -13,7 +13,7 @@ import (
 )
 
 const consumeRefreshToken = `-- name: ConsumeRefreshToken :one
-UPDATE refresh_tokens SET revoked_at = NOW(),
+UPDATE identity.refresh_tokens SET revoked_at = NOW(),
     rotated_at = CASE WHEN $1::boolean THEN NOW() ELSE NULL END
 WHERE token_hash = $2 AND revoked_at IS NULL AND expires_at > NOW()
 RETURNING user_id::text AS user_id, COALESCE(org_id::text, '')::text AS org_id, family_id::text AS family_id
@@ -41,7 +41,7 @@ func (q *Queries) ConsumeRefreshToken(ctx context.Context, arg ConsumeRefreshTok
 
 const findRotatedRefreshToken = `-- name: FindRotatedRefreshToken :one
 SELECT user_id::text AS user_id, family_id::text AS family_id, rotated_at
-FROM refresh_tokens
+FROM identity.refresh_tokens
 WHERE token_hash = $1 AND rotated_at IS NOT NULL
 `
 
@@ -62,7 +62,7 @@ func (q *Queries) FindRotatedRefreshToken(ctx context.Context, tokenHash string)
 const findValidRefreshToken = `-- name: FindValidRefreshToken :one
 SELECT user_id::text AS user_id,
        COALESCE(org_id::text, '')::text AS org_id
-FROM refresh_tokens
+FROM identity.refresh_tokens
 WHERE token_hash = $1
   AND expires_at > NOW()
   AND revoked_at IS NULL
@@ -81,7 +81,7 @@ func (q *Queries) FindValidRefreshToken(ctx context.Context, tokenHash string) (
 }
 
 const lockUserForShare = `-- name: LockUserForShare :one
-SELECT status FROM users WHERE id = $1::uuid FOR SHARE
+SELECT status FROM identity.users WHERE id = $1::uuid FOR SHARE
 `
 
 // Takes a share lock on the account row for the sign-in transaction that stores a
@@ -97,7 +97,7 @@ func (q *Queries) LockUserForShare(ctx context.Context, id uuid.UUID) (string, e
 }
 
 const revokeOrganizationRefreshTokens = `-- name: RevokeOrganizationRefreshTokens :execrows
-UPDATE refresh_tokens SET revoked_at = NOW()
+UPDATE identity.refresh_tokens SET revoked_at = NOW()
 WHERE user_id = $1::uuid
   AND org_id = $2::uuid
   AND revoked_at IS NULL
@@ -119,7 +119,7 @@ func (q *Queries) RevokeOrganizationRefreshTokens(ctx context.Context, arg Revok
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1
+UPDATE identity.refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1
 `
 
 func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
@@ -128,7 +128,7 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) erro
 }
 
 const revokeRefreshTokenFamily = `-- name: RevokeRefreshTokenFamily :execrows
-UPDATE refresh_tokens SET revoked_at = NOW()
+UPDATE identity.refresh_tokens SET revoked_at = NOW()
 WHERE family_id = $1::uuid AND revoked_at IS NULL
 `
 
@@ -142,7 +142,7 @@ func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, familyID uuid.UU
 }
 
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :execrows
-UPDATE refresh_tokens SET revoked_at = NOW()
+UPDATE identity.refresh_tokens SET revoked_at = NOW()
 WHERE user_id = $1::uuid AND revoked_at IS NULL
 `
 
@@ -156,7 +156,7 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID uuid.UUID)
 }
 
 const revokeUserRefreshTokensExcept = `-- name: RevokeUserRefreshTokensExcept :execrows
-UPDATE refresh_tokens SET revoked_at = NOW()
+UPDATE identity.refresh_tokens SET revoked_at = NOW()
 WHERE user_id = $1::uuid
   AND revoked_at IS NULL
   AND token_hash <> $2::text
@@ -178,7 +178,7 @@ func (q *Queries) RevokeUserRefreshTokensExcept(ctx context.Context, arg RevokeU
 }
 
 const storeRefreshToken = `-- name: StoreRefreshToken :exec
-INSERT INTO refresh_tokens (id, user_id, org_id, token_hash, expires_at, family_id)
+INSERT INTO identity.refresh_tokens (id, user_id, org_id, token_hash, expires_at, family_id)
 VALUES (
     $1::uuid,
     $2::uuid,

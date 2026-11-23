@@ -1,6 +1,8 @@
 // Package searchpath forces the PostgreSQL search_path of an orbit-auth
-// connection. The application connects with the schemas that hold its tables
-// first, so unqualified names resolve without each query being qualified.
+// connection. The search_path lists the schemas that hold the tables (identity,
+// tenancy, platform), then public. Application queries are schema-qualified.
+// The search_path keeps unqualified names working for the orbit-kit outbox
+// relay, which accepts only a plain table name, and for older migrations.
 // Error messages never include the DSN: it may carry a password.
 package searchpath
 

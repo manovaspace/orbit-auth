@@ -156,6 +156,13 @@ Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version i
 
 `BUS_TRANSPORT` selects the transport: `inproc` (default; relayed and logged, no subscribers), `nats` with `BUS_NATS_URL`, or `redis` with `BUS_REDIS_URL`. The relay runs in `cmd/auth` for the life of the process and stops on graceful shutdown; publish failures are logged with `slog` and retried, never crashing the gRPC server.
 
+## Schemas
+
+- Tables live in three schemas (migration 024): `identity` (`users`, `user_identities`, `otp_challenges`, `refresh_tokens`, `api_tokens`, `oauth_sign_in_states`), `tenancy` (`organizations`, `organization_memberships`, `organization_invites`, `organization_slugs`, `organization_provisions`) and `platform` (`feature_flags`, `outbox_events`, `audit_events`).
+- `goose_db_version` stays in `public`.
+- New tables are created schema-qualified. Queries in `queries/` and raw SQL in Go code are schema-qualified too.
+- Every connection forces `search_path=identity,tenancy,platform,public` (`internal/infrastructure/postgres/searchpath`). It keeps unqualified names working for the outbox relay and older migrations. Do not rely on it in new code.
+
 ## Stack
 
 - Go 1.27.4, gRPC + Fiber v3 health + Postgres
@@ -185,7 +192,7 @@ Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version i
 | `internal/infrastructure/httpapi/` | Fiber v3 health probes |
 | `internal/infrastructure/credentials/` | bcrypt, OTP code and API-secret adapters |
 | `internal/infrastructure/jwt/` | RS256 signer adapter |
-| `internal/testutil/` | disposable-schema integration-test helper |
+| `internal/testutil/` | disposable-database integration-test helper: each test gets its own database |
 
 ## Session pre-flight
 

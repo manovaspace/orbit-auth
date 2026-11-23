@@ -14,11 +14,12 @@ import (
 	"github.com/manovaspace/orbit-auth/internal/testutil"
 )
 
-// rollBackIdentityConstraints rolls back migrations 023, 022, 021, 020 and 019, in
-// that order, and fails unless each rollback reports the expected version.
+// rollBackIdentityConstraints rolls back migrations 024 (the schema move), 023,
+// 022, 021, 020 and 019, in that order, and fails unless each rollback reports
+// the expected version. Tables are back in public afterwards.
 func rollBackIdentityConstraints(t *testing.T, ctx context.Context, m *Migrator) {
 	t.Helper()
-	for _, want := range []int64{23, 22, 21, 20, 19} {
+	for _, want := range []int64{24, 23, 22, 21, 20, 19} {
 		result, err := m.Down(ctx)
 		if err != nil {
 			t.Fatalf("down %d: %v", want, err)
@@ -87,23 +88,23 @@ func TestIdentityConstraintMigrationsRollBackAndReapply(t *testing.T) {
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("up: %v", err)
 	}
-	if !indexExists(t, ctx, db.Pool, db.Schema, "users_email_lower_key") ||
-		!indexExists(t, ctx, db.Pool, db.Schema, "refresh_tokens_token_hash_key") ||
-		!indexExists(t, ctx, db.Pool, db.Schema, "otp_challenges_expires_idx") ||
-		indexExists(t, ctx, db.Pool, db.Schema, "users_mobile_idx") {
+	if !indexExists(t, ctx, db.Pool, "identity", "users_email_lower_key") ||
+		!indexExists(t, ctx, db.Pool, "identity", "refresh_tokens_token_hash_key") ||
+		!indexExists(t, ctx, db.Pool, "identity", "otp_challenges_expires_idx") ||
+		indexExists(t, ctx, db.Pool, "identity", "users_mobile_idx") {
 		t.Fatal("up did not leave the expected identity indexes")
 	}
-	if n := uniqueMobileIndexes(t, ctx, db.Pool, db.Schema); n != 1 {
+	if n := uniqueMobileIndexes(t, ctx, db.Pool, "identity"); n != 1 {
 		t.Fatalf("users.mobile has %d unique indexes after up, want exactly 1", n)
 	}
-	if !constraintExists(t, ctx, db.Pool, db.Schema, "api_tokens", "api_tokens_user_id_cascade_fkey") ||
-		constraintExists(t, ctx, db.Pool, db.Schema, "api_tokens", "api_tokens_user_id_fkey") {
+	if !constraintExists(t, ctx, db.Pool, "identity", "api_tokens", "api_tokens_user_id_cascade_fkey") ||
+		constraintExists(t, ctx, db.Pool, "identity", "api_tokens", "api_tokens_user_id_fkey") {
 		t.Fatal("up did not replace the api_tokens user foreign key")
 	}
 
 	rollBackIdentityConstraints(t, ctx, m)
-	if current, target, err := m.Version(ctx); err != nil || current != 18 || target != 23 {
-		t.Fatalf("version after down = %d/%d, err=%v, want 18/23", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 18 || target != 24 {
+		t.Fatalf("version after down = %d/%d, err=%v, want 18/24", current, target, err)
 	}
 	if indexExists(t, ctx, db.Pool, db.Schema, "users_email_lower_key") ||
 		indexExists(t, ctx, db.Pool, db.Schema, "refresh_tokens_token_hash_key") ||
@@ -129,21 +130,21 @@ func TestIdentityConstraintMigrationsRollBackAndReapply(t *testing.T) {
 
 	results, err := m.Up(ctx)
 	if err != nil {
-		t.Fatalf("reapply 019 to 023: %v", err)
+		t.Fatalf("reapply 019 to 024: %v", err)
 	}
-	assertAppliedVersions(t, results, 19, 20, 21, 22, 23)
-	if !indexExists(t, ctx, db.Pool, db.Schema, "users_email_lower_key") ||
-		!indexExists(t, ctx, db.Pool, db.Schema, "refresh_tokens_token_hash_key") ||
-		indexExists(t, ctx, db.Pool, db.Schema, "users_mobile_idx") {
+	assertAppliedVersions(t, results, 19, 20, 21, 22, 23, 24)
+	if !indexExists(t, ctx, db.Pool, "identity", "users_email_lower_key") ||
+		!indexExists(t, ctx, db.Pool, "identity", "refresh_tokens_token_hash_key") ||
+		indexExists(t, ctx, db.Pool, "identity", "users_mobile_idx") {
 		t.Fatal("reapply did not recreate the identity indexes")
 	}
-	if !constraintExists(t, ctx, db.Pool, db.Schema, "api_tokens", "api_tokens_user_id_cascade_fkey") {
+	if !constraintExists(t, ctx, db.Pool, "identity", "api_tokens", "api_tokens_user_id_cascade_fkey") {
 		t.Fatal("reapply did not recreate the api_tokens cascade foreign key")
 	}
-	if current, target, err := m.Version(ctx); err != nil || current != 23 || target != 23 {
-		t.Fatalf("version after reapply = %d/%d, err=%v, want 23/23", current, target, err)
+	if current, target, err := m.Version(ctx); err != nil || current != 24 || target != 24 {
+		t.Fatalf("version after reapply = %d/%d, err=%v, want 24/24", current, target, err)
 	}
-	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+	assertGooseRows(t, ctx, db.Pool, db.Schema, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 }
 
 func TestEmailUniquenessIgnoresCaseAndFindUserByEmailMatches(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 )
 
 const createAPIToken = `-- name: CreateAPIToken :exec
-INSERT INTO api_tokens (id, user_id, name, prefix, token_hash, scopes, expires_at)
+INSERT INTO identity.api_tokens (id, user_id, name, prefix, token_hash, scopes, expires_at)
 VALUES (
     $1::uuid,
     $2::uuid,
@@ -58,7 +58,7 @@ SELECT id::text AS id,
        expires_at,
        revoked_at,
        created_at
-FROM api_tokens
+FROM identity.api_tokens
 WHERE prefix = $1 AND revoked_at IS NULL
 ORDER BY created_at DESC
 LIMIT 1
@@ -95,7 +95,7 @@ func (q *Queries) FindAPITokenByPrefix(ctx context.Context, prefix string) (Find
 
 const listAPITokensByUser = `-- name: ListAPITokensByUser :many
 SELECT id::text AS id, name, prefix, scopes, expires_at, created_at
-FROM api_tokens
+FROM identity.api_tokens
 WHERE user_id = $1::uuid AND revoked_at IS NULL
 ORDER BY created_at DESC
 `
@@ -137,7 +137,7 @@ func (q *Queries) ListAPITokensByUser(ctx context.Context, userID uuid.UUID) ([]
 }
 
 const revokeAPIToken = `-- name: RevokeAPIToken :execrows
-UPDATE api_tokens SET revoked_at = NOW()
+UPDATE identity.api_tokens SET revoked_at = NOW()
 WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL
 `
 

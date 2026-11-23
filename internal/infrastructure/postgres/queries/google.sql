@@ -1,5 +1,5 @@
 -- name: CreateOAuthSignInState :exec
-INSERT INTO oauth_sign_in_states (state_hash, redirect_uri, return_to, expires_at, purpose, invite_id, user_id)
+INSERT INTO identity.oauth_sign_in_states (state_hash, redirect_uri, return_to, expires_at, purpose, invite_id, user_id)
 VALUES (
     sqlc.arg('state_hash')::text,
     sqlc.arg('redirect_uri')::text,
@@ -11,7 +11,7 @@ VALUES (
 );
 
 -- name: ConsumeOAuthSignInState :one
-DELETE FROM oauth_sign_in_states
+DELETE FROM identity.oauth_sign_in_states
 WHERE state_hash = sqlc.arg('state_hash')::text
   AND expires_at > sqlc.arg('now')::timestamptz
 RETURNING redirect_uri,
@@ -21,11 +21,11 @@ RETURNING redirect_uri,
           COALESCE(user_id::text, '')::text AS user_id;
 
 -- name: DeleteExpiredOAuthSignInStates :execrows
-DELETE FROM oauth_sign_in_states
+DELETE FROM identity.oauth_sign_in_states
 WHERE expires_at <= sqlc.arg('now')::timestamptz;
 
 -- name: UpdateGoogleIdentityLogin :one
-UPDATE user_identities
+UPDATE identity.user_identities
 SET email = COALESCE(sqlc.narg('email')::text, email),
     last_login_at = NOW()
 WHERE provider = sqlc.arg('provider')::text
@@ -35,20 +35,20 @@ RETURNING user_id::text AS user_id;
 -- name: LockUserByEmail :many
 SELECT id::text AS id,
        (email_verified_at IS NOT NULL)::boolean AS email_verified
-FROM users
+FROM identity.users
 WHERE lower(email) = sqlc.arg('email')::text
 ORDER BY id
 FOR UPDATE;
 
 -- name: HasIdentityForProvider :one
 SELECT EXISTS (
-    SELECT 1 FROM user_identities
+    SELECT 1 FROM identity.user_identities
     WHERE provider = sqlc.arg('provider')::text
       AND user_id = sqlc.arg('user_id')::uuid
 )::boolean AS linked;
 
 -- name: InsertUserIdentity :exec
-INSERT INTO user_identities (provider, subject, user_id, email)
+INSERT INTO identity.user_identities (provider, subject, user_id, email)
 VALUES (
     sqlc.arg('provider')::text,
     sqlc.arg('subject')::text,
@@ -57,7 +57,7 @@ VALUES (
 );
 
 -- name: CreateGoogleUser :exec
-INSERT INTO users (id, email, display_name, status, email_verified_at)
+INSERT INTO identity.users (id, email, display_name, status, email_verified_at)
 VALUES (
     sqlc.arg('id')::uuid,
     sqlc.narg('email')::text,
@@ -69,19 +69,19 @@ VALUES (
 -- name: FindGoogleIdentityUser :one
 -- The account a Google subject is linked to. No row is ErrNoRows.
 SELECT user_id::text AS user_id
-FROM user_identities
+FROM identity.user_identities
 WHERE provider = sqlc.arg('provider')::text
   AND subject = sqlc.arg('subject')::text;
 
 -- name: FindGoogleIdentityForUser :one
 -- The Google identity linked to one account, without its subject.
 SELECT email, created_at, last_login_at
-FROM user_identities
+FROM identity.user_identities
 WHERE provider = sqlc.arg('provider')::text
   AND user_id = sqlc.arg('user_id')::uuid;
 
 -- name: DeleteGoogleIdentityForUser :execrows
-DELETE FROM user_identities
+DELETE FROM identity.user_identities
 WHERE provider = sqlc.arg('provider')::text
   AND user_id = sqlc.arg('user_id')::uuid;
 
@@ -89,7 +89,7 @@ WHERE provider = sqlc.arg('provider')::text
 -- Takes over a signup_pending account for a verified Google email. The
 -- password is cleared, the display name is replaced when Google gave one, and
 -- the email is marked verified now.
-UPDATE users
+UPDATE identity.users
 SET status = 'active',
     email_verified_at = NOW(),
     password_hash = NULL,
@@ -100,7 +100,7 @@ WHERE id = sqlc.arg('id')::uuid
 
 -- name: SetUserPasswordHash :execrows
 -- Stores a new password hash for an active account.
-UPDATE users
+UPDATE identity.users
 SET password_hash = sqlc.arg('password_hash')::text,
     updated_at = NOW()
 WHERE id = sqlc.arg('id')::uuid

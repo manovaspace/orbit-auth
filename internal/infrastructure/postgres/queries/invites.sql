@@ -1,6 +1,6 @@
 -- name: RevokePendingOrganizationInvitesForEmail :many
 -- Returns the ids it revoked, so the rotation can audit each one.
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'revoked'
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND lower(email) = lower(sqlc.arg('email')::text)
@@ -9,7 +9,7 @@ RETURNING id;
 
 -- name: RevokePendingOrganizationInvitesForPhone :many
 -- Returns the ids it revoked, so the rotation can audit each one.
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'revoked'
 WHERE org_id = sqlc.arg('org_id')::uuid
   AND phone = sqlc.arg('phone')::text
@@ -17,7 +17,7 @@ WHERE org_id = sqlc.arg('org_id')::uuid
 RETURNING id;
 
 -- name: CreateOrganizationInvite :exec
-INSERT INTO organization_invites (
+INSERT INTO tenancy.organization_invites (
     id, org_id, email, phone, role, token_hash, inviter_id, inviter_staff_subject, status, expires_at, created_at
 )
 VALUES (
@@ -47,7 +47,7 @@ SELECT id::text AS id,
        expires_at,
        accepted_at,
        created_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE token_hash = sqlc.arg('token_hash')::text;
 
 -- name: ListOrganizationInvites :many
@@ -62,19 +62,19 @@ SELECT id::text AS id,
        expires_at,
        accepted_at,
        created_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE org_id = sqlc.arg('org_id')::uuid
 ORDER BY created_at DESC, id;
 
 -- name: RevokeOrganizationInvite :execrows
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'revoked'
 WHERE id = sqlc.arg('id')::uuid
   AND org_id = sqlc.arg('org_id')::uuid
   AND status = 'pending';
 
 -- name: AcceptOrganizationInvite :execrows
-UPDATE organization_invites
+UPDATE tenancy.organization_invites
 SET status = 'accepted',
     accepted_at = sqlc.arg('accepted_at')::timestamptz
 WHERE id = sqlc.arg('id')::uuid
@@ -82,7 +82,7 @@ WHERE id = sqlc.arg('id')::uuid
   AND status = 'pending';
 
 -- name: AddActiveOrganizationMembership :exec
-INSERT INTO organization_memberships (org_id, user_id, status, role)
+INSERT INTO tenancy.organization_memberships (org_id, user_id, status, role)
 VALUES (
     sqlc.arg('org_id')::uuid,
     sqlc.arg('user_id')::uuid,
@@ -105,7 +105,7 @@ SELECT id::text AS id,
        role,
        status,
        expires_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE id = sqlc.arg('id')::uuid;
 
 -- name: LockOrganizationInviteForAccept :one
@@ -115,6 +115,6 @@ SELECT id::text AS id,
        role,
        status,
        expires_at
-FROM organization_invites
+FROM tenancy.organization_invites
 WHERE id = sqlc.arg('id')::uuid
 FOR UPDATE;
