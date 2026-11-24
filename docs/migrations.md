@@ -48,12 +48,20 @@ Migration 024 moves the tables out of `public` into three schemas:
 - `tenancy`: `organizations`, `organization_memberships`, `organization_invites`, `organization_slugs`, `organization_provisions`;
 - `platform`: `feature_flags`, `outbox_events`, `audit_events`.
 
-`goose_db_version` stays in `public`. Every connection forces
+`goose_db_version` stays in `public`. Every application connection forces
 `search_path=identity,tenancy,platform,public` (package
-`internal/infrastructure/postgres/searchpath`), the app, the migrator and the
-tests alike. Unqualified names in older migrations and in the outbox relay
-still resolve. Application queries and new migrations name tables with their
-schema.
+`internal/infrastructure/postgres/searchpath`). Unqualified names in older
+migrations and in the outbox relay still resolve. Application queries and new
+migrations name tables with their schema.
+
+The migrator is the exception. It forces `search_path=public,identity,tenancy,platform`
+(`searchpath.MigrationValue`). goose looks up its version table with
+`current_schema()`, the first schema of the search path that exists. Once
+migration 024 has created `identity`, a migrator that listed `identity` first
+would not find `goose_db_version` there, create a second one holding only
+version 0, and then try to run `001_auth.sql` again on existing tables. That
+failure shows on the first start after 024, so a restart of the service would
+fail. `TestRestartAfterSchemaMoveKeepsVersionTableInPublic` covers it.
 
 `SET SCHEMA` moves a table with its indexes, constraints and owned sequences,
 and foreign keys keep working. Down moves every table back to `public` and then

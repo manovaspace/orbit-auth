@@ -57,6 +57,20 @@ func TestApply(t *testing.T) {
 	}
 }
 
+func TestApplyValueKeepsPublicFirstForTheMigrator(t *testing.T) {
+	got, err := ApplyValue("postgres://u:p@localhost:5432/auth?sslmode=disable", MigrationValue)
+	if err != nil {
+		t.Fatalf("ApplyValue: %v", err)
+	}
+	const want = "postgres://u:p@localhost:5432/auth?search_path=public%2Cidentity%2Ctenancy%2Cplatform&sslmode=disable"
+	if got != want {
+		t.Fatalf("ApplyValue = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(MigrationValue, "public,") {
+		t.Fatalf("MigrationValue = %q, want public first", MigrationValue)
+	}
+}
+
 func TestApplyEmpty(t *testing.T) {
 	for _, dsn := range []string{"", "   "} {
 		if _, err := Apply(dsn); err == nil {

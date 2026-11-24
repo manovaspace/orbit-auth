@@ -159,9 +159,9 @@ Subjects are the three-segment `{domain}.{entity}.{action}` shape. The version i
 ## Schemas
 
 - Tables live in three schemas (migration 024): `identity` (`users`, `user_identities`, `otp_challenges`, `refresh_tokens`, `api_tokens`, `oauth_sign_in_states`), `tenancy` (`organizations`, `organization_memberships`, `organization_invites`, `organization_slugs`, `organization_provisions`) and `platform` (`feature_flags`, `outbox_events`, `audit_events`).
-- `goose_db_version` stays in `public`.
+- `goose_db_version` stays in `public`. The migrator forces `search_path=public,identity,tenancy,platform` (`searchpath.MigrationValue`), because goose finds its version table through `current_schema()`.
 - New tables are created schema-qualified. Queries in `queries/` and raw SQL in Go code are schema-qualified too.
-- Every connection forces `search_path=identity,tenancy,platform,public` (`internal/infrastructure/postgres/searchpath`). It keeps unqualified names working for the outbox relay and older migrations. Do not rely on it in new code.
+- Every application connection forces `search_path=identity,tenancy,platform,public` (`internal/infrastructure/postgres/searchpath`). It keeps unqualified names working for the outbox relay and older migrations. Do not rely on it in new code, and never give the migrator that order.
 
 ## Stack
 
