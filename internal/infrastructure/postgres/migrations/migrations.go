@@ -11,6 +11,7 @@ import (
 	"path"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
+	"github.com/manovaspace/orbit-auth/internal/infrastructure/postgres/searchpath"
 	"github.com/pressly/goose/v3"
 )
 
@@ -35,9 +36,15 @@ type Migrator struct {
 }
 
 // Open connects to databaseURL and prepares the embedded migrations. The
-// returned Migrator must be closed by the caller.
+// migrator uses searchpath.MigrationValue, not the application search_path, so
+// goose keeps its version table in public after migration 024. The returned
+// Migrator must be closed by the caller.
 func Open(databaseURL string) (*Migrator, error) {
-	db, err := sql.Open("pgx", databaseURL)
+	migratorURL, err := searchpath.ApplyValue(databaseURL, searchpath.MigrationValue)
+	if err != nil {
+		return nil, fmt.Errorf("migrations: search_path: %w", err)
+	}
+	db, err := sql.Open("pgx", migratorURL)
 	if err != nil {
 		return nil, fmt.Errorf("migrations: open database: %w", err)
 	}
