@@ -7,8 +7,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.13.0
-	github.com/manovaspace/orbit-kit v0.1.0
-	github.com/manovaspace/orbit-notifications v0.5.2
+	github.com/manovaspace/orbit-kit v0.1.1
+	github.com/manovaspace/orbit-notifications v0.6.0
 	github.com/nats-io/nats.go v1.56.0
 	github.com/open-feature/go-sdk v1.20.0
 	github.com/pressly/goose/v3 v3.30.1

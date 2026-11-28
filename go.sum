@@ -52,8 +52,12 @@ github.com/klauspost/cpuid/v2 v2.4.0 h1:S6Hrbc7+ywsr0r+RLapfGBHfyefhCTwEh3A0tV91
 github.com/klauspost/cpuid/v2 v2.4.0/go.mod h1:19jmZ9mjzoF//ddRSUsv0zfBTJWh3QJh9FNxZTMrGxU=
 github.com/manovaspace/orbit-kit v0.1.0 h1:Gr9qXzVt7Y4Cxe1QyP6sDqbhfb+7gzfp8XZj86XeYU0=
 github.com/manovaspace/orbit-kit v0.1.0/go.mod h1:7Oyc9gzAG/S1bq0AzqrZv1pAon2FR+EcVOOlWJX6vng=
+github.com/manovaspace/orbit-kit v0.1.1 h1:YuBCm/SKrKIyJZ76Qa3AcNVH5ZV+amLJKgAqz8USoms=
+github.com/manovaspace/orbit-kit v0.1.1/go.mod h1:7Oyc9gzAG/S1bq0AzqrZv1pAon2FR+EcVOOlWJX6vng=
 github.com/manovaspace/orbit-notifications v0.5.2 h1:+V6K20bSsejIvGqCcfIgJAVUS2U1cOGcYby+Zg9JlyU=
 github.com/manovaspace/orbit-notifications v0.5.2/go.mod h1:9TYjgXmS+MaKjrgUbETUiEkLA7OArWLwxFOW+rFGXsw=
+github.com/manovaspace/orbit-notifications v0.6.0 h1:CHxWbGdUm+VEZsEKCH/tRhIGXk6vAgSo0TkqDiYfNuA=
+github.com/manovaspace/orbit-notifications v0.6.0/go.mod h1:9TYjgXmS+MaKjrgUbETUiEkLA7OArWLwxFOW+rFGXsw=
 github.com/mattn/go-colorable v0.1.16 h1:+2YjeAe7xP1OQbZW1jERPWWCDLlNqFNCvjiqGiAt84A=
 github.com/mattn/go-colorable v0.1.16/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
