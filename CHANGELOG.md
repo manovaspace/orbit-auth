@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0](https://github.com/manovaspace/orbit-auth/compare/v0.12.0...v0.13.0) (2026-11-28)
+
+
+### Features
+
+* **auth:** confirm phone invitations with a one-time code ([7eced23](https://github.com/manovaspace/orbit-auth/commit/7eced23f755feebe5ab4033238ae889f7aff247a))
+* **auth:** confirm phone invitations with a one-time code ([0a1eb39](https://github.com/manovaspace/orbit-auth/commit/0a1eb39c6ad6dc70eb712f4e1e27dadcd0c1a239))
+* **auth:** refresh-token families with reuse detection ([1da8d22](https://github.com/manovaspace/orbit-auth/commit/1da8d225de0ab7e2181b7141c7fbdb9f62338295))
+* **auth:** refresh-token families with reuse detection ([bed200d](https://github.com/manovaspace/orbit-auth/commit/bed200d03aa5a23935c4bc4ad5305470d6ee3e59)), closes [#122](https://github.com/manovaspace/orbit-auth/issues/122)
+* **db:** move auth tables into identity, tenancy and platform schemas ([5b6dd33](https://github.com/manovaspace/orbit-auth/commit/5b6dd337de63c0645aae9af7b1b05c3df4363a67))
+* **db:** move auth tables into identity, tenancy and platform schemas ([91a3673](https://github.com/manovaspace/orbit-auth/commit/91a367375bd6109059be641ddfdb7bc48c1270ee))
+
+
+### Bug Fixes
+
+* **auth:** count OTP attempts atomically and bind API token RPCs to the caller ([dd5f7d4](https://github.com/manovaspace/orbit-auth/commit/dd5f7d485497aeca6b34b2d54ca2af537bc65d93))
+* **auth:** count OTP attempts atomically and bind API token RPCs to the caller ([bad34e8](https://github.com/manovaspace/orbit-auth/commit/bad34e817300848269eff749a326ccd320eb350f))
+* **auth:** OTP challenges carry a purpose ([c9107f1](https://github.com/manovaspace/orbit-auth/commit/c9107f17002fc41d7e2a9e0de3ca5a3a13da5e8a))
+* **auth:** OTP challenges carry a purpose ([02d56b6](https://github.com/manovaspace/orbit-auth/commit/02d56b68b8ebe2af940be4b0bd17444c11c93cbd)), closes [#128](https://github.com/manovaspace/orbit-auth/issues/128)
+* **db:** identity constraints, unique refresh-token hash and delete rules ([1efd418](https://github.com/manovaspace/orbit-auth/commit/1efd41827911b690a1c025c98e441b09827ff9e1))
+* **db:** identity constraints, unique refresh-token hash and delete rules ([cc5d40e](https://github.com/manovaspace/orbit-auth/commit/cc5d40e88133c6d566022096e4e93fd0635663e6))
+* **flags:** retry the first flags fetch quickly after startup ([cc0e799](https://github.com/manovaspace/orbit-auth/commit/cc0e799ccc4cd755be378a9b6782278b76c3008b))
+* **flags:** retry the first flags fetch quickly after startup ([b060cf2](https://github.com/manovaspace/orbit-auth/commit/b060cf25cb51831673e917f6322ac856a1041d28))
+* **migrations:** keep goose version table in public after the schema move ([#133](https://github.com/manovaspace/orbit-auth/issues/133)) ([1e4678e](https://github.com/manovaspace/orbit-auth/commit/1e4678e1d5f49b3734502a24bd6611fedf259632))
+* **slug:** reserve console for the staff console host ([e674361](https://github.com/manovaspace/orbit-auth/commit/e674361309de6862cc18ba6b0d25c1022412f4d5))
+* **slug:** reserve console for the staff console host ([bfdc043](https://github.com/manovaspace/orbit-auth/commit/bfdc043bcba815b42958a425e70cc828d27195dd))
+
 ## [0.12.0](https://github.com/manovaspace/orbit-auth/compare/v0.11.0...v0.12.0) (2026-11-22)
 
 
